@@ -944,6 +944,19 @@ Worker 结果回传后 Master 的处理顺序：
 2. **落库 finding**：写入 findings（含 engine/severity/line_no/confidence/evidence_id/extra）。
 3. **降噪过滤**：按 `noise_rules` 在事件生成前过滤（白名单 IP 目标 / 忽略类型 / 聚合窗口 / 风暴抑制），命中则丢弃该条不再生成事件，**同时不生成告警、不触发推送**（降噪在告警生成与推送之前拦截）；规则变更只影响后续生成。
 4. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并）。
+
+| 引擎 | 事件类型（R5.3-2） | 说明 |
+|------|------|------|
+| `vuln_scan` | 漏洞 | 漏洞扫描结果 |
+| `content_security` | 内容违规 | 敏感词/AI 判定；MultiUA 端级异常与篡改偏差随 finding 关联展示 |
+| `hidden_link` | 暗链挂马 / 木马 / 篡改 | 暗链与 SEO 黑帽→暗链挂马；网页木马/Shellcode→木马；双 UA 对比检出条件性加载/篡改→篡改 |
+| `webshell` | Webshell | — |
+| `phishing` | 钓鱼 | — |
+| `availability` | 可用性异常 | 连续失败宕机 / 端差异化宕机 |
+| `port_service` | 端口暴露 | 新端口服务暴露 |
+| `dns_security` | 篡改 / 漏洞 | DNS 劫持/污染→篡改；子域名接管类→漏洞（进漏洞聚合） |
+| `reputation` | 信誉异常 | IP/域名恶意标记 |
+| `intelligence` | 情报预警 | CVE/CNVD/CNNVD 命中资产 |
 5. **漏洞聚合**：漏洞类引擎（漏洞扫描/DNS）按 `org_id+asset_id+engine+签名` 聚合并入 vulnerabilities：首见创建（status=open），重复仅更新 `last_seen_at`；`vulnerabilities.closed_at` 记录关闭时间。
 6. **告警生成**：severity≥high 或命中告警类型（可用性宕机/端口暴露/篡改/情报预警等）生成 alerts（status=open，resolved_at 空），走通知路由推送（severity/event_type→渠道）。
 7. **WebSocket 广播**：新 event/alert 广播至同 org 连接；导航角标自增。
