@@ -554,6 +554,25 @@ erDiagram
     assets ||--o{ evidence : holds
     findings ||--o{ evidence : holds
     vulnerabilities ||--o{ evidence : holds
+    evidence ||--o{ evidence_files : chunks
+    organizations ||--o{ wechat_assets : owns
+    organizations ||--o{ scan_plans : owns
+    scan_plans ||--o{ scan_tasks : triggers
+    organizations ||--o{ audit_logs : owns
+    organizations ||--o{ api_tokens : owns
+    organizations ||--o{ notify_channels : owns
+    organizations ||--o{ notify_routes : owns
+    organizations ||--o{ noise_rules : owns
+    organizations ||--o{ scan_whitelists : owns
+    organizations ||--o{ worker_nodes : owns
+    organizations ||--o{ intel_subscriptions : owns
+    organizations ||--o{ report_templates : owns
+    organizations ||--o{ reports : owns
+    report_templates ||--o{ reports : renders
+    organizations ||--o{ webhooks : owns
+    assets ||--o{ availability_points : records
+    assets ||--o{ trend_points : records
+    vulnerabilities ||--o{ tickets : tracked
 
     organizations {
         int id PK
@@ -693,6 +712,153 @@ erDiagram
         string mime_type
         int size
         datetime created_at
+    }
+    evidence_files {
+        int id PK
+        int evidence_id FK
+        string upload_id
+        int part_index
+        int part_total
+        string file_path
+        datetime created_at
+    }
+    wechat_assets {
+        int id PK
+        int org_id FK
+        string name
+        string wxid
+        string avatar_url
+        int fans_count
+        string intro
+        string verify_status
+        int article_count
+    }
+    scan_plans {
+        int id PK
+        int org_id FK
+        string name
+        int policy_id FK
+        string asset_group_name
+        string cron_expr
+        string timezone
+        string status
+        datetime last_run_at
+    }
+    audit_logs {
+        int id PK
+        int org_id FK
+        int user_id
+        string username
+        string action
+        string resource_type
+        string resource_id
+        string before_value
+        string after_value
+        string ip
+        string user_agent
+        datetime created_at
+    }
+    api_tokens {
+        int id PK
+        int org_id FK
+        string name
+        string token_hash
+        string scopes
+        datetime expires_at
+        datetime last_used_at
+    }
+    notify_channels {
+        int id PK
+        int org_id FK
+        string type
+        string config
+        string enabled
+    }
+    notify_routes {
+        int id PK
+        int org_id FK
+        string name
+        string rule
+        int default_channel_id
+        string enabled
+    }
+    noise_rules {
+        int id PK
+        int org_id FK
+        string type
+        string config
+        string enabled
+    }
+    scan_whitelists {
+        int id PK
+        int org_id FK
+        string allow_targets
+        string deny_targets
+        string enabled
+    }
+    worker_nodes {
+        int id PK
+        int org_id FK
+        string name
+        string ip
+        string version
+        string status
+        datetime heartbeat_at
+        float load
+        string boot_token_hash
+        string client_id
+        string client_secret_hash
+    }
+    intel_subscriptions {
+        int id PK
+        int org_id FK
+        string sources
+        string enabled
+    }
+    report_templates {
+        int id PK
+        int org_id FK
+        string name
+        string sections
+    }
+    reports {
+        int id PK
+        int org_id FK
+        int template_id FK
+        string title
+        string format
+        string status
+        string file_path
+        string snapshot
+        datetime created_at
+    }
+    webhooks {
+        int id PK
+        int org_id FK
+        string name
+        string url
+        string secret_hash
+        string events
+        string enabled
+        string last_status
+        string last_error
+        int retry_count
+    }
+    availability_points {
+        int id PK
+        int asset_id FK
+        int org_id FK
+        string engine
+        int status_code
+        int response_ms
+        datetime sampled_at
+    }
+    trend_points {
+        int id PK
+        int org_id FK
+        string metric
+        float value
+        datetime sampled_at
     }
 ```
 
