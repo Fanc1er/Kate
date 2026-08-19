@@ -1357,7 +1357,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 - Worker 注册握手：Bootstrap Token 换长期凭证 → 心跳/拉取/回传全链路鉴权通过。
 - 无头浏览器截图：真实 URL 渲染出 PNG，超时降级 `screenshot: skipped` 不阻断任务。
 - 限流：超阈值请求返回 429 + `Retry-After`，登录锁定 15min。
-- 截图上传（MIME 校验/大小上限/路径穿越拒绝）。
+- 截图上传（MIME 仅 png/jpeg/webp、大小上限 10MB、路径穿越拒绝，对应 R3.4-4/5）。
 - 结果回传幂等键去重（同 result_id 重复回传不重复入库）。
 - 乐观锁冲突（并发更新同 version 返回 409）。
 - WebSocket 越权订阅拒绝（org A 连接订阅 org B 事件被拒）。
