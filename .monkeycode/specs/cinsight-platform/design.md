@@ -713,7 +713,7 @@ erDiagram
 
 **报告模板表（report_templates）**：`id, org_id, name, sections(JSON，执行摘要/漏洞详情/内容安全/可用性统计/整改建议)，updated_at`。
 
-**报告表（reports）**：`id, org_id, name, template_id FK, asset_ids(JSON), period(JSON), format(pdf/excel), status(pending/generating/completed/failed), file_path, created_at`。生成异步执行，进度经 `GET /api/v1/reports/:id` 轮询。
+**报告表（reports）**：`id, org_id, name, template_id FK, asset_ids(JSON), period(JSON), format(pdf/excel/screenshots), status(pending/generating/completed/failed), file_path, created_at`。生成异步执行，进度经 `GET /api/v1/reports/:id` 轮询。
 
 **Webhook 配置表（webhooks）**：`id, org_id, name, url, secret_hash, events(JSON 订阅事件列表), enabled, last_status(success/failed), last_error, retry_count`。推送经 HMAC-SHA256 签名（`X-Webhook-Signature`），失败重试 3 次后 `last_status=failed` 落库标记。
 
@@ -1002,7 +1002,7 @@ src/
 
 | 模块 | 覆盖点 |
 |------|--------|
-| RBAC 中间件 | 四角色 × 读写操作矩阵（表驱动） |
+| RBAC 中间件 | 四角色 × 读写操作矩阵（表驱动，按「RBAC 权限矩阵与权限码」逐模块断言，viewer 写操作 403） |
 | 认证服务 | bcrypt 校验、JWT 签发、refresh 换发、jti 黑名单、组织选择、锁定阈值 |
 | 证据服务 | gzip 落盘、SHA-256 校验、MD5 去重、篡改检测 |
 | 任务调度 | 状态机流转、超时对账、断点续扫 |
