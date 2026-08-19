@@ -114,7 +114,7 @@ Updated: 2026-08-19
 - [ ] 引擎覆盖率雷达图（10 大引擎检测覆盖率）
 - [ ] WebSocket 实时事件滚动 + 指数退避重连 + 心跳保活（每 30s ping / 服务端 ReadDeadline 60s / 连续 3 次无 pong 触发重连，/api/v1/ws/events 订阅协议）
 - [ ] ECharts 图表集成（雷达图/趋势图/折线图/可用性点阵图）
-- [ ] 结构化日志 + request_id 请求追踪中间件 + 敏感字段脱敏（密码/Token/身份证/手机号/Headers）
+- [ ] 结构化日志 + 请求追踪中间件（日志字段含 ts/level/org_id/user_id/trace_id/path/latency_ms/status；MVP 阶段先落轻量 request_id，阶段 4 升级为 OTel trace_id）+ 敏感字段脱敏（密码/Token/身份证/手机号/Headers）
 - [ ] 报告导出（PDF 含水印 / Excel 漏洞清单）
 - [ ] 前端 vitest 组件测试：登录表单校验/路由守卫/权限菜单渲染 + 证据抽屉 Hash 失败标红 + v-permission 按钮隐藏 + 证据 HTML XSS 净化（DOMPurify 注入 script/onerror/iframe 断言剥离）
 

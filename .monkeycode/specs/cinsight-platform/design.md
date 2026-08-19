@@ -1328,7 +1328,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 
 ### 日志与请求追踪
 
-- 统一结构化日志（logrus/slog），输出 JSON，字段含 `ts, level, org_id, user_id, request_id, path, latency_ms, status`。
+- 统一结构化日志（logrus/slog），输出 JSON，字段含 `ts, level, org_id, user_id, trace_id, path, latency_ms, status`（与 R4.5-5 一致；MVP 阶段先落轻量 `request_id`，阶段 4 接入 OpenTelemetry 后升级为 `trace_id`）。
 - 请求中间件生成 `request_id`（UUID），贯穿 Controller→Service→Repository→外部调用，异常堆栈附带 request_id；逐请求记录访问日志（方法/路径/状态/耗时）。
 - 敏感字段脱敏：密码、Token、Authorization/Set-Cookie 头、身份证、手机号在落日志前统一脱敏（`***`），禁止明文输出。
 - 审计日志独立落库（audit_logs），仅 insert/select。
