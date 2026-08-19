@@ -392,7 +392,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.13 系统设置（仅 org_admin）
 
-1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报，支持移除离线节点 `DELETE /api/v1/worker/nodes/:id`。
+1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报，支持移除离线节点 `DELETE /api/v1/worker/nodes/:id`。节点状态 SHALL 为 `online/offline/offline_removed`：心跳间隔超 3 倍未上报自动置 `offline`，调度器仅向 online 节点分发任务；移除节点置 `offline_removed` 不计入配额。
 2. Worker 注册 SHALL 走握手流程：首次注册用一次性 Bootstrap Token 调用 `POST /api/v1/worker/register` 换取长期凭证（client_id + client_secret，服务端存 hash），后续心跳/拉取/回传 SHALL 用长期凭证鉴权；凭证支持撤销/重发，泄露可吊销。
 3. Bootstrap Token 与长期凭证 SHALL 加密/哈希存储（Bootstrap Token 存 SHA-256 且一次性领取即失效，client_secret 存 bcrypt），库中禁止明文；Token 仅在创建时一次性返回，刷新即作废旧值。
 4. 受邀成员 SHALL 首次登录激活：邀请状态 `invited`，首次登录后激活为 `active` 并强制设密码/改密；邀请链接默认 7 天过期。

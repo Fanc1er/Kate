@@ -726,7 +726,7 @@ erDiagram
 
 **Webhook 配置表（webhooks）**：`id, org_id, name, url, secret_hash, events(JSON 订阅事件列表), enabled, last_status(success/failed), last_error, retry_count`。推送经 HMAC-SHA256 签名（`X-Webhook-Signature`），失败重试 3 次后 `last_status=failed` 落库标记。
 
-**Worker 节点表（worker_nodes）**：`id, org_id, name, ip, version, status, heartbeat_at, load, boot_token_hash, client_id, client_secret_hash`。token/secret 仅存 hash（boot_token_hash=SHA-256，client_secret_hash=bcrypt），不落明文。
+**Worker 节点表（worker_nodes）**：`id, org_id, name, ip, version, status(online/offline/offline_removed), heartbeat_at, load, boot_token_hash, client_id, client_secret_hash`。token/secret 仅存 hash（boot_token_hash=SHA-256，client_secret_hash=bcrypt），不落明文。状态判定：心跳间隔超 3 倍（默认 15s，`CINSIGHT_WORKER_HEARTBEAT_MS`=5000）未上报自动置 `offline`；移除节点置 `offline_removed` 不计入配额。调度器仅向 `online` 节点分配任务。
 
 **时序降级表（availability_points / trend_points）**：VictoriaMetrics 的内嵌替代。`availability_points(id, org_id, asset_id, engine, timestamp, status_code, latency_ms, up)`, `trend_points(id, org_id, metric, date, value)`。预留 `MetricsExporter` 接口以支持未来切换 VM。
 

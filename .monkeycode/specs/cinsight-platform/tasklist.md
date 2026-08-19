@@ -214,7 +214,7 @@ Updated: 2026-08-19
 ### 3.1 团队与系统设置
 - [ ] 成员管理（GET /api/v1/members 列表 + POST 单条邀请/批量邀请 batch-invite + 移除 DELETE :id/批量移除 batch-remove + 禁用/启用 :id/disable + 修改角色 PUT :id）— 仅 org_admin
 - [ ] 受邀成员首次登录激活（invited → active，强制设密码/改密，邀请链接 7 天过期）
-- [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 移除离线节点 DELETE /api/v1/worker/nodes/:id）
+- [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 状态 online/offline/offline_removed 判定：心跳超 3 倍置 offline，移除置 offline_removed 不计配额，调度仅向 online 分发 + 移除离线节点 DELETE /api/v1/worker/nodes/:id）
 - [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP 多渠道 + 按 id 测试 POST :id/test）
 - [ ] 通知渠道密钥加密（AES-256-GCM 主密钥 CINSIGHT_CHANNEL_KEY + 接口掩码脱敏 + 编辑留空保持原值）
 - [ ] 通知路由规则（GET/PUT /api/v1/notify-routes：severity/event_type → 渠道映射 + 默认渠道 + 风暴抑制在路由层生效）
