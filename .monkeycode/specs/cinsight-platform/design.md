@@ -875,11 +875,23 @@ erDiagram
         string client_id
         string client_secret_hash
     }
+    intel_items {
+        int id PK
+        string source "cve/cnvd/cnnvd"
+        string intel_id "CVE/CNVD/CNNVD 编号"
+        string title
+        string severity "critical/high/medium/low/info"
+        string scope "影响范围描述"
+        string tech_stack "受影响技术栈（JSON，供资产匹配）"
+        datetime published_at
+        datetime updated_at
+    }
     intel_subscriptions {
         int id PK
         int org_id FK
-        string sources
+        string source "cve/cnvd/cnnvd"
         string enabled
+        datetime last_sync_at
     }
     report_templates {
         int id PK
@@ -953,6 +965,8 @@ erDiagram
 
 **定时计划表（scan_plans）**：`id, org_id, name, policy_id FK, asset_group_name, cron_expr, timezone, time_window, status(enabled/paused), last_run_at`。Cron 按 `timezone`（默认 `CINSIGHT_TIMEZONE`）计算执行时间；`time_window`（JSON，如 `{"start":"02:00","end":"06:00"}`，可空）限定计划触发后的执行时间窗口，窗口外触发的任务顺延至窗口内或跳过（见 CronScheduler）；暂停/启用经 `PATCH /:id/status` 切换。
 
+**情报条目表（intel_items）**：全局情报库（非组织隔离），`id, source(cve/cnvd/cnnvd), intel_id（CVE/CNVD/CNNVD 编号）, title, severity, scope（影响范围描述）, tech_stack（受影响技术栈 JSON，供资产匹配）, published_at, updated_at`，`unique(source, intel_id)`。由情报同步任务从 CVE/CNVD/CNNVD 数据源拉取更新；`GET /api/v1/intel` 列表与 `GET /api/v1/intel/:id` 详情读取本表，"受影响资产数"由引擎按本组织资产技术栈匹配计算（设计 L478/L479 端点）。
+
 **情报订阅表（intel_subscriptions）**：`id, org_id, source(cve/cnvd/cnnvd), enabled, last_sync_at`，`unique(org_id, source)`。
 
 **报告模板表（report_templates）**：`id, org_id, name, sections(JSON，执行摘要/漏洞详情/内容安全/可用性统计/整改建议)，cron_expr, timezone, enabled, updated_at`。`cron_expr` 可空：设置后该模板启用定时报告，由 Master `CronScheduler` 按 `cron_expr`+`timezone`（默认 `CINSIGHT_TIMEZONE`）周期性生成 `reports`，调度语义与扫描计划一致（组织禁用/到期跳过触发）。
@@ -1007,6 +1021,7 @@ erDiagram
 | availability_points | `idx_avail_org_asset_ts`（org_id, asset_id, sampled_at） | 时序查询 |
 | trend_points | `idx_trend_org_metric_sampled`（org_id, metric, sampled_at） | 趋势聚合 |
 | api_tokens | `idx_token_org` | Token 查询 |
+| intel_items | `idx_intel_source_sev`（source, severity）, `idx_intel_id`（唯一：source, intel_id） | 情报列表筛选/编号检索 |
 | worker_nodes | `idx_worker_org` | 节点管理 |
 | audit_logs | `idx_audit_org_created`, `idx_audit_org_user`, `idx_audit_org_action`（org_id, username/action, created_at） | 审计筛选/查询 |
 
