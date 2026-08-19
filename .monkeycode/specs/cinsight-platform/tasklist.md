@@ -43,15 +43,17 @@ Updated: 2026-08-19
 - [ ] 乐观锁 409 冲突前端提示（"数据已被他人修改，请刷新后重试"）
 
 ### 1.4 资产模块
-- [ ] 资产后端 API：CRUD（GET/POST /api/v1/assets，PUT/DELETE /api/v1/assets/:id）
+- [ ] 资产后端 API：CRUD（GET/POST /api/v1/assets，GET/PUT/DELETE /api/v1/assets/:id）
 - [ ] 资产后端 API：画像（GET /api/v1/assets/:id/profile）
 - [ ] 资产后端 API：变更追踪（GET /api/v1/assets/:id/history）
 - [ ] 资产后端 API：URL 归一化 + BadgerDB MD5 防重
-- [ ] 资产后端 API：微信公众号资产（GET/POST /api/v1/wechat-assets）
-- [ ] 资产列表前端（虚拟滚动/模糊搜索/筛选）
+- [ ] 资产后端 API：微信公众号资产完整 CRUD（GET/POST /api/v1/wechat-assets，PUT/DELETE /api/v1/wechat-assets/:id）
+- [ ] 资产批量操作 API：batch-scan（批量加入扫描）/ batch-delete / batch-import（URL/CSV 批量导入 + 模板下载 + 逐行校验报告）
+- [ ] 资产列表前端（虚拟滚动/模糊搜索/筛选 + 多选批量操作栏 + 空状态引导）
 - [ ] 资产画像抽屉前端（技术栈指纹/ICP/子域名/SSL 倒计时/端口快照）
 - [ ] 资产变更追踪前端（标题/技术栈/状态码/端口变动历史）
 - [ ] 微信公众号资产前端字段（公众号名/微信号/头像/粉丝数/简介/认证状态/文章数，扩展自 R5.2）
+- [ ] 资产行内"立即扫描"快捷操作 + URL 一键复制
 
 ### 1.5 任务调度与可用性引擎
 - [ ] 任务表与策略模板表迁移
@@ -60,6 +62,8 @@ Updated: 2026-08-19
 - [ ] 核心表索引落地（org_id/状态/时间索引，见 design 索引设计）
 - [ ] BadgerDB-SQLite 缓存一致性（写入先 Badger 后异步 SQLite + 每小时对账）
 - [ ] Master 任务创建/下发/拉取接口（pending→processing→completed）
+- [ ] 任务详情接口（GET /api/v1/tasks/:id，状态/进度/执行日志/结果统计/Worker 分配）
+- [ ] 任务停止/删除/批量停止（POST :id/stop、DELETE :id、POST batch-stop）
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
 - [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定）
@@ -126,12 +130,14 @@ Updated: 2026-08-19
 
 ### 2.3 事件中心与漏洞管理
 - [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）
-- [ ] 事件类型筛选（12 类）+ 降噪规则配置（白名单/忽略/聚合/风暴抑制）
-- [ ] 独立告警接口（GET /api/v1/alerts 列表 + PATCH /api/v1/alerts/:id 处置：确认/关闭/静默）
+- [ ] 事件批量状态流转（POST /api/v1/events/batch）
+- [ ] 事件类型筛选（12 类）+ 降噪规则完整 CRUD（GET/POST /api/v1/noise-rules，PUT/DELETE /api/v1/noise-rules/:id）
+- [ ] 独立告警接口（GET /api/v1/alerts 列表 + PATCH /api/v1/alerts/:id 处置 + POST /api/v1/alerts/batch 批量处置）
 - [ ] 漏洞表与告警表迁移（vulnerabilities/alerts 独立表，见 design ER 图）
 - [ ] 漏洞列表（GET /api/v1/vulnerabilities，等级/状态/引擎筛选）+ 证据链抽屉接入
 - [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence）对接前端抽屉
-- [ ] 工单闭环（确认→派发→修复→复测→归档）+ SOP 挂载
+- [ ] 漏洞批量接口（batch-ticket 批量生成工单 / batch-retest 批量复测 / batch-ignore 批量忽略）
+- [ ] 工单闭环（确认→派发→修复→复测→归档）+ SOP 挂载 + 工单详情接口（GET /api/v1/tickets/:id）
 - [ ] 告警风暴抑制（单资产每小时 5 条上限）
 
 ### 2.4 引擎相关前端模块
@@ -162,21 +168,22 @@ Updated: 2026-08-19
 ## 阶段 3 — 全量功能 + 平台化
 
 ### 3.1 团队与系统设置
-- [ ] 成员管理（邀请/移除/禁用/改角色）— 仅 org_admin
-- [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token）
-- [ ] 通知渠道配置（钉钉/企微/飞书 Webhook + SMTP + 测试发送）
-- [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号）
+- [ ] 成员管理（邀请/批量邀请 batch-invite/移除 DELETE/禁用/启用/改角色）— 仅 org_admin
+- [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 移除节点 POST :id/remove）
+- [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP + 测试发送）
+- [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
 - [ ] 审计日志（禁止修改删除）
-- [ ] API Token 管理（细粒度权限/有效期）
+- [ ] API Token 管理（细粒度权限/有效期 + 撤销 DELETE + 停用/恢复 PATCH :id/status）
 
 ### 3.2 平台管理
-- [ ] 组织列表/创建/编辑/禁用 — 仅 super_admin
+- [ ] 组织列表/创建/详情/编辑/禁用/删除（DELETE 需输入组织名二次确认 + 级联清理）— 仅 super_admin
 - [ ] 平台统计（总组织/总资产/总扫描/总事件）
 - [ ] 平台 Worker 总览
 
 ### 3.3 集成与部署
 - [ ] swaggo Swagger 文档全量注解
 - [ ] API Token 认证中间件（独立于 JWT，scopes 细粒度 + 有效期）
+- [ ] Webhook 完整 CRUD（GET/POST + PUT/DELETE :id + 测试推送 POST :id/test + Secret 复制/重新生成）
 - [ ] Webhook 事件推送（HMAC-SHA256 签名 + 重试 3 次 + 落库）
 - [ ] 规则热更新（fsnotify）+ Worker 规则 Hash 同步
 - [ ] 扫描授权拦截（白名单校验 + 内网 IP 禁止）
@@ -184,6 +191,7 @@ Updated: 2026-08-19
 - [ ] 三时机脱敏（入库/API 返回/报告生成）
 - [ ] 反封禁（Proxy 配置 + 低速隐蔽模式）
 - [ ] VictoriaMetrics 迁移接口预留（MetricsExporter，当前 SQLite 时序表）
+- [ ] 批量操作规范落地（POST /{resource}/batch：{ids} ≤500，返回 {success,failed}，幂等）
 
 ### 任务 15 — Litestream 热备与部署【必执行】
 - [ ] Litestream SQLite 实时流式热备（配置 + 复制验证）
@@ -193,15 +201,30 @@ Updated: 2026-08-19
 - [ ] 部署验证：Docker 起服务 → 探活 /api/health → 建资产 → 下发任务全链路通过
 
 ### 3.4 报告中心全量
-- [ ] 报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议）
-- [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口）
-- [ ] 定时报告（Cron 生成周报/月报）
+- [ ] 报告模板完整 CRUD（执行摘要/漏洞详情/内容安全/可用性统计/整改建议 + PUT/DELETE :id）
+- [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 批量启停 batch-toggle）
+- [ ] 定时报告（Cron 生成周报/月报 + 异步生成进度条 + 完成通知）
 - [ ] 报告截图合集导出（按资产/时间范围）
+- [ ] 报告删除（DELETE /api/v1/reports/:id）
+
+### 3.5 前端体验统一（UX）
+- [ ] 列表空状态引导（插画 + 文案 + 主操作按钮）
+- [ ] 危险操作二次确认弹窗（删除/批量删除/移除成员/撤销 Token/删除组织需输入名称）
+- [ ] 批量操作栏（多选后浮动出现：已选 N 项/全选/跨页记忆 + 结果汇总 Toast + 失败明细展开）
+- [ ] 一键复制组件（资产 URL/API Token/Webhook Secret/Bootstrap Token）
+- [ ] 行内快捷操作（立即扫描/生成工单/申请复测/告警确认）
+- [ ] 筛选条件持久化（localStorage）+ URL 参数分享
+- [ ] 导航栏事件/告警未读角标（WebSocket 实时更新）
+- [ ] 任务详情页（进度条/执行日志/结果统计/Worker 分配）
+- [ ] 资产 URL/CSV 批量导入前端（模板下载 + 逐行校验报告展示）+ 当前筛选结果 CSV 导出
+- [ ] 报告异步生成进度 + 完成通知
+- [ ] 相对时间展示 + 状态色统一（高危红/中危橙/低危黄/正常绿）
 
 ### 阶段 3 验收
 - [ ] 全部 15 个功能模块上线【必执行】
 - [ ] 平台管理/团队管理权限隔离正确【必执行】
 - [ ] 集成测试：Master + 单 Worker 全链路（任务下发→引擎执行→结果回传→证据入库→前端展示）【必执行】
+- [ ] 前后端 CRUD 与批量接口对齐验收（逐模块：Create/Read/Update/Delete/Batch 全覆盖）【必执行】
 - [ ] 容灾演练：Worker 断网恢复（Outbox 回传）、Master 重启对账、熔断触发【必执行】
 - [ ] 部署验证：Docker/K8s/单二进制三种方式启动 + 探活 + 全链路通过【必执行】
 - [ ] go test ./... 全部通过 + 前端 vue-tsc + vite build 通过【必执行】

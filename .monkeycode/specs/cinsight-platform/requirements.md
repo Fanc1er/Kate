@@ -248,19 +248,22 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.2 资产管理
 
-1. 系统 SHALL 提供资产后端 API：CRUD（`GET/POST /api/v1/assets`、`PUT/DELETE /api/v1/assets/:id`）。
+1. 系统 SHALL 提供资产后端 API：CRUD（`GET/POST /api/v1/assets`、`GET/PUT/DELETE /api/v1/assets/:id`）。
 2. 系统 SHALL 提供资产画像接口 `GET /api/v1/assets/:id/profile`（技术栈指纹/ICP 备案/子域名/SSL 证书倒计时/端口服务快照）。
 3. 系统 SHALL 提供资产变更追踪接口 `GET /api/v1/assets/:id/history`（标题/技术栈/状态码/端口变动历史）。
 4. 系统 SHALL 在资产入库前执行 URL 归一化，并通过 BadgerDB MD5 防重。
-5. 系统 SHALL 提供微信公众号资产接口 `GET/POST /api/v1/wechat-assets`，字段包含公众号名、微信号、头像、粉丝数、简介、认证状态与文章数。
-6. 系统 SHALL 提供资产列表前端（虚拟滚动/模糊搜索/按重要程度/分组/状态筛选）与资产画像/变更追踪抽屉展示。
+5. 系统 SHALL 提供微信公众号资产接口完整 CRUD（`GET/POST /api/v1/wechat-assets`、`GET/PUT/DELETE /api/v1/wechat-assets/:id`），字段包含公众号名、微信号、头像、粉丝数、简介、认证状态与文章数。
+6. 系统 SHALL 提供批量操作接口：`POST /api/v1/assets/batch-scan`（批量加入扫描）、`POST /api/v1/assets/batch-delete`（批量删除）、`POST /api/v1/assets/batch-import`（URL 列表/CSV 批量导入，含模板下载与逐行校验报告）。
+7. 系统 SHALL 提供资产列表前端（虚拟滚动/模糊搜索/按重要程度/分组/状态筛选）、多选批量操作栏与资产画像/变更追踪抽屉展示。
+8. 系统 SHALL 在资产列表为空时展示空状态引导，并提供"立即添加/批量导入"主操作。
 
 #### R5.3 安全事件中心
 
 1. 系统 SHALL 提供事件列表（级别/来源资产/引擎类型/内容/状态流转：待处理→处理中→已关闭→已归档）。
 2. 系统 SHALL 支持事件类型筛选：漏洞/内容违规/暗链挂马/木马/Webshell/钓鱼/篡改/可用性异常/端口暴露/敏感信息泄漏/信誉异常/情报预警。
-3. 系统 SHALL 提供降噪规则配置（白名单 IP/忽略特定类型/聚合时间窗/风暴抑制）。
-4. 系统 SHALL 支持闭环处置流程：事件确认→工单派发→修复跟踪→复测验证→归档，并自动挂载应急响应 SOP。
+3. 系统 SHALL 提供降噪规则配置完整 CRUD（`GET/POST /api/v1/noise-rules`、`PUT/DELETE /api/v1/noise-rules/:id`），规则类型包含白名单 IP/忽略特定类型/聚合时间窗/风暴抑制。
+4. 系统 SHALL 提供批量状态流转接口 `POST /api/v1/events/batch`（批量确认/关闭/归档）。
+5. 系统 SHALL 支持闭环处置流程：事件确认→工单派发→修复跟踪→复测验证→归档，并自动挂载应急响应 SOP。
 
 #### R5.3b 独立告警中心
 
@@ -269,14 +272,16 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **Acceptance Criteria:**
 1. 系统 SHALL 提供独立告警列表接口 `GET /api/v1/alerts`（按级别/类型/状态/来源资产筛选与分页）。
 2. 系统 SHALL 提供告警处置接口 `PATCH /api/v1/alerts/:id`（确认/关闭/静默三种状态流转）。
-3. 系统 SHALL 以独立 `alerts` 表存储告警（含 alert_type、severity、status、resolved_at），由发现记录触发生成。
+3. 系统 SHALL 提供批量告警处置接口 `POST /api/v1/alerts/batch`（批量确认/关闭/静默，请求体 `{ids, action}`）。
+4. 系统 SHALL 以独立 `alerts` 表存储告警（含 alert_type、severity、status、resolved_at），由发现记录触发生成。
 
 #### R5.4 漏洞与风险管理
 
 1. 系统 SHALL 提供漏洞列表（按等级/状态/引擎类型筛选），基于独立 `vulnerabilities` 表。
 2. 系统 SHALL 提供漏洞证据接口 `GET /api/v1/vulnerabilities/{id}/evidence`，聚合漏洞关联的 Req/Resp/HTML/截图证据链。
 3. 系统 SHALL 提供证据链抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图取证）。
-4. 系统 SHALL 支持闭环处置（生成工单/申请复测/批量忽略）。
+4. 系统 SHALL 支持闭环处置（生成工单/申请复测/忽略），并提供批量接口 `POST /api/v1/vulnerabilities/batch-ticket`、`batch-retest`、`batch-ignore`。
+5. 系统 SHALL 提供漏洞行内快捷操作（生成工单/申请复测/忽略）与筛选持久化。
 
 #### R5.5 内容安全监测
 
@@ -309,33 +314,34 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.10 任务调度与策略
 
-1. 系统 SHALL 提供策略模板（10 大引擎开关/扫描并发/超时/速率限制）。
-2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口）。
-3. 系统 SHALL 提供任务队列监控（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示。
+1. 系统 SHALL 提供策略模板（10 大引擎开关/扫描并发/超时/速率限制），完整 CRUD 与批量删除 `POST /api/v1/policies/batch-delete`。
+2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口），完整 CRUD 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。
+3. 系统 SHALL 提供任务列表、任务详情 `GET /api/v1/tasks/:id`（状态/进度/执行日志/结果统计/Worker 分配）、停止 `POST /api/v1/tasks/:id/stop`、删除历史任务 `DELETE /api/v1/tasks/:id`、批量停止 `POST /api/v1/tasks/batch-stop`。
+4. 系统 SHALL 提供任务队列监控（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示。
 
 #### R5.11 报告中心
 
-1. 系统 SHALL 提供报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议）。
+1. 系统 SHALL 提供报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议），完整 CRUD（`GET/POST /api/v1/report-templates`、`PUT/DELETE /api/v1/report-templates/:id`）。
 2. 系统 SHALL 支持定时报告（Cron 生成周报/月报）。
-3. 系统 SHALL 支持报告导出（PDF 含水印/Excel 漏洞清单/按资产与时间范围导出截图合集）。
+3. 系统 SHALL 支持报告导出（PDF 含水印/Excel 漏洞清单/按资产与时间范围导出截图合集），提供报告删除 `DELETE /api/v1/reports/:id` 与异步生成进度通知。
 
 #### R5.12 团队管理（仅 org_admin）
 
 1. 系统 SHALL 提供成员列表（头像/角色 Tag/状态/最后登录时间）。
-2. 系统 SHALL 支持邀请成员（邮箱/手机号 + 角色选择）、移除/禁用成员/修改角色。
+2. 系统 SHALL 支持邀请成员（邮箱/手机号 + 角色选择）、批量邀请 `POST /api/v1/members/batch-invite`、修改角色、禁用/启用成员、移除成员 `DELETE /api/v1/members/:id`（移除二次确认）。
 
 #### R5.13 系统设置（仅 org_admin）
 
-1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报。
-2. 系统 SHALL 提供通知渠道配置（钉钉/企微/飞书 Webhook + 邮件 SMTP + 测试发送）。
-3. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号）。
+1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报，支持移除节点 `POST /api/v1/worker/nodes/:id/remove`。
+2. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP + 测试发送）。
+3. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），支持导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
 4. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），审计日志 SHALL 禁止修改与删除。
-5. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期）。
+5. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
 
 #### R5.14 平台管理（仅 super_admin）
 
 1. 系统 SHALL 提供组织列表（名称/套餐/资产数/Worker 数/到期时间/状态）。
-2. 系统 SHALL 支持创建/编辑/禁用组织。
+2. 系统 SHALL 支持创建/编辑/禁用组织，提供组织详情 `GET /api/v1/orgs/:id` 与删除组织 `DELETE /api/v1/orgs/:id`（删除需输入组织名二次确认并级联清理数据）。
 3. 系统 SHALL 提供平台统计（总组织/总资产/总扫描次数/总事件数）与平台 Worker 总览。
 
 #### R5.15 API 开放集成
@@ -362,3 +368,15 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 4. 系统 SHALL 在 WebSocket 断线时显示断线提示条，重连成功 SHALL 自动恢复并清除提示。
 5. 系统 SHALL 预留 i18n（中/英）与可访问性支持，路由懒加载 + 组件分包保证首屏 < 3s。
 6. 系统 SHALL 提供前端组件测试（vitest）：覆盖登录表单校验、路由守卫权限、权限菜单渲染。
+7. 所有列表页 SHALL 提供空状态引导（插画 + 文案 + 主操作按钮），危险操作（删除/移除/撤销）SHALL 二次确认弹窗。
+8. 列表多选后 SHALL 显示批量操作栏（已选 N 项/全选/跨页记忆），批量结果 SHALL Toast 汇总"成功 M / 失败 K"并可展开失败明细。
+9. 资产 URL、API Token、Webhook Secret、Bootstrap Token SHALL 提供一键复制；资产列表 SHALL 支持 URL/CSV 批量导入（模板下载 + 逐行校验报告）与当前筛选结果 CSV 导出。
+10. 导航栏事件/告警 SHALL 显示未读数角标（WebSocket 实时更新）；任务行 SHALL 支持点击展开详情（进度/日志/结果统计）。
+11. 列表筛选条件 SHALL 持久化（localStorage）并支持 URL 参数分享；报告生成 SHALL 异步化并展示进度条 + 完成通知。
+12. 系统 SHALL 提供统一批量操作规范：`POST /api/v1/{resource}/batch` 携带 `{ids}`（上限 500），返回 `{success, failed}`，逐条失败不中断，批量操作幂等。
+
+#### R5.18 Webhook 配置管理
+
+1. 系统 SHALL 提供 Webhook 完整 CRUD（`GET/POST /api/v1/webhooks`、`PUT/DELETE /api/v1/webhooks/:id`）。
+2. 系统 SHALL 提供 Webhook 测试推送 `POST /api/v1/webhooks/:id/test`，测试结果 SHALL 反馈 HTTP 状态码与响应体。
+3. 系统 SHALL 支持 Webhook 编辑时显示 Secret 一键复制与重新生成。

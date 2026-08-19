@@ -208,7 +208,9 @@ type Finding struct {
 | 认证 | GET | /api/v1/auth/me | 登录用户 | 当前用户信息 + 组织列表 |
 | 组织 | GET | /api/v1/orgs | super_admin | 组织列表 |
 | 组织 | POST | /api/v1/orgs | super_admin | 创建组织 |
+| 组织 | GET | /api/v1/orgs/:id | super_admin | 组织详情 |
 | 组织 | PUT | /api/v1/orgs/:id | super_admin | 编辑组织 |
+| 组织 | DELETE | /api/v1/orgs/:id | super_admin | 删除组织（含数据清理，二次确认） |
 | 组织 | POST | /api/v1/orgs/:id/disable | super_admin | 禁用组织 |
 | 平台 | GET | /api/v1/platform/stats | super_admin | 平台统计 |
 | 平台 | GET | /api/v1/platform/workers | super_admin | 平台 Worker 总览 |
@@ -217,51 +219,101 @@ type Finding struct {
 | 资产 | GET | /api/v1/assets/:id | 全部角色 | 资产详情 |
 | 资产 | GET | /api/v1/assets/:id/history | 全部角色 | 资产变更追踪 |
 | 资产 | GET | /api/v1/assets/:id/profile | 全部角色 | 资产画像（指纹/ICP/SSL/端口） |
+| 资产 | POST | /api/v1/assets/batch-scan | org_admin/engineer | 批量资产加入扫描（ids + policy_id） |
+| 资产 | POST | /api/v1/assets/batch-delete | org_admin | 批量删除资产 |
+| 资产 | POST | /api/v1/assets/batch-import | org_admin/engineer | URL 列表/CSV 批量导入 |
 | 资产 | GET/POST | /api/v1/wechat-assets | org_admin/engineer | 微信公众号资产 |
+| 资产 | PUT/DELETE | /api/v1/wechat-assets/:id | org_admin/engineer | 公众号资产编辑/删除 |
 | 策略 | GET/POST | /api/v1/policies | org_admin | 策略模板列表/创建 |
 | 策略 | PUT/DELETE | /api/v1/policies/:id | org_admin | 策略模板编辑/删除 |
+| 策略 | POST | /api/v1/policies/batch-delete | org_admin | 批量删除策略模板 |
 | 计划 | GET/POST | /api/v1/scan-plans | org_admin | Cron 定时计划 |
 | 计划 | PUT/DELETE | /api/v1/scan-plans/:id | org_admin | Cron 定时计划编辑/删除 |
+| 计划 | POST | /api/v1/scan-plans/batch-toggle | org_admin | 批量启用/禁用定时计划 |
 | 任务 | GET/POST | /api/v1/tasks | org_admin/engineer | 任务列表/发起 |
+| 任务 | GET | /api/v1/tasks/:id | 全部角色 | 任务详情（状态/进度/结果统计） |
 | 任务 | POST | /api/v1/tasks/:id/stop | org_admin/engineer | 停止任务 |
+| 任务 | DELETE | /api/v1/tasks/:id | org_admin | 删除历史任务 |
+| 任务 | POST | /api/v1/tasks/batch-stop | org_admin/engineer | 批量停止任务 |
 | 任务 | GET | /api/v1/tasks/:id/progress | 全部角色 | 断点续扫状态 |
 | 任务 | GET | /api/v1/tasks/queue | 全部角色 | 队列监控 |
 | 事件 | GET | /api/v1/events | 全部角色 | 事件列表（筛选/分页） |
 | 事件 | POST | /api/v1/events/:id/status | org_admin/engineer | 事件状态流转 |
+| 事件 | POST | /api/v1/events/batch | org_admin/engineer | 批量状态流转（确认/关闭/归档） |
 | 事件 | GET/POST | /api/v1/noise-rules | org_admin | 降噪规则 |
+| 事件 | PUT/DELETE | /api/v1/noise-rules/:id | org_admin | 降噪规则编辑/删除 |
 | 告警 | GET | /api/v1/alerts | 全部角色 | 告警列表（筛选/分页） |
 | 告警 | PATCH | /api/v1/alerts/:id | org_admin/engineer | 告警处置（确认/关闭/静默） |
+| 告警 | POST | /api/v1/alerts/batch | org_admin/engineer | 批量告警处置 |
 | 漏洞 | GET | /api/v1/vulnerabilities | 全部角色 | 漏洞列表（等级/状态/引擎筛选） |
 | 漏洞 | GET | /api/v1/vulnerabilities/:id/evidence | 全部角色 | 漏洞证据链（证据抽屉数据） |
 | 漏洞 | POST | /api/v1/vulnerabilities/:id/ticket | org_admin/engineer | 生成工单 |
 | 漏洞 | POST | /api/v1/vulnerabilities/:id/retest | org_admin/engineer | 申请复测 |
-| 漏洞 | POST | /api/v1/vulnerabilities/:id/ignore | org_admin/engineer | 批量忽略 |
+| 漏洞 | POST | /api/v1/vulnerabilities/:id/ignore | org_admin/engineer | 忽略漏洞 |
+| 漏洞 | POST | /api/v1/vulnerabilities/batch-ticket | org_admin/engineer | 批量生成工单 |
+| 漏洞 | POST | /api/v1/vulnerabilities/batch-retest | org_admin/engineer | 批量复测 |
+| 漏洞 | POST | /api/v1/vulnerabilities/batch-ignore | org_admin/engineer | 批量忽略 |
 | 工单 | GET/POST | /api/v1/tickets | org_admin/engineer | 工单列表/创建 |
+| 工单 | GET | /api/v1/tickets/:id | 全部角色 | 工单详情 |
 | 工单 | PUT | /api/v1/tickets/:id | org_admin/engineer | 工单状态/派发 |
 | 证据 | GET | /api/v1/evidence/:id | 全部角色 | 通用证据读取（Req/Resp/HTML/截图，Hash 校验） |
 | 证据 | GET | /api/v1/evidence/:id/download | 全部角色 | 下载 HTML/HAR |
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
 | 报告 | GET/POST | /api/v1/reports | 全部角色(导出) | 报告列表/生成 |
 | 报告 | GET | /api/v1/reports/:id/download | 全部角色 | PDF/Excel 下载 |
+| 报告 | DELETE | /api/v1/reports/:id | org_admin | 删除报告 |
 | 报告 | GET/POST | /api/v1/report-templates | org_admin | 报告模板 |
+| 报告 | PUT/DELETE | /api/v1/report-templates/:id | org_admin | 报告模板编辑/删除 |
 | 成员 | GET/POST | /api/v1/members | org_admin | 成员列表/邀请 |
+| 成员 | POST | /api/v1/members/batch-invite | org_admin | 批量邀请（邮箱数组） |
 | 成员 | PUT | /api/v1/members/:id | org_admin | 修改角色 |
 | 成员 | POST | /api/v1/members/:id/disable | org_admin | 禁用成员 |
+| 成员 | POST | /api/v1/members/:id/enable | org_admin | 启用成员 |
+| 成员 | DELETE | /api/v1/members/:id | org_admin | 移除成员 |
 | Worker | GET | /api/v1/worker/nodes | org_admin | Worker 节点管理 |
 | Worker | GET/POST | /api/v1/worker/nodes/:id/boot-token | org_admin | Bootstrap Token |
+| Worker | POST | /api/v1/worker/nodes/:id/remove | org_admin | 移除 Worker 节点 |
 | 通知 | GET/POST | /api/v1/notify-channels | org_admin | 通知渠道 |
+| 通知 | PUT/DELETE | /api/v1/notify-channels/:id | org_admin | 通知渠道编辑/删除 |
 | 通知 | POST | /api/v1/notify-channels/:id/test | org_admin | 测试发送 |
 | 规则库 | GET | /api/v1/rules | org_admin | 规则库版本/内容 |
 | 规则库 | PUT | /api/v1/rules | org_admin | 规则热更新 |
+| 规则库 | GET/POST | /api/v1/rules/import | org_admin | 规则库导入（POC/敏感词/特征库） |
+| 规则库 | GET | /api/v1/rules/export | org_admin | 规则库导出 |
 | 审计 | GET | /api/v1/audit-logs | org_admin | 审计日志（只读） |
 | Token | GET/POST | /api/v1/api-tokens | org_admin | API Token 管理 |
 | Token | DELETE | /api/v1/api-tokens/:id | org_admin | 撤销 Token |
+| Token | PATCH | /api/v1/api-tokens/:id/status | org_admin | 临时停用/恢复 Token |
 | Webhook | GET/POST | /api/v1/webhooks | org_admin | Webhook 配置 |
+| Webhook | PUT | /api/v1/webhooks/:id | org_admin | 编辑 Webhook |
 | Webhook | DELETE | /api/v1/webhooks/:id | org_admin | 删除 Webhook |
+| Webhook | POST | /api/v1/webhooks/:id/test | org_admin | 触发测试推送 |
 | Worker | GET | /api/v1/worker/tasks/pull | Worker Token | 拉取任务 |
 | Worker | POST | /api/v1/worker/tasks/:id/result | Worker Token | 回传结果 |
 | Worker | POST | /api/v1/worker/heartbeat | Worker Token | 心跳上报 |
 | 实时 | GET | /api/v1/ws/events | 登录用户 | WebSocket 事件流 |
+
+### 批量操作规范
+
+- 批量端点统一约定：`POST /api/v1/{resource}/batch`，请求体 `{"ids":[...]}`（上限 500 条），返回 `{"success": n, "failed": [{"id":..,"reason":".."}]}`，逐条失败不中断，未授权条目静默跳过。
+- 批量操作幂等：重复提交相同 ids 不重复执行副作用（先查后写 + version 乐观锁）。
+- 前端批量栏：列表多选后出现浮动批量操作栏，展示"已选 N 项"，支持全选当前页/跨页选择记忆；批量操作前二次确认弹窗。
+- 批量结果反馈：成功后 Toast 汇总"成功 M / 失败 K"，失败详情可展开查看逐条原因。
+
+### 前端交互与体验规范（UX）
+
+- **空状态**：所有列表在无数据时展示引导性空状态（插画 + 文案 + 主操作按钮，如"暂无资产，去添加"）。
+- **危险操作确认**：删除/批量删除/移除成员/撤销 Token 等危险操作一律二次确认弹窗（含后果说明与需输入名称确认的组织删除）。
+- **复制能力**：资产 URL、API Token、Webhook Secret、Bootstrap Token 提供一键复制按钮。
+- **快捷操作**：资产行内"立即扫描"、事件/漏洞行内"生成工单""申请复测"、告警行内"确认"按钮，减少跳转。
+- **筛选持久化**：列表筛选条件存 localStorage，刷新/返回后保留；支持 URL 参数分享（`?status=open&severity=high`）。
+- **未读角标**：导航栏事件/告警显示未读数角标（WebSocket 实时更新）。
+- **任务详情**：任务行点击展开详情页（进度条、执行日志、引擎结果统计、Worker 分配）。
+- **报告进度**：报告生成为异步任务，进度条 + 完成后 Toast 通知 + 列表状态"生成中/已完成"。
+- **导入导出**：资产支持 URL 列表/CSV 批量导入（模板下载 + 逐行校验报告）；列表支持 CSV 导出（当前筛选结果）。
+- **加载反馈**：页面级骨架屏、按钮级 loading、分页加载 "加载中" 占位，避免白屏。
+- **时间展示**：相对时间（"5 分钟前"）+ 悬浮完整时间；状态色统一（高危红/中危橙/低危黄/正常绿）。
+- **键盘可达**：弹窗 Esc 关闭、Enter 提交，Tab 顺序合理。
 
 ### WebSocket 协议（/api/v1/ws/events）
 
