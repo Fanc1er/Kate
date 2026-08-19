@@ -141,6 +141,7 @@ sequenceDiagram
 | CronScheduler | 按 scan_plans.cron_expr 定时生成 scan_tasks、按 report_templates.cron_expr 定时生成 reports（计划/模板绑定时区计算；paused/组织禁用/到期跳过触发，启用后恢复；计划 time_window 窗口外跳过触发） | `GenerateTasks()`, `Tick()` |
 | WebSocketHub | 实时事件推送、指数退避重连 | `Broadcast(event)` |
 | BatchIndexer | Bleve 批量索引（5s/50 条） | `Enqueue(doc)`, `Flush()` |
+| AsyncPersist | 异步持久化通道（写入收敛单协程，BadgerDB 元数据 + 事件/审计落库） | `Enqueue(write)` |
 | RuleWatcher | fsnotify 规则热加载 | `WatchRules()`, `GetRuleHash()` |
 
 ### Worker 组件
@@ -606,7 +607,7 @@ erDiagram
     }
     users {
         int id PK
-        string username
+        string username "唯一（登录标识）"
         string password "bcrypt"
         string email
         string phone
@@ -770,12 +771,19 @@ erDiagram
     }
     evidence_files {
         int id PK
+        int org_id FK
         int evidence_id FK
+        string kind "html/har/screenshot/req/resp"
         string upload_id
         int part_index
         int part_total
         string file_path
+        string md5
+        string sha256
+        int size
+        string mime_type
         datetime created_at
+        datetime expires_at "默认 created_at + 365 天，超期由清理任务删除"
     }
     wechat_assets {
         int id PK
@@ -986,7 +994,7 @@ erDiagram
 | 表 | 索引 | 目的 |
 |----|------|------|
 | 所有业务表 | `idx_{table}_org`（org_id） | 多租户隔离强制索引 |
-| user_orgs | `idx_user_orgs_user`, `idx_user_orgs_org` | 成员关系查询 |
+| user_orgs | `idx_user_orgs_user`, `idx_user_orgs_org`, `idx_user_orgs_user_org`（唯一：user_id, org_id） | 成员关系查询 / 同一用户同一组织去重 |
 | assets | `idx_assets_org_url`, `idx_assets_org_group`, `idx_assets_org_importance` | 资产筛选 |
 | scan_tasks | `idx_tasks_org_status`, `idx_tasks_org_created` | 队列监控/状态流转 |
 | findings | `idx_findings_org_severity`, `idx_findings_org_engine`, `idx_findings_org_status`, `idx_result_id`（唯一） | 漏洞筛选 / 结果回传幂等去重 |
