@@ -712,6 +712,10 @@ erDiagram
 
 **扫描授权白名单表（scan_whitelists）**：`id, org_id, kind(domain/ip/cidr), value, remark, enabled`，`unique(org_id, kind, value)`。Worker 以规则 Hash 周期同步白名单，发起请求前校验目标命中白名单且非内网段，未命中直接拒绝并计数。
 
+**告警处置语义**：`PATCH /alerts/:id` 三态——`acknowledged`（确认，纳入处置跟踪）、`closed`（关闭，`resolved_at` 写入）、`silenced`（静默：抑制该资产同类新告警的通知推送与重新告警，告警记录保留可查；经再次 `PATCH` 可恢复为 open）。静默针对单资产维度的持续抑制，区别于 `noise_rules` 的全局/类型级过滤：静默由用户在告警中心按需操作，降噪规则由 org_admin 配置。
+
+**资产分组**：`assets.group_name` 为字符串标签（自由填写，批量改分组 `batch-group` 覆盖），无独立分组实体；资产列表分组筛选下拉按 `distinct(group_name)` + 计数生成；定时计划按 `asset_group_name` 精确匹配资产集合。
+
 **定时计划表（scan_plans）**：`id, org_id, name, policy_id FK, asset_group_name, cron_expr, timezone, status(enabled/paused), last_run_at`。Cron 按 `timezone`（默认 `CINSIGHT_TIMEZONE`）计算执行时间，暂停/启用经 `PATCH /:id/status` 切换。
 
 **情报订阅表（intel_subscriptions）**：`id, org_id, source(cve/cnvd/cnnvd), enabled, last_sync_at`，`unique(org_id, source)`。
@@ -895,6 +899,42 @@ src/
 - 事件分发到 Pinia `event` store，顶部通知角标实时更新；断线期间事件以后端轮询接口兜底补齐。
 
 ## Correctness Properties
+
+### Worker 结果回传协议（POST /api/v1/worker/tasks/:id/result）
+
+```json
+{
+  "result_id": "3f2a…uuid",       // 幂等键，重复回传返回 {code:0, received:true}
+  "task_id": 123,
+  "status": "completed",          // completed / failed / cancelled
+  "task_timeout": false,          // 任务级超时中止标记
+  "stopped_by_user": false,       // 用户 stop 触发（status=cancelled 时置 true）
+  "message": "",
+  "progress": 100,
+  "findings": [
+    {
+      "engine_name": "vuln_scan",
+      "type": "sqli",
+      "severity": "high",
+      "title": "SQL 注入",
+      "description": "…",
+      "url": "http://target/a?id=1",
+      "line_no": 152,
+      "confidence": 0.95,
+      "evidence_ids": [88, 89],   // 已上传证据；<1MB 内联证据随 result 携带 base64 快照
+      "extra": { "multi_ua": { "probes": [], "scores": {}, "total_score": 45, "conclusion": "suspect", "abnormal_ends": [] } }
+    }
+  ],
+  "metrics": { "scanned_assets": 10, "duration_ms": 5200 }
+}
+```
+
+- `status=cancelled`：Worker 收到 stop 信号（`stop_check`）后中止引擎回传；`stopped_by_user=true`。
+- `status=failed` + `task_timeout=true`：任务级超时中止。
+- 引擎结果统一映射为 findings 数组（字段对应 findings 表），evidence 先经 `/api/v1/worker/evidence` 上传取得 `evidence_id`，result 仅引用；内联证据（<1MB）允许随 finding 直接回传，Master 落盘后生成 evidence_id。
+- Master 处理：幂等去重 → 落 findings → 降噪过滤 → 生成事件 → 漏洞聚合 → 告警生成 → WS 广播（见「发现处理链路」）。
+
+**Webhook 订阅事件枚举**（`webhooks.events` JSON 存储下列事件名数组，事件发生时按订阅过滤推送）：`finding.critical / finding.high / finding.medium`、`vulnerability.new / vulnerability.closed`、`event.new / event.acknowledged / event.closed`、`alert.new / alert.acknowledged / alert.closed`、`task.completed / task.failed`、`intel.high`。
 
 ### 发现处理链路（finding → 事件/漏洞/告警）
 

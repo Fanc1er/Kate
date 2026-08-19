@@ -190,6 +190,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 3. WHEN 前端展示证据，后端 SHALL 强制校验文件 Hash，IF 校验不一致，UI SHALL 标红提示"证据已被破坏"。
 4. Worker→Master 证据传输 SHALL 走专用接口 `POST /api/v1/worker/evidence`：Worker 先将证据 gzip 分片上传（单片 ≤ 8MB，含片序号与总片数），Master 收齐后合并落盘并复算 SHA-256 与入库；传输中断 SHALL 支持断点续传（按已收分片跳过），全部完成后在结果回传中引用 evidence_id。小体积证据（<1MB）SHALL 允许随结果 JSON 内联回传，无需走分片。
 
+5. Worker 结果回传 SHALL 走 `POST /api/v1/worker/tasks/:id/result`，payload 含幂等键 `result_id`（重复回传返回 `{code:0, received:true}`）、任务状态（`completed/failed/cancelled`，超时置 `task_timeout=true`、用户 stop 置 `stopped_by_user=true`）、findings 数组（engine_name/type/severity/title/description/url/line_no/confidence/evidence_ids/extra，结构见 design「Worker 结果回传协议」）与扫描指标；引擎结果统一映射为该 findings 结构落库。
+
 #### R3.2b Worker 页面截图取证（无头浏览器组件）
 
 1. Worker SHALL 内嵌无头浏览器截图组件（chromedp 或独立 chromium 进程），负责页面渲染截图取证。
@@ -304,7 +306,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 6. 系统 SHALL 提供批量操作接口：`POST /api/v1/assets/batch-scan`（批量加入扫描）、`POST /api/v1/assets/batch-delete`（批量删除）、`POST /api/v1/assets/batch-group`（批量改分组）、`POST /api/v1/assets/batch-import`（URL 列表/CSV 批量导入，含模板下载与逐行校验报告）。
 7. 系统 SHALL 提供导入模板下载 `GET /api/v1/assets/import-template`（返回 URL/CSV 模板文件）与当前筛选结果 CSV 导出 `GET /api/v1/assets/export?filter[..]`（导出当前筛选条件下的资产字段，受 org_id 隔离约束）。
 8. 系统 SHALL 提供资产列表前端（虚拟滚动/模糊搜索/按重要程度/分组/状态筛选）、多选批量操作栏与资产画像/变更追踪抽屉展示。
-9. 系统 SHALL 在资产列表为空时展示空状态引导，并提供"立即添加/批量导入"主操作。
+9. 系统 SHALL 在资产列表为空时展示空状态引导，并提供"立即添加/批量导入"主操作。资产分组 SHALL 为字符串标签（`assets.group_name` 自由填写，批量改分组覆盖），无独立分组实体；分组筛选下拉按去重 group_name 与计数生成，定时计划（R5.10-2）按 group_name 精确匹配资产集合。
 
 #### R5.3 安全事件中心
 
@@ -322,7 +324,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供独立告警列表接口 `GET /api/v1/alerts`（按级别/类型/状态/来源资产筛选与分页）。
 2. 系统 SHALL 提供告警处置接口 `PATCH /api/v1/alerts/:id`（确认/关闭/静默三种状态流转）。
 3. 系统 SHALL 提供批量告警处置接口 `POST /api/v1/alerts/batch`（批量确认/关闭/静默，请求体 `{ids, action}`）。
-4. 系统 SHALL 以独立 `alerts` 表存储告警（含 alert_type、severity、status、resolved_at），由发现记录触发生成。
+4. 系统 SHALL 以独立 `alerts` 表存储告警（含 alert_type、severity、status、resolved_at），由发现记录触发生成。告警处置三态语义：确认（纳入处置跟踪）、关闭（写 `resolved_at`）、静默（抑制该资产同类新告警的通知推送与重新告警，记录保留可查，可再处置恢复为 open）；静默针对单资产维度的持续抑制，区别于 `noise_rules`（R2.1b-2）的全局/类型级过滤。
 
 #### R5.4 漏洞与风险管理
 
@@ -415,7 +417,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 1. 系统 SHALL 全量开放 REST API（Swagger 文档）。
 2. 系统 SHALL 提供 API Token 认证（独立于 JWT，支持细粒度权限）。
-3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。推送 SHALL 带 HMAC-SHA256 签名（请求头 `X-Webhook-Signature`，密钥经 R5.18 管理），推送失败 SHALL 自动重试 3 次（指数退避），重试仍失败 SHALL 记录推送状态落库并在 UI 标记送达失败。
+3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。推送 SHALL 带 HMAC-SHA256 签名（请求头 `X-Webhook-Signature`，密钥经 R5.18 管理），推送失败 SHALL 自动重试 3 次（指数退避），重试仍失败 SHALL 记录推送状态落库并在 UI 标记送达失败。订阅事件 SHALL 支持枚举：`finding.critical/high/medium`、`vulnerability.new/closed`、`event.new/acknowledged/closed`、`alert.new/acknowledged/closed`、`task.completed/failed`、`intel.high`（`webhooks.events` 存事件名数组，按订阅过滤推送，未命中订阅不推送）。
 4. Swagger 文档（`/swagger/*`）SHALL 受开关控制：生产环境默认关闭，仅当 `CINSIGHT_SWAGGER_ENABLED=true` 时暴露，防止生产环境信息泄露。
 
 #### R5.16 部署模式与 CI/CD

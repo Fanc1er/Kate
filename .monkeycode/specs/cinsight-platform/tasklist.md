@@ -57,6 +57,7 @@ Updated: 2026-08-19
 - [ ] 资产后端 API：URL 归一化 + BadgerDB MD5 防重
 - [ ] 资产后端 API：微信公众号资产完整 CRUD（GET/POST /api/v1/wechat-assets，PUT/DELETE /api/v1/wechat-assets/:id）
 - [ ] 资产批量操作 API：batch-scan（批量加入扫描）/ batch-delete / batch-group（批量改分组）/ batch-import（URL/CSV 批量导入 + 模板下载 + 逐行校验报告）
+- [ ] 资产分组为字符串标签（group_name 自由填写 + 列表分组筛选下拉 distinct 计数 + 定时计划按组名精确匹配）
 - [ ] 资产导入模板下载（GET /api/v1/assets/import-template）+ 当前筛选结果 CSV 导出（GET /api/v1/assets/export）
 - [ ] 资产列表前端（虚拟滚动/模糊搜索/筛选 + 多选批量操作栏 + 空状态引导）
 - [ ] 资产画像抽屉前端（技术栈指纹/ICP/子域名/SSL 倒计时/端口快照）
@@ -93,6 +94,7 @@ Updated: 2026-08-19
 - [ ] 通用证据读取接口（GET /api/v1/evidence/:id，返回 Req/Resp/HTML/截图元数据 + 文件流）
 - [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence，聚合漏洞关联证据链）
 - [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号/confidence 置信度）+ 结果回传链路
+- [ ] 结果回传协议实现（result_id 幂等 + status completed/failed/cancelled + task_timeout/stopped_by_user + findings 统一结构 + evidence_id 引用 + 内联证据落盘，见 design「Worker 结果回传协议」）
 - [ ] 证据传输协议（POST /api/v1/worker/evidence：<1MB 内联 / ≥1MB 分片 ≤8MB / upload_id 断点续传 / 收齐合并 SHA-256 校验）
 - [ ] Worker HAR 文件生成（HAR 1.2 组装：entries 请求/响应头、Body、时间戳、大小、MIME + Body 超限截断标记 + gzip 落盘入库）
 - [ ] 证据下载接口支持 format=har（HAR 文件导出，可导入 DevTools/Fiddler）
@@ -165,6 +167,7 @@ Updated: 2026-08-19
 - [ ] 工单来源关联（tickets.event_id 事件来源 / vuln_id 漏洞来源，至少其一非空，漏洞批量生成工单可关联）
 - [ ] SOP 模板库（内置按事件类型分组应急响应 SOP + 事件确认自动挂载 sop_attached + org_admin 自定义）
 - [ ] 独立告警中心前端页（列表/等级筛选/处置操作/静默 + 导航未读角标联动）
+- [ ] 告警处置三态流转（确认/关闭/静默 + 批量，静默抑制该资产同类通知与重新告警 + 可恢复 open，区别于 noise_rules，见 design 告警处置语义）
 - [ ] 漏洞管理前端页（等级/状态/引擎筛选 + 详情 + 证据链抽屉 + 批量生成工单/复测/忽略）
 - [ ] 工单前端页（列表/详情/状态流转/SOP 挂载/复测归档）
 - [ ] 告警风暴抑制（单资产每小时 5 条上限）
@@ -232,6 +235,7 @@ Updated: 2026-08-19
 - [ ] API Token 认证中间件（独立于 JWT，scopes 细粒度 + 有效期）
 - [ ] Webhook 完整 CRUD（GET/POST + PUT/DELETE :id + 测试推送 POST :id/test + 签名密钥重新生成 POST :id/secret + Secret 一键复制）
 - [ ] Webhook 事件推送（HMAC-SHA256 签名 + 重试 3 次 + 落库）
+- [ ] Webhook 订阅事件枚举过滤（events 数组订阅：finding.*/vulnerability.*/event.*/alert.*/task.*/intel.high，未命中订阅不推送，见 design Webhook 订阅事件枚举）
 - [ ] 规则热更新（fsnotify）+ Worker 规则 Hash 同步
 - [ ] 扫描授权拦截（白名单校验 + 内网 IP 禁止）+ 白名单管理接口（GET/PUT /api/v1/scan-whitelist + Worker Hash 同步）
 - [ ] gobreaker 目标熔断（连续失败 5 次）+ 授权违规熔断 Worker
