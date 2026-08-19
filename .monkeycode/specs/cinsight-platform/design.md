@@ -1062,7 +1062,7 @@ src/
 │   ├── auth.ts          # login/select-org/logout/me
 │   ├── asset.ts         # 资产 CRUD/画像/历史/公众号
 │   ├── task.ts          # 任务/策略/计划/队列
-│   ├── event.ts         # 事件/工单/降噪
+│   ├── event.ts         # 事件/告警/工单/降噪
 │   ├── finding.ts       # 漏洞/证据
 │   ├── report.ts        # 报告
 │   ├── dashboard.ts     # 仪表盘（stats/trends/top-risks/engine-coverage）
@@ -1076,7 +1076,8 @@ src/
 │   ├── event.ts         # 实时事件流（WebSocket 写入）
 │   └── dashboard.ts     # 仪表盘聚合数据
 ├── router/              # 静态路由 + 动态 addRoute()
-├── layouts/             # 顶部导航/侧边菜单/组织切换├── views/               # 页面（按 RBAC 懒加载），与 R5.x 功能模块一一对应：
+├── layouts/             # 顶部导航/侧边菜单/组织切换
+├── views/               # 页面（按 RBAC 懒加载），与 R5.x 功能模块一一对应：
 │   ├── auth/            # 登录 / 组织选择 / 忘记密码 / 重置密码
 │   ├── dashboard/       # 仪表盘（统计卡片/趋势/Top10/引擎覆盖雷达）
 │   ├── asset/           # 资产列表/画像/变更追踪/公众号资产/批量导入导出
