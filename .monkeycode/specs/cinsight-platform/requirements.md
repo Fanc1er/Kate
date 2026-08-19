@@ -418,10 +418,10 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.14 平台管理（仅 super_admin）
 
-1. 系统 SHALL 提供组织列表 `GET /api/v1/orgs`（名称/套餐/资产数/Worker 数/到期时间/状态）。
-2. 系统 SHALL 支持创建组织 `POST /api/v1/orgs`、编辑 `PUT /api/v1/orgs/{id}`、禁用/启用（`POST /api/v1/orgs/{id}/disable` 与 `POST /api/v1/orgs/{id}/enable`），提供组织详情 `GET /api/v1/orgs/{id}` 与删除组织 `DELETE /api/v1/orgs/{id}`（删除需输入组织名二次确认并级联清理数据）；启用后 SHALL 恢复该组织 cron 计划与写操作。
+1. 系统 SHALL 提供组织列表 `GET /api/v1/orgs`（名称/套餐/资产数/Worker 数/成员数/到期时间/状态）与组织详情 `GET /api/v1/orgs/{id}`（含配额上限与用量：`max_assets/max_workers/max_members` + `used_assets/used_workers/used_members`，统计口径见 design 配额统计口径段），用量字段供超管决策与前端展示。
+2. 系统 SHALL 支持创建组织 `POST /api/v1/orgs`、编辑 `PUT /api/v1/orgs/{id}`（含套餐与配额调整：plan/max_assets/max_workers/max_members/expire_at 均可由 super_admin 修改，用于套餐升级/降级与续费）、禁用/启用（`POST /api/v1/orgs/{id}/disable` 与 `POST /api/v1/orgs/{id}/enable`），提供组织详情 `GET /api/v1/orgs/{id}` 与删除组织 `DELETE /api/v1/orgs/{id}`（删除需输入组织名二次确认并级联清理数据）；启用后 SHALL 恢复该组织 cron 计划与写操作。配额下调低于当前已用量时 SHALL 允许保存但拒绝新的超额写入（已有数据不受影响）。
 3. 系统 SHALL 提供平台统计（总组织/总资产/总扫描次数/总事件数，`GET /api/v1/platform/stats`）与平台 Worker 总览（`GET /api/v1/platform/workers`）。
-4. 系统 SHALL 按组织套餐执行配额校验（核心商业逻辑）：创建资产时已用资产数达到 `max_assets` 返回 4290 `ASSET_QUOTA_EXCEEDED`；邀请成员达到 `max_members` 返回 4292 `MEMBER_QUOTA_EXCEEDED`、注册 Worker 达到 `max_workers` 返回 4291 `WORKER_QUOTA_EXCEEDED`；批量操作逐条校验不中断，超限条目计入 failed 并返回原因。
+4. 系统 SHALL 按组织套餐执行配额校验（核心商业逻辑）：创建资产时已用资产数达到 `max_assets` 返回 4290 `ASSET_QUOTA_EXCEEDED`；邀请成员达到 `max_members` 返回 4292 `MEMBER_QUOTA_EXCEEDED`、注册 Worker 达到 `max_workers` 返回 4291 `WORKER_QUOTA_EXCEEDED`；批量操作逐条校验不中断，超限条目计入 failed 并返回原因。递归扫描发现的子资产（JS/CSS/图片/子域名/接口路径）SHALL 同样计入资产配额，达到 `max_assets` 后 SHALL 停止写入新发现资产并标记 `discovery_stopped: quota_exceeded`，已有发现与扫描结果不受影响。
 5. WHEN 组织到期（`expire_at` 已过）或组织被禁用，系统 SHALL 停止该组织的定时计划、拒绝新建任务与资产变更，仅保留只读查询与证据下载。
 
 #### R5.15 API 开放集成

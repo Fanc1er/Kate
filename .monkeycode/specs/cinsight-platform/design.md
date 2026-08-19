@@ -1452,8 +1452,9 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
   - 邀请成员 / 批量邀请：本组织 `active` 成员数 ≥ `max_members` → 4292 `MEMBER_QUOTA_EXCEEDED`。
   - Worker 注册握手：已注册 Worker 数 ≥ `max_workers` → 4291 `WORKER_QUOTA_EXCEEDED`；删除节点释放配额。
   - 批量操作逐条校验，超限条目计入 `failed` 并携带原因 `quota_exceeded`，不中断整批。
+  - 递归扫描发现的子资产（js/css/image/video/subdomain/api_path）同样计入资产配额：达到 `max_assets` 后停止写入新发现资产并标记 `discovery_stopped: quota_exceeded`，已有发现与扫描结果不受影响。
 - **到期/禁用行为**：组织 `expire_at` 过期或 `status=disabled` 时，Master 停止其 cron 计划、拒绝新建任务与资产写操作，仅保留只读查询、证据下载与报表导出；到期前 7 天开始每日提示续费（通知渠道 + 站内横幅）。
-- **配额统计口径**：资产数以 `assets.status != 'deleted'` 计数；Worker 数以 `worker_nodes.status != 'offline_removed'` 计数；成员数以 `user_orgs.status == 'active'` 计数；统计在组织详情接口 `GET /api/v1/orgs/:id` 返回 `used_assets / used_workers / used_members`。
+- **配额统计口径**：资产数以 `assets.status != 'deleted'` 计数；Worker 数以 `worker_nodes.status != 'offline_removed'` 计数；成员数以 `user_orgs.status == 'active'` 计数；统计在组织列表接口 `GET /api/v1/orgs` 与组织详情接口 `GET /api/v1/orgs/:id` 返回 `used_assets / used_workers / used_members`。
 
 ### CI/CD 流水线（DevOps）
 

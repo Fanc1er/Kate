@@ -142,7 +142,7 @@ Updated: 2026-08-19
 - [ ] 漏洞扫描引擎（POC + Fuzzing + 参数注入，context 30s 超时 + ants 并发）
 - [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息规则集提取 + 篡改基线）
 - [ ] 敏感信息规则集提取（rule_definitions 规则按 scope 分层匹配 request line/header/body，s_regex 过滤 + f_regex 提取，命中写 sensitive_info_hits + Bleve + findings 主命中；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证）
-- [ ] 递归扫描与资产发现（scan_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin）
+- [ ] 递归扫描与资产发现（scan_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin；达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded）
 - [ ] 多端 UA 综合评估器（MultiUAAssessor：PC 随机 UA + 标准移动 UA + 微信内置浏览器 UA + 无头浏览器移动视口模拟四探针 + 基础/特征/场景三级加权评分 + SimHash DOM 相似度阈值 + SPA 空壳识别容错 + 结论分级与处置建议 + probe_failed 降权 + 各端快照证据链）
 - [ ] 内容安全引擎接入 MultiUAAssessor（端级敏感词/敏感信息命中计入评分）
 - [ ] AI 内容分类适配层（AIAdapter：endpoint/model/key 环境注入 + 超时/429 失败回退正则 + 结果缓存 + gobreaker 熔断）
@@ -233,7 +233,7 @@ Updated: 2026-08-19
 - [ ] 系统设置前端页（Worker 节点管理/通知渠道 CRUD+测试/通知路由规则/规则库管理/扫描白名单/API Token/Webhook/审计日志筛选）
 
 ### 3.2 平台管理
-- [ ] 组织列表/创建/详情/编辑/禁用/启用/删除（GET/POST /api/v1/orgs + GET/PUT/DELETE /api/v1/orgs/:id + POST :id/disable + :id/enable，DELETE 需输入组织名二次确认 + 级联清理；enable 恢复 cron 与写操作）— 仅 super_admin
+- [ ] 组织列表/创建/详情/编辑/禁用/启用/删除（GET/POST /api/v1/orgs + GET/PUT/DELETE /api/v1/orgs/:id + POST :id/disable + :id/enable，DELETE 需输入组织名二次确认 + 级联清理；enable 恢复 cron 与写操作；PUT 支持套餐/配额/到期调整 plan/max_assets/max_workers/max_members/expire_at 实时生效，配额下调低于已用量允许保存但拒绝新超额写入）— 仅 super_admin
 - [ ] 组织配额/套餐限制校验（创建资产超 max_assets → 4290 ASSET_QUOTA_EXCEEDED；成员超 max_members → 4292 MEMBER_QUOTA_EXCEEDED；Worker 超 max_workers → 4291 WORKER_QUOTA_EXCEEDED；org 详情返回 used_assets/used_workers/used_members）
 - [ ] 组织到期/禁用行为（停止 cron 计划 + 拒绝新建任务与资产写操作 + 仅保留只读；到期前 7 天续费提示）
 - [ ] 平台统计（总组织/总资产/总扫描/总事件）
