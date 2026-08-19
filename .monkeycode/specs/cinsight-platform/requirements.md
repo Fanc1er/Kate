@@ -400,7 +400,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 1. 系统 SHALL 全量开放 REST API（Swagger 文档）。
 2. 系统 SHALL 提供 API Token 认证（独立于 JWT，支持细粒度权限）。
-3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。推送 SHALL 带 HMAC-SHA256 签名（请求头 `X-Signature`，密钥经 R5.18 管理），推送失败 SHALL 自动重试 3 次（指数退避），重试仍失败 SHALL 记录推送状态落库并在 UI 标记送达失败。
+3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。推送 SHALL 带 HMAC-SHA256 签名（请求头 `X-Webhook-Signature`，密钥经 R5.18 管理），推送失败 SHALL 自动重试 3 次（指数退避），重试仍失败 SHALL 记录推送状态落库并在 UI 标记送达失败。
 4. Swagger 文档（`/swagger/*`）SHALL 受开关控制：生产环境默认关闭，仅当 `CINSIGHT_SWAGGER_ENABLED=true` 时暴露，防止生产环境信息泄露。
 
 #### R5.16 部署模式与 CI/CD
