@@ -217,11 +217,11 @@ Updated: 2026-08-19
 - [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 状态 online/offline/offline_removed 判定：心跳超 3 倍置 offline，移除置 offline_removed 不计配额，调度仅向 online 分发 + 移除离线节点 DELETE /api/v1/worker/nodes/:id）
 - [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP 多渠道 + 按 id 测试 POST :id/test）
 - [ ] 通知渠道密钥加密（AES-256-GCM 主密钥 CINSIGHT_CHANNEL_KEY + 接口掩码脱敏 + 编辑留空保持原值）
-- [ ] 通知路由规则（GET/PUT /api/v1/notify-routes：severity/event_type → 渠道映射 + 默认渠道 + 风暴抑制在路由层生效）
+- [ ] 通知路由规则（GET/PUT /api/v1/notify-routes：rule JSON 匹配 severity/event_type 优先 event_type 后 severity，* 通配 + default_channel_id 兜底 + 渠道启用开关 + 风暴抑制在路由层生效）
 - [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4291 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
 - [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
-- [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent + 覆盖范围见 design audit_logs 段，批量逐条记录，读操作与引擎回传不审计）
+- [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent + action 统一 resource.verb 枚举见 design audit_logs 段 + 覆盖范围见 design audit_logs 段，批量逐条记录，读操作与引擎回传不审计）
 - [ ] API Token 管理（GET/POST 列表/创建，scopes 取 RBAC 权限码子集勾选 + 有效期 + 撤销 DELETE :id + 停用/恢复 PATCH :id/status，校验时接口所需权限码须为 token scopes 子集，无 scope 返回 2101 SCOPE_DENIED，scopes 不可改需撤销重建）
 - [ ] 团队管理前端页（成员列表/邀请/批量移除/禁用/改角色）
 - [ ] 系统设置前端页（Worker 节点管理/通知渠道 CRUD+测试/通知路由规则/规则库管理/API Token/Webhook/审计日志筛选）

@@ -161,7 +161,7 @@ sequenceDiagram
 - **首次注册**：Worker 启动携带安装时下发的 Bootstrap Token 调用 `POST /api/v1/worker/register`，Master 校验 Token 有效（未过期/未使用）后签发长期凭证 `worker_client_id + worker_client_secret`（服务端存 hash），Token 一次性使用即作废。
 - **凭证存储**：Bootstrap Token 与长期凭证在库中一律不落明文——Bootstrap Token 存 hash（SHA-256）且仅可读一次（领取即失效），`worker_client_secret` 存 bcrypt/hash，页面列表仅展示掩码；Token 值只在创建时一次性返回并可一键复制，刷新即作废旧值。
 - **后续鉴权**：Worker 心跳/拉取/回传均用长期凭证（`X-Worker-ID` + `X-Worker-Secret` 或 Basic Auth），不再依赖 Bootstrap Token。
-- **凭证轮换**：Master 可撤销/重发凭证，泄露时可吊销；Worker 离线超期（>5min 无心跳）标记离线，可被删除（DELETE /api/v1/worker/nodes/:id）。
+- **凭证轮换**：Master 可撤销/重发凭证，泄露时可吊销；Worker 离线超期（心跳间隔 3 倍默认 15s 无心跳，见 worker_nodes 表定义）标记离线，可被删除（DELETE /api/v1/worker/nodes/:id）。
 - **受邀成员首次登录激活**：邀请发出后成员状态 `invited`，首次登录（验证码/初始密码）后自动激活为 `active`，同时强制设密码/改密；邀请链接过期时间（默认 7 天）。
 - **系统级邮件发送**：forgot-password 验证码、reset-password 确认、成员邀请邮件由系统级 SMTP（`CINSIGHT_SMTP_*`）发送，与组织 `notify_channels` 的 SMTP 渠道解耦——登录前与未入组场景无组织上下文，只能走系统 SMTP。验证码 5 分钟有效、一次性使用（服务端存储 hash + 失效时间，使用后即删）。
 
@@ -866,13 +866,13 @@ erDiagram
 
 **user_orgs 约束**：`user_orgs` 表不允许 `is_super_admin` 用户插入；平台超管通过全局 `org_id=0` 查询平台数据。
 
-**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询支持 `username`（操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end）。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。审计覆盖范围：登录/登出、资产增删改与批量、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎回传不审计，批量操作逐条记录。
+**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询支持 `username`（操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end）。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。审计覆盖范围：登录/登出、资产增删改与批量、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎回传不审计，批量操作逐条记录。action 取值统一为 `<resource>.<verb>`（如 `auth.login / auth.logout / asset.create / asset.update / asset.delete / task.start / task.stop / event.acknowledge / alert.silence / vuln.ignore / ticket.assign / member.invite / member.remove / rule.update / channel.update / token.create / webhook.create / org.disable`），resource_type 取资源名（asset/task/event/alert/vuln/ticket/member/policy/plan/rule/whitelist/channel/route/token/webhook/org）。
 
 **API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), expires_at, last_used_at`。scopes 取值为 RBAC 权限码（`src/config/permissions.ts` 清单，如 `asset:read`、`event:write`、`evidence:upload`）的子集，创建时勾选；请求校验时接口所需权限码必须是 token scopes 子集，token 无对应 scope 返回 2101 `SCOPE_DENIED`。scopes 随创建固定，修改需撤销重建。
 
 **通知渠道表（notify_channels）**：`id, org_id, type(dingtalk/wecom/feishu/smtp), config(JSON), enabled`。config 中密钥/令牌类字段（webhook_secret、smtp_password 等）入库前经 **AES-256-GCM 加密**（主密钥 `CINSIGHT_CHANNEL_KEY` 环境注入，独立于 JWT Secret），接口返回时掩码脱敏（如 `sk-****abcd`）；编辑时不回显明文，留空表示保持原值。
 
-**通知路由表（notify_routes）**：`id, org_id, name, rule(JSON，severity/event_type → channel_ids 映射), default_channel_id, enabled`。告警触发时按 severity/event_type 匹配路由，未命中走默认渠道；路由层同时应用渠道启用开关与风暴抑制（单资产每小时上限）。
+**通知路由表（notify_routes）**：`id, org_id, name, rule(JSON，severity/event_type → channel_ids 映射), default_channel_id, enabled`。告警触发时按 severity/event_type 匹配路由，未命中走默认渠道；路由层同时应用渠道启用开关与风暴抑制（单资产每小时上限）。rule JSON 结构：`{"rules":[{"severity":"critical|high","event_type":"*|篡改|端口暴露","channel_ids":[1,2]}, ...]}`，匹配优先级：先精确 `event_type` 后 `severity`，`*` 通配兜底；rule 不命中时用 `default_channel_id`。
 
 **降噪规则表（noise_rules）**：`id, org_id, type(whitelist_ip/ignore_type/agg_window/storm_limit), config(JSON), enabled`。
 
@@ -1223,7 +1223,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 | `CINSIGHT_AI_TIMEOUT` | 5s | AI 调用超时，超时回退正则引擎 |
 | `CINSIGHT_SCREENSHOT_ENABLED` | true | Worker 无头浏览器截图开关 |
 | `CINSIGHT_SCREENSHOT_CONCURRENCY` | 2 | 截图并发上限 |
-| `CINSIGHT_WORKER_HEARTBEAT_MS` | 5000 | Worker 心跳间隔（离线判定 >5min） |
+| `CINSIGHT_WORKER_HEARTBEAT_MS` | 5000 | Worker 心跳间隔；离线判定：心跳间隔 3 倍（默认 15s）未上报自动置 offline |
 | `CINSIGHT_CHANNEL_KEY` | 空 | 通知渠道密钥加密主密钥（AES-256-GCM，32 字节，缺失则渠道密钥类字段禁用） |
 | `CINSIGHT_HAR_MAX_BODY` | 1MB | HAR 文件响应体截断上限 |
 | `CINSIGHT_MULTIUA_ENABLED` | true | 多端 UA 综合评估器开关（Worker 端） |
