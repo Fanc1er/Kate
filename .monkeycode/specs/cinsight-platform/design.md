@@ -638,6 +638,7 @@ erDiagram
         string status
         string remark
         string source_type "manual/js/css/image/video/subdomain/api_path"
+        int version "乐观锁版本，默认 1"
     }
     scan_policies {
         int id PK
@@ -651,6 +652,7 @@ erDiagram
         int concurrency_limit "单站点并发上限 2-32，默认 4"
         bool allow_static "是否抓取静态文件"
         bool same_origin "是否仅同域/同子域递归"
+        int version "乐观锁版本，默认 1"
     }
     scan_tasks {
         int id PK
@@ -737,6 +739,7 @@ erDiagram
         string status "open/acknowledged/closed/silenced"
         datetime created_at
         datetime resolved_at
+        int version "乐观锁版本，默认 1"
     }
     events {
         int id PK
@@ -760,6 +763,7 @@ erDiagram
         string status "open/in_progress/verify/closed"
         datetime due_at
         string notes
+        int version "乐观锁版本，默认 1"
     }
     evidence {
         int id PK
