@@ -201,7 +201,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供 `POST /api/v1/evidence/screenshots` 上传接口，接受 Base64 或文件流。
 2. 上传接口 SHALL 经鉴权（JWT/API Token）并校验文件类型与大小，上传后 SHALL 经 gzip 落盘并计算 SHA-256 入库。
 3. 截图 SHALL 关联目标资产或证据记录，可在证据抽屉截图标签页展示。
-4. 上传文件 SHALL 校验 MIME 类型（仅允许 png/jpeg/webp）与大小上限（默认 10MB），超限或类型不符 SHALL 拒绝并返回 4001。
+4. 上传文件 SHALL 校验 MIME 类型（仅允许 png/jpeg/webp）与大小上限（默认 10MB），超限或类型不符 SHALL 拒绝并返回参数校验错误（HTTP 422，业务码 1000 `VALIDATION_FAILED`）。
 5. 文件名 SHALL 防路径穿越：禁止 `..`、`/`、`\` 等字符，落盘文件名 SHALL 由服务端生成 UUID，忽略客户端文件名。
 
 ### 4. 工程化与极限容灾

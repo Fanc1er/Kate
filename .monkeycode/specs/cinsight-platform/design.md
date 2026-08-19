@@ -903,20 +903,21 @@ src/
 
 ## Error Handling
 
-| 场景 | 错误码 | 处理策略 |
-|------|--------|---------|
-| JWT 缺失/过期/无效 | 401 | 返回 `AUTH_FAILED`，前端清理 token 跳登录 |
-| 禁用用户/禁用组织访问 | 401/403 | 返回 `USER_DISABLED`/`ORG_DISABLED`，AuthMiddleware 每次请求校验 users.status/user_orgs.status/org.status |
-| 角色无权限写操作 | 403 | 返回 `FORBIDDEN`，前端隐藏入口 + Toast |
-| 缺少 X-Org-Id | 400 | 返回 `ORG_REQUIRED` |
-| 资产/成员/Worker 超配额 | 429 | 返回 `ASSET_QUOTA_EXCEEDED`(4290)/`MEMBER_QUOTA_EXCEEDED`(4292)/`WORKER_QUOTA_EXCEEDED`(4291)，前端提示升级套餐 |
-| 证据 Hash 校验失败 | 422 | 返回 `EVIDENCE_TAMPERED`，前端证据抽屉标红 |
-| 引擎超时 | 408 | 单 POC `context.WithTimeout(30s)` 中止，记录 finding=timeout |
-| 目标连续失败 5 次 | 502 | gobreaker 熔断目标，后续任务跳过并记录 |
-| Worker 断网 | - | 结果写入本地 Outbox，指数退避重试回传 |
-| SQLite 写冲突 | 409 | GORM 事务重试（最多 3 次），写并发收敛到单协程通道 |
-| 规则文件格式错误 | 422 | fsnotify 热加载失败保留旧版本并告警 |
-| 通知推送失败 | 500 | 重试 3 次后降级为入库标记，不阻塞主流程 |
+| 场景 | HTTP 状态 | 业务码 | 处理策略 |
+|------|-----------|--------|---------|
+| JWT 缺失/过期/无效 | 401 | 2000 `AUTH_FAILED` | 前端清理 token 跳登录 |
+| 禁用用户/禁用组织访问 | 401/403 | 2003 `USER_DISABLED` / 2004 `ORG_DISABLED` | AuthMiddleware 每次请求校验 users.status/user_orgs.status/org.status |
+| 角色无权限写操作 | 403 | 2100 `FORBIDDEN` | 前端隐藏入口 + Toast |
+| 缺少 X-Org-Id | 400 | 1001 `ORG_REQUIRED` | 提示携带组织上下文 |
+| 资产/成员/Worker 超配额 | 429 | 4290 `ASSET_QUOTA_EXCEEDED` / 4292 `MEMBER_QUOTA_EXCEEDED` / 4291 `WORKER_QUOTA_EXCEEDED` | 前端提示升级套餐 |
+| 证据 Hash 校验失败 | 422 | 4001 `EVIDENCE_TAMPERED` | 前端证据抽屉标红 |
+| 截图上传类型/大小不符 | 422 | 1000 `VALIDATION_FAILED` | 拒绝上传并提示原因 |
+| 引擎超时 | 408 | 5000 `ENGINE_TIMEOUT` | 单 POC `context.WithTimeout(30s)` 中止，记录 finding=timeout |
+| 目标连续失败 5 次 | 502 | 5001 `TARGET_BREAKER_OPEN` | gobreaker 熔断目标，后续任务跳过并记录 |
+| Worker 断网 | - | - | 结果写入本地 Outbox，指数退避重试回传 |
+| SQLite 写冲突 | 409 | 3001 `TASK_STATE_CONFLICT`（任务状态）/ 乐观锁冲突（版本不匹配 409） | GORM 事务重试（最多 3 次），写并发收敛到单协程通道 |
+| 规则文件格式错误 | 422 | 1002 `INVALID_FORMAT` | fsnotify 热加载失败保留旧版本并告警 |
+| 通知推送失败 | 500 | 6000 `NOTIFY_FAILED` | 重试 3 次后降级为入库标记，不阻塞主流程 |
 
 统一响应格式：
 
