@@ -3,6 +3,11 @@ node_modules/
 frontend/dist/
 *.local
 
+# vue-tsc composite build artifacts
+frontend/*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
+
 # Go
 backend/bin/
 backend/kate-backend
