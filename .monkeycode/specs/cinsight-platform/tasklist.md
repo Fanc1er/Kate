@@ -48,7 +48,7 @@ Updated: 2026-08-19
 - [ ] 资产后端 API：变更追踪（GET /api/v1/assets/:id/history）
 - [ ] 资产后端 API：URL 归一化 + BadgerDB MD5 防重
 - [ ] 资产后端 API：微信公众号资产完整 CRUD（GET/POST /api/v1/wechat-assets，PUT/DELETE /api/v1/wechat-assets/:id）
-- [ ] 资产批量操作 API：batch-scan（批量加入扫描）/ batch-delete / batch-import（URL/CSV 批量导入 + 模板下载 + 逐行校验报告）
+- [ ] 资产批量操作 API：batch-scan（批量加入扫描）/ batch-delete / batch-group（批量改分组）/ batch-import（URL/CSV 批量导入 + 模板下载 + 逐行校验报告）
 - [ ] 资产列表前端（虚拟滚动/模糊搜索/筛选 + 多选批量操作栏 + 空状态引导）
 - [ ] 资产画像抽屉前端（技术栈指纹/ICP/子域名/SSL 倒计时/端口快照）
 - [ ] 资产变更追踪前端（标题/技术栈/状态码/端口变动历史）
@@ -63,7 +63,7 @@ Updated: 2026-08-19
 - [ ] BadgerDB-SQLite 缓存一致性（写入先 Badger 后异步 SQLite + 每小时对账）
 - [ ] Master 任务创建/下发/拉取接口（pending→processing→completed）
 - [ ] 任务详情接口（GET /api/v1/tasks/:id，状态/进度/执行日志/结果统计/Worker 分配）
-- [ ] 任务停止/删除/批量停止（POST :id/stop、DELETE :id、POST batch-stop）
+- [ ] 任务停止/删除/批量停止/失败重跑（POST :id/stop、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
 - [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定）
@@ -145,7 +145,7 @@ Updated: 2026-08-19
 - [ ] 暗链木马页（暗链列表/木马列表/双 UA 对比）
 - [ ] Webshell 与钓鱼页
 - [ ] 可用性网络页（12h 点阵图 + 24h 时序折线 + DNS/端口记录）
-- [ ] 安全情报中心页（情报列表 + 受影响资产数 + 订阅配置）
+- [ ] 安全情报中心页（情报列表 + 受影响资产数 + 订阅配置 GET/PUT /api/v1/intel-subscriptions）
 - [ ] 任务队列监控页（排队/处理中/完成 + Worker 分配 + 断点续扫状态）
 
 ### 2.5 重组件集成
@@ -168,10 +168,11 @@ Updated: 2026-08-19
 ## 阶段 3 — 全量功能 + 平台化
 
 ### 3.1 团队与系统设置
-- [ ] 成员管理（邀请/批量邀请 batch-invite/移除 DELETE/禁用/启用/改角色）— 仅 org_admin
-- [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 移除节点 POST :id/remove）
-- [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP + 测试发送）
-- [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
+- [ ] 成员管理（邀请/批量邀请 batch-invite/移除 DELETE/批量移除 batch-remove/禁用/启用/改角色）— 仅 org_admin
+- [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 移除离线节点 DELETE /api/v1/worker/nodes/:id）
+- [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP 多渠道 + 按 id 测试 POST :id/test）
+- [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
+- [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
 - [ ] 审计日志（禁止修改删除）
 - [ ] API Token 管理（细粒度权限/有效期 + 撤销 DELETE + 停用/恢复 PATCH :id/status）
 
@@ -183,7 +184,7 @@ Updated: 2026-08-19
 ### 3.3 集成与部署
 - [ ] swaggo Swagger 文档全量注解
 - [ ] API Token 认证中间件（独立于 JWT，scopes 细粒度 + 有效期）
-- [ ] Webhook 完整 CRUD（GET/POST + PUT/DELETE :id + 测试推送 POST :id/test + Secret 复制/重新生成）
+- [ ] Webhook 完整 CRUD（GET/POST + PUT/DELETE :id + 测试推送 POST :id/test + 签名密钥重新生成 POST :id/secret + Secret 一键复制）
 - [ ] Webhook 事件推送（HMAC-SHA256 签名 + 重试 3 次 + 落库）
 - [ ] 规则热更新（fsnotify）+ Worker 规则 Hash 同步
 - [ ] 扫描授权拦截（白名单校验 + 内网 IP 禁止）
@@ -202,12 +203,21 @@ Updated: 2026-08-19
 
 ### 3.4 报告中心全量
 - [ ] 报告模板完整 CRUD（执行摘要/漏洞详情/内容安全/可用性统计/整改建议 + PUT/DELETE :id）
-- [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 批量启停 batch-toggle）
+- [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
+- [ ] 策略模板复制（POST /api/v1/policies/:id/copy 深拷贝引擎开关）
 - [ ] 定时报告（Cron 生成周报/月报 + 异步生成进度条 + 完成通知）
 - [ ] 报告截图合集导出（按资产/时间范围）
-- [ ] 报告删除（DELETE /api/v1/reports/:id）
+- [ ] 报告详情（GET /api/v1/reports/:id）+ 报告删除（DELETE /api/v1/reports/:id）
 
-### 3.5 前端体验统一（UX）
+### 3.5 前端 UX 基座（15.x）
+- [ ] 全局 Toast + MessageBox 二次确认弹窗封装 + 全局错误边界组件（15.1）
+- [ ] 通用表格基座：多选批量操作栏/分页/排序/筛选重置/日期选择/空态/骨架屏/搜索防抖 300ms（15.2）
+- [ ] 统一表单校验规则库 + 新建/编辑共用抽屉 + 保存中禁用防重复提交（15.3）
+- [ ] 图表基座：ECharts 统一配色 + 阈值配色 + 角色 Tag 颜色规范（15.4）
+- [ ] 通用详情抽屉基座（Req/Resp 分屏 + HTML 行号高亮 + 截图 tab + 下载 + 时间线，15.5）
+- [ ] 各业务页批量操作对齐：资产/事件/告警/漏洞/任务/成员/策略/计划（16.2-16.14）
+
+### 3.6 前端体验统一（UX）
 - [ ] 列表空状态引导（插画 + 文案 + 主操作按钮）
 - [ ] 危险操作二次确认弹窗（删除/批量删除/移除成员/撤销 Token/删除组织需输入名称）
 - [ ] 批量操作栏（多选后浮动出现：已选 N 项/全选/跨页记忆 + 结果汇总 Toast + 失败明细展开）
@@ -224,7 +234,7 @@ Updated: 2026-08-19
 - [ ] 全部 15 个功能模块上线【必执行】
 - [ ] 平台管理/团队管理权限隔离正确【必执行】
 - [ ] 集成测试：Master + 单 Worker 全链路（任务下发→引擎执行→结果回传→证据入库→前端展示）【必执行】
-- [ ] 前后端 CRUD 与批量接口对齐验收（逐模块：Create/Read/Update/Delete/Batch 全覆盖）【必执行】
+- [ ] 前后端 CRUD 与批量接口对齐验收（检查点 18：逐模块 Create/Read/Update/Delete/Batch 全覆盖，前端按钮与后端端点一一对应）【必执行】
 - [ ] 容灾演练：Worker 断网恢复（Outbox 回传）、Master 重启对账、熔断触发【必执行】
 - [ ] 部署验证：Docker/K8s/单二进制三种方式启动 + 探活 + 全链路通过【必执行】
 - [ ] go test ./... 全部通过 + 前端 vue-tsc + vite build 通过【必执行】

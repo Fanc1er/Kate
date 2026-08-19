@@ -221,28 +221,32 @@ type Finding struct {
 | 资产 | GET | /api/v1/assets/:id/profile | 全部角色 | 资产画像（指纹/ICP/SSL/端口） |
 | 资产 | POST | /api/v1/assets/batch-scan | org_admin/engineer | 批量资产加入扫描（ids + policy_id） |
 | 资产 | POST | /api/v1/assets/batch-delete | org_admin | 批量删除资产 |
+| 资产 | POST | /api/v1/assets/batch-group | org_admin/engineer | 批量改分组（ids + group_name） |
 | 资产 | POST | /api/v1/assets/batch-import | org_admin/engineer | URL 列表/CSV 批量导入 |
 | 资产 | GET/POST | /api/v1/wechat-assets | org_admin/engineer | 微信公众号资产 |
 | 资产 | PUT/DELETE | /api/v1/wechat-assets/:id | org_admin/engineer | 公众号资产编辑/删除 |
 | 策略 | GET/POST | /api/v1/policies | org_admin | 策略模板列表/创建 |
 | 策略 | PUT/DELETE | /api/v1/policies/:id | org_admin | 策略模板编辑/删除 |
+| 策略 | POST | /api/v1/policies/:id/copy | org_admin | 复制模板（深拷贝引擎开关，新名可改） |
 | 策略 | POST | /api/v1/policies/batch-delete | org_admin | 批量删除策略模板 |
 | 计划 | GET/POST | /api/v1/scan-plans | org_admin | Cron 定时计划 |
 | 计划 | PUT/DELETE | /api/v1/scan-plans/:id | org_admin | Cron 定时计划编辑/删除 |
+| 计划 | PATCH | /api/v1/scan-plans/:id/status | org_admin | 启停开关（启用/暂停） |
 | 计划 | POST | /api/v1/scan-plans/batch-toggle | org_admin | 批量启用/禁用定时计划 |
 | 任务 | GET/POST | /api/v1/tasks | org_admin/engineer | 任务列表/发起 |
 | 任务 | GET | /api/v1/tasks/:id | 全部角色 | 任务详情（状态/进度/结果统计） |
 | 任务 | POST | /api/v1/tasks/:id/stop | org_admin/engineer | 停止任务 |
+| 任务 | POST | /api/v1/tasks/:id/rerun | org_admin/engineer | 失败重跑（复用原参数重新下发） |
 | 任务 | DELETE | /api/v1/tasks/:id | org_admin | 删除历史任务 |
 | 任务 | POST | /api/v1/tasks/batch-stop | org_admin/engineer | 批量停止任务 |
+| 任务 | POST | /api/v1/tasks/batch-rerun | org_admin/engineer | 批量失败重跑 |
 | 任务 | GET | /api/v1/tasks/:id/progress | 全部角色 | 断点续扫状态 |
 | 任务 | GET | /api/v1/tasks/queue | 全部角色 | 队列监控 |
 | 事件 | GET | /api/v1/events | 全部角色 | 事件列表（筛选/分页） |
 | 事件 | POST | /api/v1/events/:id/status | org_admin/engineer | 事件状态流转 |
 | 事件 | POST | /api/v1/events/batch | org_admin/engineer | 批量状态流转（确认/关闭/归档） |
 | 事件 | GET/POST | /api/v1/noise-rules | org_admin | 降噪规则 |
-| 事件 | PUT/DELETE | /api/v1/noise-rules/:id | org_admin | 降噪规则编辑/删除 |
-| 告警 | GET | /api/v1/alerts | 全部角色 | 告警列表（筛选/分页） |
+| 事件 | PUT/DELETE | /api/v1/noise-rules/:id | org_admin | 降噪规则编辑/删除 || 告警 | GET | /api/v1/alerts | 全部角色 | 告警列表（筛选/分页） |
 | 告警 | PATCH | /api/v1/alerts/:id | org_admin/engineer | 告警处置（确认/关闭/静默） |
 | 告警 | POST | /api/v1/alerts/batch | org_admin/engineer | 批量告警处置 |
 | 漏洞 | GET | /api/v1/vulnerabilities | 全部角色 | 漏洞列表（等级/状态/引擎筛选） |
@@ -260,26 +264,31 @@ type Finding struct {
 | 证据 | GET | /api/v1/evidence/:id/download | 全部角色 | 下载 HTML/HAR |
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
 | 报告 | GET/POST | /api/v1/reports | 全部角色(导出) | 报告列表/生成 |
+| 报告 | GET | /api/v1/reports/:id | 全部角色 | 报告详情（模板信息/内容摘要） |
 | 报告 | GET | /api/v1/reports/:id/download | 全部角色 | PDF/Excel 下载 |
 | 报告 | DELETE | /api/v1/reports/:id | org_admin | 删除报告 |
 | 报告 | GET/POST | /api/v1/report-templates | org_admin | 报告模板 |
 | 报告 | PUT/DELETE | /api/v1/report-templates/:id | org_admin | 报告模板编辑/删除 |
 | 成员 | GET/POST | /api/v1/members | org_admin | 成员列表/邀请 |
 | 成员 | POST | /api/v1/members/batch-invite | org_admin | 批量邀请（邮箱数组） |
+| 成员 | POST | /api/v1/members/batch-remove | org_admin | 批量移除成员 |
 | 成员 | PUT | /api/v1/members/:id | org_admin | 修改角色 |
 | 成员 | POST | /api/v1/members/:id/disable | org_admin | 禁用成员 |
 | 成员 | POST | /api/v1/members/:id/enable | org_admin | 启用成员 |
 | 成员 | DELETE | /api/v1/members/:id | org_admin | 移除成员 |
 | Worker | GET | /api/v1/worker/nodes | org_admin | Worker 节点管理 |
 | Worker | GET/POST | /api/v1/worker/nodes/:id/boot-token | org_admin | Bootstrap Token |
-| Worker | POST | /api/v1/worker/nodes/:id/remove | org_admin | 移除 Worker 节点 |
-| 通知 | GET/POST | /api/v1/notify-channels | org_admin | 通知渠道 |
+| Worker | DELETE | /api/v1/worker/nodes/:id | org_admin | 移除离线 Worker 节点 |
+| 通知 | GET/POST | /api/v1/notify-channels | org_admin | 通知渠道（钉钉/企微/飞书/SMTP 多渠道） |
 | 通知 | PUT/DELETE | /api/v1/notify-channels/:id | org_admin | 通知渠道编辑/删除 |
-| 通知 | POST | /api/v1/notify-channels/:id/test | org_admin | 测试发送 |
+| 通知 | POST | /api/v1/notify-channels/:id/test | org_admin | 按 id 测试发送 |
 | 规则库 | GET | /api/v1/rules | org_admin | 规则库版本/内容 |
 | 规则库 | PUT | /api/v1/rules | org_admin | 规则热更新 |
+| 规则库 | GET/POST | /api/v1/rules/items | org_admin | 规则项列表/新建（POC/敏感词/特征库单项） |
+| 规则库 | PUT/DELETE | /api/v1/rules/items/:id | org_admin | 规则项编辑/删除 |
 | 规则库 | GET/POST | /api/v1/rules/import | org_admin | 规则库导入（POC/敏感词/特征库） |
 | 规则库 | GET | /api/v1/rules/export | org_admin | 规则库导出 |
+| 情报 | GET/PUT | /api/v1/intel-subscriptions | org_admin | 情报订阅配置（数据源开关） |
 | 审计 | GET | /api/v1/audit-logs | org_admin | 审计日志（只读） |
 | Token | GET/POST | /api/v1/api-tokens | org_admin | API Token 管理 |
 | Token | DELETE | /api/v1/api-tokens/:id | org_admin | 撤销 Token |
@@ -288,6 +297,7 @@ type Finding struct {
 | Webhook | PUT | /api/v1/webhooks/:id | org_admin | 编辑 Webhook |
 | Webhook | DELETE | /api/v1/webhooks/:id | org_admin | 删除 Webhook |
 | Webhook | POST | /api/v1/webhooks/:id/test | org_admin | 触发测试推送 |
+| Webhook | POST | /api/v1/webhooks/:id/secret | org_admin | 重新生成签名密钥（HMAC-SHA256） |
 | Worker | GET | /api/v1/worker/tasks/pull | Worker Token | 拉取任务 |
 | Worker | POST | /api/v1/worker/tasks/:id/result | Worker Token | 回传结果 |
 | Worker | POST | /api/v1/worker/heartbeat | Worker Token | 心跳上报 |
@@ -302,6 +312,11 @@ type Finding struct {
 
 ### 前端交互与体验规范（UX）
 
+- **全局 Toast/MessageBox 基座（15.1）**：统一 `useToast()` / `useMessageBox()`（二次确认弹窗），错误提示、危险操作确认、成功反馈全部走统一封装；全局错误边界组件捕获渲染异常。
+- **通用表格基座（15.2）**：TinyVue Grid 封装组件，内置多选批量操作栏（已选 N 项/全选当前页/跨页记忆）、分页、排序、筛选重置、日期选择器、空态、骨架屏、搜索防抖（300ms）。
+- **表单基座（15.3）**：统一表单校验规则库（必填/URL/邮箱/手机号/密码强度）、新建/编辑共用抽屉组件（同表单不同标题）、保存中按钮禁用防重复提交。
+- **图表基座（15.4）**：ECharts 统一配色（主色/辅助色/成功/警告/危险/信息）、阈值配色（高危红/中危橙/低危黄/正常绿）、角色 Tag 颜色规范（super_admin 紫/org_admin 蓝/engineer 青/viewer 灰）。
+- **详情抽屉基座（15.5）**：通用详情抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图 tab + 下载按钮 + 时间线），资产画像/漏洞证据/事件详情复用。
 - **空状态**：所有列表在无数据时展示引导性空状态（插画 + 文案 + 主操作按钮，如"暂无资产，去添加"）。
 - **危险操作确认**：删除/批量删除/移除成员/撤销 Token 等危险操作一律二次确认弹窗（含后果说明与需输入名称确认的组织删除）。
 - **复制能力**：资产 URL、API Token、Webhook Secret、Bootstrap Token 提供一键复制按钮。

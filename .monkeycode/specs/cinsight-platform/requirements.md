@@ -253,7 +253,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 3. 系统 SHALL 提供资产变更追踪接口 `GET /api/v1/assets/:id/history`（标题/技术栈/状态码/端口变动历史）。
 4. 系统 SHALL 在资产入库前执行 URL 归一化，并通过 BadgerDB MD5 防重。
 5. 系统 SHALL 提供微信公众号资产接口完整 CRUD（`GET/POST /api/v1/wechat-assets`、`GET/PUT/DELETE /api/v1/wechat-assets/:id`），字段包含公众号名、微信号、头像、粉丝数、简介、认证状态与文章数。
-6. 系统 SHALL 提供批量操作接口：`POST /api/v1/assets/batch-scan`（批量加入扫描）、`POST /api/v1/assets/batch-delete`（批量删除）、`POST /api/v1/assets/batch-import`（URL 列表/CSV 批量导入，含模板下载与逐行校验报告）。
+6. 系统 SHALL 提供批量操作接口：`POST /api/v1/assets/batch-scan`（批量加入扫描）、`POST /api/v1/assets/batch-delete`（批量删除）、`POST /api/v1/assets/batch-group`（批量改分组）、`POST /api/v1/assets/batch-import`（URL 列表/CSV 批量导入，含模板下载与逐行校验报告）。
 7. 系统 SHALL 提供资产列表前端（虚拟滚动/模糊搜索/按重要程度/分组/状态筛选）、多选批量操作栏与资产画像/变更追踪抽屉展示。
 8. 系统 SHALL 在资产列表为空时展示空状态引导，并提供"立即添加/批量导入"主操作。
 
@@ -314,29 +314,30 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.10 任务调度与策略
 
-1. 系统 SHALL 提供策略模板（10 大引擎开关/扫描并发/超时/速率限制），完整 CRUD 与批量删除 `POST /api/v1/policies/batch-delete`。
-2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口），完整 CRUD 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。
-3. 系统 SHALL 提供任务列表、任务详情 `GET /api/v1/tasks/:id`（状态/进度/执行日志/结果统计/Worker 分配）、停止 `POST /api/v1/tasks/:id/stop`、删除历史任务 `DELETE /api/v1/tasks/:id`、批量停止 `POST /api/v1/tasks/batch-stop`。
+1. 系统 SHALL 提供策略模板（10 大引擎开关/扫描并发/超时/速率限制），完整 CRUD（`GET/POST /api/v1/policies`、`PUT/DELETE /api/v1/policies/:id`）、复制模板 `POST /api/v1/policies/:id/copy` 与批量删除 `POST /api/v1/policies/batch-delete`。
+2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口），完整 CRUD（`GET/POST /api/v1/scan-plans`、`PUT/DELETE /api/v1/scan-plans/:id`）、启停开关 `PATCH /api/v1/scan-plans/:id/status` 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。
+3. 系统 SHALL 提供任务列表、任务详情 `GET /api/v1/tasks/:id`（状态/进度/执行日志/结果统计/Worker 分配）、停止 `POST /api/v1/tasks/:id/stop`、失败重跑 `POST /api/v1/tasks/:id/rerun`、删除历史任务 `DELETE /api/v1/tasks/:id`、批量停止 `POST /api/v1/tasks/batch-stop` 与批量失败重跑 `POST /api/v1/tasks/batch-rerun`。
 4. 系统 SHALL 提供任务队列监控（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示。
 
 #### R5.11 报告中心
 
 1. 系统 SHALL 提供报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议），完整 CRUD（`GET/POST /api/v1/report-templates`、`PUT/DELETE /api/v1/report-templates/:id`）。
 2. 系统 SHALL 支持定时报告（Cron 生成周报/月报）。
-3. 系统 SHALL 支持报告导出（PDF 含水印/Excel 漏洞清单/按资产与时间范围导出截图合集），提供报告删除 `DELETE /api/v1/reports/:id` 与异步生成进度通知。
+3. 系统 SHALL 支持报告导出（PDF 含水印/Excel 漏洞清单/按资产与时间范围导出截图合集），提供报告详情 `GET /api/v1/reports/:id`、删除 `DELETE /api/v1/reports/:id` 与异步生成进度通知。
 
 #### R5.12 团队管理（仅 org_admin）
 
 1. 系统 SHALL 提供成员列表（头像/角色 Tag/状态/最后登录时间）。
-2. 系统 SHALL 支持邀请成员（邮箱/手机号 + 角色选择）、批量邀请 `POST /api/v1/members/batch-invite`、修改角色、禁用/启用成员、移除成员 `DELETE /api/v1/members/:id`（移除二次确认）。
+2. 系统 SHALL 支持邀请成员（邮箱/手机号 + 角色选择）、批量邀请 `POST /api/v1/members/batch-invite`、批量移除 `POST /api/v1/members/batch-remove`、修改角色、禁用/启用成员、移除成员 `DELETE /api/v1/members/:id`（移除二次确认）。
 
 #### R5.13 系统设置（仅 org_admin）
 
-1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报，支持移除节点 `POST /api/v1/worker/nodes/:id/remove`。
-2. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP + 测试发送）。
-3. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），支持导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
-4. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），审计日志 SHALL 禁止修改与删除。
-5. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
+1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报，支持移除离线节点 `DELETE /api/v1/worker/nodes/:id`。
+2. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP 多渠道），并按 id 测试发送 `POST /api/v1/notify-channels/:id/test`。
+3. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
+4. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
+5. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），审计日志 SHALL 禁止修改与删除。
+6. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
 
 #### R5.14 平台管理（仅 super_admin）
 
@@ -379,4 +380,13 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 1. 系统 SHALL 提供 Webhook 完整 CRUD（`GET/POST /api/v1/webhooks`、`PUT/DELETE /api/v1/webhooks/:id`）。
 2. 系统 SHALL 提供 Webhook 测试推送 `POST /api/v1/webhooks/:id/test`，测试结果 SHALL 反馈 HTTP 状态码与响应体。
-3. 系统 SHALL 支持 Webhook 编辑时显示 Secret 一键复制与重新生成。
+3. 系统 SHALL 支持签名密钥管理：`POST /api/v1/webhooks/:id/secret` 重新生成 HMAC-SHA256 密钥，编辑时显示 Secret 一键复制与重新生成。
+
+#### R5.19 前端 UX 基座
+
+1. 系统 SHALL 提供全局 Toast 与 MessageBox 二次确认弹窗封装，错误提示/危险操作确认/成功反馈统一走封装组件。
+2. 系统 SHALL 提供通用表格基座：多选批量操作栏（已选 N 项/全选/跨页记忆）、分页、排序、筛选重置、日期选择、空态、骨架屏、搜索防抖（300ms）。
+3. 系统 SHALL 提供统一表单校验规则库（必填/URL/邮箱/手机号/密码强度）与新建/编辑共用抽屉组件，保存中 SHALL 禁用按钮防重复提交。
+4. 系统 SHALL 提供图表基座：ECharts 统一配色、阈值配色（高危红/中危橙/低危黄/正常绿）、角色 Tag 颜色规范（super_admin 紫/org_admin 蓝/engineer 青/viewer 灰）。
+5. 系统 SHALL 提供通用详情抽屉基座（Req/Resp 分屏 + HTML 行号高亮 + 截图 tab + 下载 + 时间线），资产画像/漏洞证据/事件详情 SHALL 复用。
+6. 系统 SHALL 确保各业务页（资产/事件/告警/漏洞/任务/成员/策略/计划）批量操作与通用表格基座对齐。
