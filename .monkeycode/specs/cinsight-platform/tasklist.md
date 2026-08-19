@@ -13,6 +13,7 @@ Updated: 2026-08-19
 - [ ] 引入依赖：Gin、GORM、SQLite 驱动（WAL 模式）、BadgerDB、Bleve、ants、gobreaker、fsnotify、swaggo/swag、gorilla/websocket
 - [ ] 统一响应中间件（code/message/data 格式）与错误码定义
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
+- [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，阶段 3 全量注解）【必执行】
 - [ ] 全量业务表结构迁移（assets/findings/events/tickets/evidence/audit_logs/api_tokens/notify_channels/noise_rules/worker_nodes/scan_plans/availability_points/trend_points）
 
 ### 1.2 认证与 RBAC
@@ -38,7 +39,7 @@ Updated: 2026-08-19
 - [ ] 资产列表（虚拟滚动/模糊搜索/筛选）
 - [ ] 资产画像抽屉（技术栈指纹/ICP/子域名/SSL 倒计时/端口快照）
 - [ ] 资产变更追踪（标题/技术栈/状态码/端口变动历史）
-- [ ] 微信公众号资产（公众号名/微信号/头像/粉丝数）
+- [ ] 微信公众号资产字段（公众号名/微信号/头像/粉丝数/简介/认证状态/文章数，扩展自 R5.2）
 
 ### 1.5 任务调度与可用性引擎
 - [ ] 任务表与策略模板表迁移
@@ -54,6 +55,7 @@ Updated: 2026-08-19
 - [ ] 证据读取时 Hash 强制校验（不一致返回 EVIDENCE_TAMPERED）
 - [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号）+ 结果回传链路
 - [ ] Worker 页面渲染截图采集（截图取证）
+- [ ] 截图上传接口（POST /api/v1/evidence/screenshots，Base64 或文件流，鉴权 + SHA-256 校验）
 - [ ] 前端全屏证据抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图标签页 + 下载按钮）
 
 ### 1.7 仪表盘与报告
@@ -62,17 +64,17 @@ Updated: 2026-08-19
 - [ ] WebSocket 实时事件滚动 + 指数退避重连
 - [ ] 报告导出（PDF 含水印 / Excel 漏洞清单）
 
-### 1.8 阶段 1 单元测试
+### 1.8 阶段 1 单元测试【必执行】
 - [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作，表驱动）
 - [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/组织选择/登录锁定）
 - [ ] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
 - [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫）
 
 ### 阶段 1 验收
-- [ ] go vet ./... && go build . 通过
-- [ ] go test ./... 单元测试全部通过（RBAC/认证/证据/调度）
-- [ ] 前端 vue-tsc + vite build 通过
-- [ ] 联调：登录→建资产→下发任务→Worker 执行→证据展示全链路可跑
+- [ ] go vet ./... && go build . 通过【必执行】
+- [ ] go test ./... 单元测试全部通过（RBAC/认证/证据/调度）【必执行】
+- [ ] 前端 vue-tsc + vite build 通过【必执行】
+- [ ] 联调：登录→建资产→下发任务→Worker 执行→证据展示全链路可跑【必执行】
 
 ---
 
@@ -115,14 +117,15 @@ Updated: 2026-08-19
 - [ ] BadgerDB 元数据缓存层（API 毫秒级响应）
 - [ ] 异步批量持久化 SQLite/Bleve 通道
 
-### 2.6 阶段 2 单元测试
+### 2.6 阶段 2 单元测试【必执行】
 - [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
 - [ ] 脱敏单元测试（身份证/手机号/邮箱/AccessKey 三时机脱敏）
 
 ### 阶段 2 验收
-- [ ] 10 大引擎全部可开关执行
-- [ ] 事件/漏洞/工单全流程闭环
-- [ ] 万级列表虚拟滚动性能达标
+- [ ] 10 大引擎全部可开关执行【必执行】
+- [ ] 事件/漏洞/工单全流程闭环【必执行】
+- [ ] 万级列表虚拟滚动性能达标【必执行】
+- [ ] go test ./... 全部通过 + 前端 vue-tsc + vite build 通过【必执行】
 
 ---
 
@@ -149,10 +152,14 @@ Updated: 2026-08-19
 - [ ] gobreaker 目标熔断（连续失败 5 次）+ 授权违规熔断 Worker
 - [ ] 三时机脱敏（入库/API 返回/报告生成）
 - [ ] 反封禁（Proxy 配置 + 低速隐蔽模式）
-- [ ] Litestream SQLite 热备
 - [ ] VictoriaMetrics 迁移接口预留（MetricsExporter，当前 SQLite 时序表）
-- [ ] Docker/K8s 编排（Master 水平扩展读写分离 + Worker 弹性伸缩）
-- [ ] 私有化单二进制一键安装打包
+
+### 任务 15 — Litestream 热备与部署【必执行】
+- [ ] Litestream SQLite 实时流式热备（配置 + 复制验证）
+- [ ] Docker 编排（Master + Worker + SQLite 卷 + 数据目录挂载）
+- [ ] K8s 编排（Master 水平扩展读写分离 + Worker 弹性伸缩 HPA）
+- [ ] 私有化单二进制一键安装打包（零外部依赖）
+- [ ] 部署验证：Docker 起服务 → 探活 /api/health → 建资产 → 下发任务全链路通过
 
 ### 3.4 报告中心全量
 - [ ] 报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议）
@@ -161,7 +168,9 @@ Updated: 2026-08-19
 - [ ] 报告截图合集导出（按资产/时间范围）
 
 ### 阶段 3 验收
-- [ ] 全部 15 个功能模块上线
-- [ ] 平台管理/团队管理权限隔离正确
-- [ ] 集成测试：Master + 单 Worker 全链路（任务下发→引擎执行→结果回传→证据入库→前端展示）
-- [ ] 容灾演练：Worker 断网恢复（Outbox 回传）、Master 重启对账、熔断触发
+- [ ] 全部 15 个功能模块上线【必执行】
+- [ ] 平台管理/团队管理权限隔离正确【必执行】
+- [ ] 集成测试：Master + 单 Worker 全链路（任务下发→引擎执行→结果回传→证据入库→前端展示）【必执行】
+- [ ] 容灾演练：Worker 断网恢复（Outbox 回传）、Master 重启对账、熔断触发【必执行】
+- [ ] 部署验证：Docker/K8s/单二进制三种方式启动 + 探活 + 全链路通过【必执行】
+- [ ] go test ./... 全部通过 + 前端 vue-tsc + vite build 通过【必执行】

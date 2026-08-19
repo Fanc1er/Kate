@@ -408,11 +408,11 @@ erDiagram
 
 ### 阶段 1（MVP 闭环）：RBAC + 资产 + 任务 + 证据链
 
-- 技术底座：Gin 脚手架、JWT/RBAC 中间件、SQLite 迁移、统一响应。
+- 技术底座：Gin 脚手架、JWT/RBAC 中间件、SQLite 迁移、统一响应、Swagger 文档集成（swag init + /swagger/* 端点）。
 - 认证：登录/组织选择/动态路由。
-- 资产 CRUD（URL 归一化 + BadgerDB 去重）。
+- 资产 CRUD（URL 归一化 + BadgerDB 去重，含微信公众号资产字段：公众号名/微信号/头像/粉丝数/简介/认证状态/文章数）。
 - 任务调度：Master 下发/Worker 拉取/结果回传 + 可用性引擎。
-- 证据链：gzip 落盘 + SHA-256 + 前端抽屉（Req/Resp + HTML 高亮）。
+- 证据链：gzip 落盘 + SHA-256 + 截图上传接口（POST /api/v1/evidence/screenshots）+ 前端抽屉（Req/Resp + HTML 高亮）。
 - 报告导出（PDF/Excel）。
 
 ### 阶段 2（引擎扩展）：10 大引擎全量
@@ -425,7 +425,15 @@ erDiagram
 
 - 团队管理/系统设置/平台管理/API Token/Webhook/审计日志。
 - 规则热更新（fsnotify）、调度策略模板、定时报告。
-- 容灾强化：Outbox 批量回传、Litestream 备份、Worker 熔断。
+- 容灾强化：Outbox 批量回传、Litestream 热备（任务 15）、Worker 熔断。
+- 部署（任务 15）：Docker/K8s 编排（Master 水平扩展读写分离 + Worker 弹性伸缩 HPA）、私有化单二进制一键安装。
+- 部署验证：三种部署方式启动 → /api/health 探活 → 建资产 → 下发任务全链路验收。
+
+### 必执行验证（各阶段验收统一要求）
+
+- 单元测试：阶段 1/2 单测（RBAC/认证/证据/调度/引擎/脱敏）与 `go test ./...` 全部通过。
+- 前端构建验证：`vue-tsc + vite build` 全部阶段通过。
+- 部署验证：Docker/K8s/单二进制三种方式启动 + 探活 + 全链路通过（任务 15）。
 
 ## References
 

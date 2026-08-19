@@ -161,6 +161,15 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 下方 SHALL 展示 HTML 源码（代码高亮 + 行号标红定位）。
 3. 前端 SHALL 提供截图取证标签页展示渲染截图，并提供下载完整 HTML 快照 / HAR 文件按钮。
 
+#### R3.4 截图上传接口
+
+**User Story:** AS 取证人员，I want 上传页面渲染截图，SO THAT 证据链包含可视化取证材料。
+
+**Acceptance Criteria:**
+1. 系统 SHALL 提供 `POST /api/v1/evidence/screenshots` 上传接口，接受 Base64 或文件流。
+2. 上传接口 SHALL 经鉴权（JWT/API Token）并校验文件类型与大小，上传后 SHALL 经 gzip 落盘并计算 SHA-256 入库。
+3. 截图 SHALL 关联目标资产或证据记录，可在证据抽屉截图标签页展示。
+
 ### 4. 工程化与极限容灾
 
 #### R4.1 目录与文档规范
@@ -206,7 +215,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 系统 SHALL 提供资产 CRUD（表单含 URL 归一化/名称/分组/重要程度/备注）。
 3. 系统 SHALL 提供资产画像抽屉（技术栈指纹/ICP 备案/子域名/SSL 证书倒计时/端口服务快照）。
 4. 系统 SHALL 记录变更追踪（标题/技术栈/状态码/端口变动历史）。
-5. 系统 SHALL 支持微信公众号资产（公众号名/微信号/头像/粉丝数）。
+5. 系统 SHALL 支持微信公众号资产，字段包含公众号名、微信号、头像、粉丝数、简介、认证状态与文章数。
 
 #### R5.3 安全事件中心
 
@@ -291,3 +300,4 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 1. 系统 SHALL 支持私有化部署（单二进制一键安装，零外部依赖）。
 2. 系统 SHALL 支持 SaaS 化部署（Docker/K8s 编排，Master 水平扩展读写分离，Worker 弹性伸缩）。
+3. 系统 SHALL 提供部署验证流程：Docker/K8s/单二进制三种方式启动后执行 `/api/health` 探活，并通过建资产→下发任务→证据展示全链路验收。
