@@ -177,6 +177,13 @@ sequenceDiagram
 - HAR 文件随证据链 gzip 落盘（`/data/evidence/{date}/`）并经 SHA-256 入库；前端证据抽屉提供下载按钮 `GET /api/v1/evidence/:id/download?format=har`，可导入浏览器开发者工具（Chrome/DevTools/Fiddler）复现分析。
 - Body 超限截断策略：HAR 中响应体默认截断至 1MB（configurable `CINSIGHT_HAR_MAX_BODY`），截断标记 `_truncated: true`；完整响应体仍在 HTML/Resp 快照证据中保留。
 
+### 证据文件传输协议（Worker→Master）
+
+- **内联小文件**：单证据 < 1MB 时随结果 JSON 内联回传（Base64 + sha256），Master 直接落盘，无额外请求。
+- **分片上传**：≥ 1MB 走 `POST /api/v1/worker/evidence`（multipart/form-data：`upload_id + chunk_index + total_chunks + data + sha256`），单片 ≤ 8MB，顺序上传；Master 收齐合并至 `/data/evidence/{date}/` 后复算 SHA-256 校验，入库返回 `evidence_id`。
+- **断点续传**：`upload_id` 对应 Master 临时目录，重传时携带 `resume=true` 返回已收分片列表，Worker 仅补传缺失分片；传输超时（30min）后由 Master 清理临时分片并允许 Worker 重新发起。
+- **结果关联**：结果回传 `POST /api/v1/worker/tasks/:id/result` 引用 `evidence_id` 列表，证据与 finding/event 关联，避免重复回传。
+
 ### AI 内容分类服务适配层
 
 - 内容安全引擎的 AI 文本分类走 `AIAdapter`，支持可配置 `endpoint / model / api_key`（环境变量 `CINSIGHT_AI_ENDPOINT`、`CINSIGHT_AI_MODEL`、`CINSIGHT_AI_API_KEY` 注入），api_key 由管理员自行配置（K8s Secret），禁止硬编码。
@@ -213,7 +220,7 @@ type Finding struct {
 | Webshell | `webshell` | 路径字典、特征码库、流量特征 |
 | 钓鱼 | `phishing` | 钓鱼模板库、Levenshtein、证书解析 |
 | 可用性 | `availability` | HTTP/DNS/PING 探针、连续失败计数 |
-| 端口服务 | `port_service` | TCP SYN 扫描、Banner 抓取 |
+| 端口服务 | `port_service` | TCP SYN 扫描（非特权 Worker 自动降级 TCP Connect 全连接，结果标记 `scan_mode: connect`）、Banner 抓取 |
 | DNS 安全 | `dns_security` | 多节点解析对比、字典爆破 |
 | 信誉监测 | `reputation` | 威胁情报库查询 |
 | 安全情报 | `intelligence` | CVE/CNVD/CNNVD 订阅、资产匹配 |
@@ -238,8 +245,10 @@ type Finding struct {
 |------|------|------|------|------|
 | 认证 | POST | /api/v1/auth/login | 公开 | 登录，bcrypt 校验 + JWT（access+refresh） |
 | 认证 | POST | /api/v1/auth/refresh | 登录用户 | 用 refresh token 换发 access token |
+| 认证 | POST | /api/v1/auth/change-password | 登录用户 | 登录态改密（校验旧密码，改后失效全部 refresh token） |
 | 认证 | POST | /api/v1/auth/select-org | 登录用户 | 组织选择，换发带 org_id 的 JWT，失效旧 token |
 | 认证 | POST | /api/v1/auth/logout | 登录用户 | 退出登录 |
+| 认证 | GET | /api/v1/me/data-export | 登录用户 | 个人数据可携权导出（JSON/CSV，保留 72h，动作记审计） |
 | 认证 | GET | /api/v1/auth/me | 登录用户 | 当前用户信息 + 组织列表 |
 | 组织 | GET | /api/v1/orgs | super_admin | 组织列表 |
 | 组织 | POST | /api/v1/orgs | super_admin | 创建组织 |
@@ -247,6 +256,7 @@ type Finding struct {
 | 组织 | PUT | /api/v1/orgs/:id | super_admin | 编辑组织 |
 | 组织 | DELETE | /api/v1/orgs/:id | super_admin | 删除组织（含数据清理，二次确认） |
 | 组织 | POST | /api/v1/orgs/:id/disable | super_admin | 禁用组织 |
+| 组织 | POST | /api/v1/orgs/:id/enable | super_admin | 启用组织（恢复 cron 计划与写操作） |
 | 平台 | GET | /api/v1/platform/stats | super_admin | 平台统计 |
 | 平台 | GET | /api/v1/platform/workers | super_admin | 平台 Worker 总览 |
 | 资产 | GET/POST | /api/v1/assets | org_admin/engineer | 资产列表/创建 |
@@ -281,7 +291,8 @@ type Finding struct {
 | 事件 | POST | /api/v1/events/:id/status | org_admin/engineer | 事件状态流转 |
 | 事件 | POST | /api/v1/events/batch | org_admin/engineer | 批量状态流转（确认/关闭/归档） |
 | 事件 | GET/POST | /api/v1/noise-rules | org_admin | 降噪规则 |
-| 事件 | PUT/DELETE | /api/v1/noise-rules/:id | org_admin | 降噪规则编辑/删除 || 告警 | GET | /api/v1/alerts | 全部角色 | 告警列表（筛选/分页） |
+| 事件 | PUT/DELETE | /api/v1/noise-rules/:id | org_admin | 降噪规则编辑/删除 |
+| 告警 | GET | /api/v1/alerts | 全部角色 | 告警列表（筛选/分页） |
 | 告警 | PATCH | /api/v1/alerts/:id | org_admin/engineer | 告警处置（确认/关闭/静默） |
 | 告警 | POST | /api/v1/alerts/batch | org_admin/engineer | 批量告警处置 |
 | 漏洞 | GET | /api/v1/vulnerabilities | 全部角色 | 漏洞列表（等级/状态/引擎筛选） |
@@ -325,6 +336,7 @@ type Finding struct {
 | 规则库 | GET/POST | /api/v1/rules/import | org_admin | 规则库导入（POC/敏感词/特征库） |
 | 规则库 | GET | /api/v1/rules/export | org_admin | 规则库导出 |
 | 情报 | GET/PUT | /api/v1/intel-subscriptions | org_admin | 情报订阅配置（数据源开关） |
+| 白名单 | GET/PUT | /api/v1/scan-whitelist | org_admin | 扫描授权白名单（允许目标域名/IP/网段 + 内网段黑名单） |
 | 审计 | GET | /api/v1/audit-logs | org_admin | 审计日志（只读，筛选 operator/action/resource_type/start/end + 分页） |
 | Token | GET/POST | /api/v1/api-tokens | org_admin | API Token 管理 |
 | Token | DELETE | /api/v1/api-tokens/:id | org_admin | 撤销 Token |
@@ -336,6 +348,7 @@ type Finding struct {
 | Webhook | POST | /api/v1/webhooks/:id/secret | org_admin | 重新生成签名密钥（HMAC-SHA256） |
 | Worker | GET | /api/v1/worker/tasks/pull | Worker Token | 拉取任务 |
 | Worker | POST | /api/v1/worker/tasks/:id/result | Worker Token | 回传结果 |
+| Worker | POST | /api/v1/worker/evidence | Worker Token | 证据分片上传（单片 ≤8MB，支持断点续传） |
 | Worker | POST | /api/v1/worker/heartbeat | Worker Token | 心跳上报 |
 | 实时 | GET | /api/v1/ws/events | 登录用户 | WebSocket 事件流 |
 
@@ -424,6 +437,7 @@ erDiagram
         string plan "free/pro/enterprise"
         int max_assets
         int max_workers
+        int max_members
         datetime expire_at
         string status
     }
@@ -464,7 +478,7 @@ erDiagram
         string name
         string engine_switches "JSON"
         int concurrency
-        int timeout
+        int timeout "任务级超时上限(分钟)，默认 60"
         int rate_limit
     }
     scan_tasks {
@@ -563,6 +577,8 @@ erDiagram
 **通知渠道表（notify_channels）**：`id, org_id, type(dingtalk/wecom/feishu/smtp), config(JSON), enabled`。config 中密钥/令牌类字段（webhook_secret、smtp_password 等）入库前经 **AES-256-GCM 加密**（主密钥 `CINSIGHT_CHANNEL_KEY` 环境注入，独立于 JWT Secret），接口返回时掩码脱敏（如 `sk-****abcd`）；编辑时不回显明文，留空表示保持原值。
 
 **降噪规则表（noise_rules）**：`id, org_id, type(whitelist_ip/ignore_type/agg_window/storm_limit), config(JSON), enabled`。
+
+**扫描授权白名单表（scan_whitelists）**：`id, org_id, kind(domain/ip/cidr), value, remark, enabled`，`unique(org_id, kind, value)`。Worker 以规则 Hash 周期同步白名单，发起请求前校验目标命中白名单且非内网段，未命中直接拒绝并计数。
 
 **Worker 节点表（worker_nodes）**：`id, org_id, name, ip, version, status, heartbeat_at, load, boot_token_hash, client_id, client_secret_hash`。token/secret 仅存 hash（boot_token_hash=SHA-256，client_secret_hash=bcrypt），不落明文。
 
@@ -718,7 +734,7 @@ src/
 1. **写操作权限不变量**：任何 write API 必经 RBAC 中间件，`viewer` 角色一律 403；该约束由中间件全局注册保障，controller 无法绕过。
 2. **租户隔离不变量**：所有 Repository 查询强制携带 `org_id`，查询构造器在缺省 `org_id` 时返回错误而非空结果。
 3. **证据完整性**：证据文件 gzip 落盘时计算 SHA-256 并入库；读取展示前强制复算校验，不一致返回 `EVIDENCE_TAMPERED` 错误，前端标红。
-4. **任务状态机**：`pending → processing → completed/failed`；Master 启动将超时 30min 的 processing 重置为 pending；Worker 断点续扫保证不重复执行已爬取 URL。
+4. **任务状态机**：`pending → processing → completed/failed`；Master 启动将超时 30min 的 processing 重置为 pending；Worker 断点续扫保证不重复执行已爬取 URL。任务级超时（`scan_policies.timeout`，默认 60min）由 TaskScheduler 对账：超时未完成中止并置 `failed`，Worker 侧执行超时同样终止并在结果标记 `task_timeout`。
 5. **告警风暴抑制**：单资产每小时通知上限 5 条，超出静默入库并追加高频提示标记。
 6. **熔断保护**：gobreaker 连续失败 5 次熔断目标；扫描授权违规 3 次自动熔断 Worker。
 7. **审计不可变**：audit_logs 表仅允许 insert/select，禁止 update/delete。
@@ -927,14 +943,14 @@ src/
 
 ### 组织配额与套餐限制（核心商业逻辑）
 
-- **配额字段**：`organizations.plan`（如 free/pro/enterprise）+ `max_assets` + `max_workers` + `expire_at`，由 super_admin 在创建/编辑组织时配置；套餐变更即改配额字段，实时生效。
+- **配额字段**：`organizations.plan`（如 free/pro/enterprise）+ `max_assets` + `max_workers` + `max_members` + `expire_at`，由 super_admin 在创建/编辑组织时配置；套餐变更即改配额字段，实时生效。
 - **校验时机（写入即校验，乐观计数）**：
   - 创建资产：已用资产数 ≥ `max_assets` → 4290 `ASSET_QUOTA_EXCEEDED`。
-  - 邀请成员 / 批量邀请：本组织 `active` 成员数达到套餐上限时拒绝（如 enterprise 默认 200 人）。
-  - Worker 注册握手：已注册 Worker 数 ≥ `max_workers` → 4290 `WORKER_QUOTA_EXCEEDED`；删除节点释放配额。
+  - 邀请成员 / 批量邀请：本组织 `active` 成员数 ≥ `max_members` → 4292 `MEMBER_QUOTA_EXCEEDED`。
+  - Worker 注册握手：已注册 Worker 数 ≥ `max_workers` → 4291 `WORKER_QUOTA_EXCEEDED`；删除节点释放配额。
   - 批量操作逐条校验，超限条目计入 `failed` 并携带原因 `quota_exceeded`，不中断整批。
 - **到期/禁用行为**：组织 `expire_at` 过期或 `status=disabled` 时，Master 停止其 cron 计划、拒绝新建任务与资产写操作，仅保留只读查询、证据下载与报表导出；到期前 7 天开始每日提示续费（通知渠道 + 站内横幅）。
-- **配额统计口径**：资产数以 `assets.status != 'deleted'` 计数；Worker 数以 `worker_nodes.status != 'offline_removed'` 计数；统计在组织详情接口 `GET /api/v1/orgs/:id` 返回 `used_assets / used_workers`。
+- **配额统计口径**：资产数以 `assets.status != 'deleted'` 计数；Worker 数以 `worker_nodes.status != 'offline_removed'` 计数；成员数以 `user_orgs.status == 'active'` 计数；统计在组织详情接口 `GET /api/v1/orgs/:id` 返回 `used_assets / used_workers / used_members`。
 
 ### CI/CD 流水线（DevOps）
 
@@ -966,7 +982,7 @@ src/
 
 ### 合规（PIPL/GDPR/等保 2.0）
 
-- **数据生命周期**：账户注销支持删除/匿名化；个人信息（手机/邮箱/身份证）满足留存期限要求并三时机脱敏（已有）。
+- **数据生命周期**：账户注销支持删除/匿名化；个人信息（手机/邮箱/身份证）满足留存期限要求并三时机脱敏（已有）。数据可携权导出：`GET /api/v1/me/data-export` 生成用户全部个人数据（账户信息/操作记录/审计相关条目）JSON/CSV 下载，产物保留 72h 后清理，导出动作入审计日志。
 - **审计合规**：审计日志 365 天留存、不可篡改（已有），覆盖登录/操作/权限变更。
 - **等保 2.0 对齐**：身份鉴别、访问控制、安全审计、入侵防范、数据完整性与保密性、集中管控。
 

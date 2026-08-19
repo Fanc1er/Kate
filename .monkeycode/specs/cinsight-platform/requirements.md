@@ -67,7 +67,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 平台，I want 用核心表承载组织、用户、成员关系，SO THAT 多租户隔离有数据基础。
 
 **Acceptance Criteria:**
-1. 系统 SHALL 维护 `organizations` 表（id, name, logo_path, plan, max_assets, max_workers, expire_at, status）。
+1. 系统 SHALL 维护 `organizations` 表（id, name, logo_path, plan, max_assets, max_workers, max_members, expire_at, status）。
 2. 系统 SHALL 维护 `users` 表（id, username, password(bcrypt), email, phone, status, last_login_at, is_super_admin）。
 3. 系统 SHALL 维护 `user_orgs` 关联表（user_id, org_id, role, status, joined_at），并禁止 `super_admin` 加入 `user_orgs`。
 4. 所有业务查询 SHALL 强制附带 `org_id` 过滤条件，未携带则拒绝。
@@ -123,8 +123,9 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R2.8 端口服务监测引擎
 
 1. WHEN 执行端口扫描，引擎 SHALL 以 TCP SYN 方式扫描 Top 常见端口（22/21/3389/3306/6379 等）。
-2. 引擎 SHALL 通过 Banner 抓取识别服务类型与版本。
-3. WHEN 检测到新增开放端口或高危服务暴露（如 Redis 6379 对外开放），系统 SHALL 生成告警。
+2. IF SYN 扫描需要特权但 Worker 以非 root 运行，引擎 SHALL 自动降级为 TCP Connect 全连接扫描（无特权要求），降级结果 SHALL 标记 `scan_mode: connect` 供审计追溯。
+3. 引擎 SHALL 通过 Banner 抓取识别服务类型与版本。
+4. WHEN 检测到新增开放端口或高危服务暴露（如 Redis 6379 对外开放），系统 SHALL 生成告警。
 
 #### R2.9 DNS 安全引擎
 
@@ -159,6 +160,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 大体积证据数据（HTML 源码、完整响应体）SHALL 经 gzip 压缩落盘至 `/data/evidence/{date}/`，数据库仅存元数据、文件路径与 SHA-256 签名。
 2. 证据文件 SHALL 通过 MD5 去重，SHA-256 签名入库。
 3. WHEN 前端展示证据，后端 SHALL 强制校验文件 Hash，IF 校验不一致，UI SHALL 标红提示"证据已被破坏"。
+4. Worker→Master 证据传输 SHALL 走专用接口 `POST /api/v1/worker/evidence`：Worker 先将证据 gzip 分片上传（单片 ≤ 8MB，含片序号与总片数），Master 收齐后合并落盘并复算 SHA-256 与入库；传输中断 SHALL 支持断点续传（按已收分片跳过），全部完成后在结果回传中引用 evidence_id。小体积证据（<1MB）SHALL 允许随结果 JSON 内联回传，无需走分片。
 
 #### R3.2b Worker 页面截图取证（无头浏览器组件）
 
@@ -212,12 +214,13 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 5. Master SHALL 支持只读副本水平扩展（查询路由到副本，写入收敛单写通道），单 Master 支撑 10 万资产 / 100 Worker。
 6. 结果回传 SHALL 携带幂等键（`result_id`，Worker 端生成 UUID），Master SHALL 按幂等键去重，重复回传 SHALL 忽略并返回已接收。
 7. 任务失败 SHALL 自动重试，重试上限 3 次，超过上限 SHALL 置为 `failed` 并生成告警事件。
-8. Master 收到 SIGTERM SHALL 优雅停机：停止接收新任务、排空在途 HTTP 请求与任务对账、完成 Outbox 落盘后退出，退出超时 30s。
+8. 任务 SHALL 配置任务级超时上限（默认 60min，可经策略模板覆盖）：超过上限未完成 SHALL 中止并置为 `failed`，防止单个任务无限占驻 Worker；Worker 侧执行超时同样终止并在结果中标记 `task_timeout`。
+9. Master 收到 SIGTERM SHALL 优雅停机：停止接收新任务、排空在途 HTTP 请求与任务对账、完成 Outbox 落盘后退出，退出超时 30s。
 
 #### R4.4 深度安全对抗
 
 1. 资产 URL 入库前 SHALL 强制标准化（协议/默认端口/路径），BadgerDB 维护 MD5 防重。
-2. 扫描 SHALL 执行授权拦截：白名单校验、内网 IP 禁止，IF 违规 3 次，系统 SHALL 自动熔断 Worker。
+2. 扫描 SHALL 执行授权拦截：白名单校验、内网 IP 禁止，IF 违规 3 次，系统 SHALL 自动熔断 Worker。授权白名单 SHALL 由 org_admin 管理（`GET/PUT /api/v1/scan-whitelist`：允许扫描的目标域名/IP/网段 + 全局内网 IP 段黑名单），Worker 每次发起请求前 SHALL 以 Hash 同步白名单并本地校验。
 3. 系统 SHALL 预留 Proxy（HTTP/SOCKS5）配置与低速隐蔽模式（并发=1、伪造 UA/Referer）反封禁设计。
 4. 目标请求 SHALL 经 `gobreaker` 熔断，IF 连续失败 5 次，系统 SHALL 熔断该目标。
 5. 身份证、手机号等敏感数据 SHALL 在入库前、API 返回前、报告生成时三时机自动脱敏。
@@ -238,7 +241,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 经网关终结 TLS，响应头含 CSP / X-Frame-Options / X-Content-Type-Options / HSTS。
 2. 系统 SHALL 提供 API 通用限流（每用户/IP 100 req/min，超限返回 HTTP 429 + `Retry-After` 头）与登录接口独立限流（5 次/min/IP，连续失败 5 次 SHALL 锁定账户 15 分钟，防暴力破解）。
 3. 系统 SHALL 执行密码策略：≥ 12 位含大小写/数字/特殊字符，90 天轮换，禁止复用最近 5 次，首次登录强制改密。
-4. 系统 SHALL 提供密码重置流程：`POST /api/v1/auth/forgot-password`（邮件验证码）+ `POST /api/v1/auth/reset-password`，重置后 SHALL 失效旧 token 并强制重新登录。
+4. 系统 SHALL 提供密码重置流程：`POST /api/v1/auth/forgot-password`（邮件验证码）+ `POST /api/v1/auth/reset-password`，重置后 SHALL 失效旧 token 并强制重新登录。登录态改密 SHALL 走 `POST /api/v1/auth/change-password`（校验旧密码 + 符合密码策略），改密后 SHALL 立即失效全部 refresh token 并强制重新登录。
 5. 系统 SHALL 预留 MFA（TOTP）二次认证开关。
 6. 系统 SHALL 将 Secrets（JWT_SECRET/Webhook secret/Bootstrap Token）经环境/K8s Secret 注入，支持轮换，严禁写入代码与日志。
 7. 系统 SHALL 将依赖漏洞扫描（govulncheck）与容器镜像扫描（Trivy）纳入 CI 门禁。
@@ -251,7 +254,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供数据保留与归档：事件/漏洞/告警热数据 180 天后冷归档，审计日志保留 ≥ 365 天。
 2. 证据文件 SHALL 按保留期（默认 365 天）定时清理：删除孤儿文件、回收磁盘空间，删除前 SHALL 校验无证据记录引用。
 3. 系统 SHALL 支持账户注销与个人信息删除/匿名化，满足 PIPL/GDPR 数据生命周期要求。
-4. 系统 SHALL 按等保 2.0 对齐身份鉴别、访问控制、安全审计、数据完整性与保密性要求。
+4. 系统 SHALL 提供数据可携权导出（GDPR）：用户可导出本人全部个人数据（账户信息、操作记录、审计相关条目），格式 JSON/CSV 下载，默认保留 72 小时，导出动作 SHALL 写入审计日志。
+5. 系统 SHALL 按等保 2.0 对齐身份鉴别、访问控制、安全审计、数据完整性与保密性要求。
 
 ### 5. 功能模块需求
 
@@ -351,28 +355,28 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报，支持移除离线节点 `DELETE /api/v1/worker/nodes/:id`。
 2. Worker 注册 SHALL 走握手流程：首次注册用一次性 Bootstrap Token 调用 `POST /api/v1/worker/register` 换取长期凭证（client_id + client_secret，服务端存 hash），后续心跳/拉取/回传 SHALL 用长期凭证鉴权；凭证支持撤销/重发，泄露可吊销。
 3. Bootstrap Token 与长期凭证 SHALL 加密/哈希存储（Bootstrap Token 存 SHA-256 且一次性领取即失效，client_secret 存 bcrypt），库中禁止明文；Token 仅在创建时一次性返回，刷新即作废旧值。
-3. 受邀成员 SHALL 首次登录激活：邀请状态 `invited`，首次登录后激活为 `active` 并强制设密码/改密；邀请链接默认 7 天过期。
-4. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP 多渠道），并按 id 测试发送 `POST /api/v1/notify-channels/:id/test`。
-5. 通知渠道的密钥/令牌类字段（Webhook Secret、SMTP 密码等）SHALL 加密存储（AES-256-GCM，主密钥经环境变量注入），接口返回时 SHALL 脱敏（仅掩码显示），编辑回显 SHALL 提供"留空则保持原值"。
-6. Worker 注册 SHALL 受组织 Worker 配额约束：已注册 Worker 数达到该组织 `max_workers` 时，注册握手 SHALL 返回 4290 `WORKER_QUOTA_EXCEEDED` 拒绝注册；移除节点释放配额。
-7. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
-8. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
-9. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 记录客户端 IP 与 User-Agent（服务端请求中间件捕获，不依赖前端上报），并禁止修改与删除。
-10. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
+4. 受邀成员 SHALL 首次登录激活：邀请状态 `invited`，首次登录后激活为 `active` 并强制设密码/改密；邀请链接默认 7 天过期。
+5. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP 多渠道），并按 id 测试发送 `POST /api/v1/notify-channels/:id/test`。
+6. 通知渠道的密钥/令牌类字段（Webhook Secret、SMTP 密码等）SHALL 加密存储（AES-256-GCM，主密钥经环境变量注入），接口返回时 SHALL 脱敏（仅掩码显示），编辑回显 SHALL 提供"留空则保持原值"。
+7. Worker 注册 SHALL 受组织 Worker 配额约束：已注册 Worker 数达到该组织 `max_workers` 时，注册握手 SHALL 返回 4291 `WORKER_QUOTA_EXCEEDED` 拒绝注册；移除节点释放配额。
+8. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
+9. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
+10. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 记录客户端 IP 与 User-Agent（服务端请求中间件捕获，不依赖前端上报），并禁止修改与删除。
+11. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
 
 #### R5.14 平台管理（仅 super_admin）
 
 1. 系统 SHALL 提供组织列表（名称/套餐/资产数/Worker 数/到期时间/状态）。
-2. 系统 SHALL 支持创建/编辑/禁用组织，提供组织详情 `GET /api/v1/orgs/:id` 与删除组织 `DELETE /api/v1/orgs/:id`（删除需输入组织名二次确认并级联清理数据）。
+2. 系统 SHALL 支持创建/编辑/禁用/启用组织（`POST /api/v1/orgs/:id/disable` 与 `POST /api/v1/orgs/:id/enable`），提供组织详情 `GET /api/v1/orgs/:id` 与删除组织 `DELETE /api/v1/orgs/:id`（删除需输入组织名二次确认并级联清理数据）；启用后 SHALL 恢复该组织 cron 计划与写操作。
 3. 系统 SHALL 提供平台统计（总组织/总资产/总扫描次数/总事件数）与平台 Worker 总览。
-4. 系统 SHALL 按组织套餐执行配额校验（核心商业逻辑）：创建资产时已用资产数达到 `max_assets` 返回 4290 `ASSET_QUOTA_EXCEEDED`；邀请成员、注册 Worker 同样校验对应套餐上限；批量操作逐条校验不中断，超限条目计入 failed 并返回原因。
+4. 系统 SHALL 按组织套餐执行配额校验（核心商业逻辑）：创建资产时已用资产数达到 `max_assets` 返回 4290 `ASSET_QUOTA_EXCEEDED`；邀请成员达到 `max_members` 返回 4292 `MEMBER_QUOTA_EXCEEDED`、注册 Worker 达到 `max_workers` 返回 4291 `WORKER_QUOTA_EXCEEDED`；批量操作逐条校验不中断，超限条目计入 failed 并返回原因。
 5. WHEN 组织到期（`expire_at` 已过）或组织被禁用，系统 SHALL 停止该组织的定时计划、拒绝新建任务与资产变更，仅保留只读查询与证据下载。
 
 #### R5.15 API 开放集成
 
 1. 系统 SHALL 全量开放 REST API（Swagger 文档）。
 2. 系统 SHALL 提供 API Token 认证（独立于 JWT，支持细粒度权限）。
-3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。
+3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。推送 SHALL 带 HMAC-SHA256 签名（请求头 `X-Signature`，密钥经 R5.18 管理），推送失败 SHALL 自动重试 3 次（指数退避），重试仍失败 SHALL 记录推送状态落库并在 UI 标记送达失败。
 4. Swagger 文档（`/swagger/*`）SHALL 受开关控制：生产环境默认关闭，仅当 `CINSIGHT_SWAGGER_ENABLED=true` 时暴露，防止生产环境信息泄露。
 
 #### R5.16 部署模式与 CI/CD

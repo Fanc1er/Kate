@@ -31,6 +31,7 @@ Updated: 2026-08-19
 - [ ] Repository 层 org_id 强制过滤守卫（缺省 org_id 拒绝查询）
 - [ ] 登录锁定阈值控制
 - [ ] 密码重置流程（POST /api/v1/auth/forgot-password + reset-password，重置后失效旧 token）
+- [ ] 登录态改密（POST /api/v1/auth/change-password：校验旧密码 + 符合密码策略 + 改后失效全部 refresh token）
 - [ ] 首启引导初始化 super_admin/默认策略/降噪规则（--init-super-admin 或首启向导，未初始化禁用平台管理）
 
 ### 1.3 前端基础框架
@@ -85,6 +86,7 @@ Updated: 2026-08-19
 - [ ] 通用证据读取接口（GET /api/v1/evidence/:id，返回 Req/Resp/HTML/截图元数据 + 文件流）
 - [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence，聚合漏洞关联证据链）
 - [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号/confidence 置信度）+ 结果回传链路
+- [ ] 证据传输协议（POST /api/v1/worker/evidence：<1MB 内联 / ≥1MB 分片 ≤8MB / upload_id 断点续传 / 收齐合并 SHA-256 校验）
 - [ ] Worker HAR 文件生成（HAR 1.2 组装：entries 请求/响应头、Body、时间戳、大小、MIME + Body 超限截断标记 + gzip 落盘入库）
 - [ ] 证据下载接口支持 format=har（HAR 文件导出，可导入 DevTools/Fiddler）
 - [ ] Worker 页面渲染截图采集（截图取证）
@@ -107,7 +109,7 @@ Updated: 2026-08-19
 - [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作，表驱动）
 - [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/refresh token 换发/jti 黑名单/组织选择/登录锁定/禁用用户与禁用组织登录拦截）
 - [ ] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
-- [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫）
+- [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫/任务级超时上限中止）
 
 ### 阶段 1 验收
 - [ ] go vet ./... && go build . 通过【必执行】
@@ -130,7 +132,7 @@ Updated: 2026-08-19
 - [ ] 暗链挂马引擎（隐藏外链/木马特征/双 UA 对比）
 - [ ] Webshell 检测引擎（路径枚举 + 特征码 + 流量特征）
 - [ ] 钓鱼检测引擎（模板比对 + Levenshtein + 证书异常）
-- [ ] 端口服务监测引擎（TCP SYN 扫描 + Banner 指纹 + 高危暴露告警）
+- [ ] 端口服务监测引擎（TCP SYN 扫描，非特权 Worker 降级 TCP Connect 全连接并标记 scan_mode:connect + Banner 指纹 + 高危暴露告警）
 - [ ] 可用性监测引擎扩展（DNS 监控：解析 IP 变更/解析失败/劫持检测）
 - [ ] 可用性监测引擎扩展（PING 监控：丢包率/延迟/ICMP 不可达告警）
 - [ ] DNS 安全引擎（多节点解析对比 + 污染检测 + 子域名爆破）
@@ -191,8 +193,8 @@ Updated: 2026-08-19
 - [ ] API Token 管理（细粒度权限/有效期 + 撤销 DELETE + 停用/恢复 PATCH :id/status）
 
 ### 3.2 平台管理
-- [ ] 组织列表/创建/详情/编辑/禁用/删除（DELETE 需输入组织名二次确认 + 级联清理）— 仅 super_admin
-- [ ] 组织配额/套餐限制校验（创建资产超 max_assets → 4290 ASSET_QUOTA_EXCEEDED；成员/Worker 配额逐条校验；org 详情返回 used_assets/used_workers）
+- [ ] 组织列表/创建/详情/编辑/禁用/启用/删除（DELETE 需输入组织名二次确认 + 级联清理；enable 恢复 cron 与写操作）— 仅 super_admin
+- [ ] 组织配额/套餐限制校验（创建资产超 max_assets → 4290 ASSET_QUOTA_EXCEEDED；成员超 max_members → 4292 MEMBER_QUOTA_EXCEEDED；Worker 超 max_workers → 4291 WORKER_QUOTA_EXCEEDED；org 详情返回 used_assets/used_workers/used_members）
 - [ ] 组织到期/禁用行为（停止 cron 计划 + 拒绝新建任务与资产写操作 + 仅保留只读；到期前 7 天续费提示）
 - [ ] 平台统计（总组织/总资产/总扫描/总事件）
 - [ ] 平台 Worker 总览
@@ -203,7 +205,7 @@ Updated: 2026-08-19
 - [ ] Webhook 完整 CRUD（GET/POST + PUT/DELETE :id + 测试推送 POST :id/test + 签名密钥重新生成 POST :id/secret + Secret 一键复制）
 - [ ] Webhook 事件推送（HMAC-SHA256 签名 + 重试 3 次 + 落库）
 - [ ] 规则热更新（fsnotify）+ Worker 规则 Hash 同步
-- [ ] 扫描授权拦截（白名单校验 + 内网 IP 禁止）
+- [ ] 扫描授权拦截（白名单校验 + 内网 IP 禁止）+ 白名单管理接口（GET/PUT /api/v1/scan-whitelist + Worker Hash 同步）
 - [ ] gobreaker 目标熔断（连续失败 5 次）+ 授权违规熔断 Worker
 - [ ] 三时机脱敏（入库/API 返回/报告生成）
 - [ ] 反封禁（Proxy 配置 + 低速隐蔽模式）
@@ -305,6 +307,7 @@ Updated: 2026-08-19
 - [ ] i18n（vue-i18n 中/英）+ 可访问性（键盘可达/ARIA）
 - [ ] 路由懒加载 + 组件分包，首屏 < 3s
 - [ ] 账户注销 + 个人信息删除/匿名化（PIPL/GDPR）
+- [ ] 个人数据可携权导出（GET /api/v1/me/data-export：JSON/CSV + 保留 72h + 审计记录）
 - [ ] 等保 2.0 对齐（身份鉴别/访问控制/安全审计/数据完整保密）
 
 ### 阶段 4 验收
