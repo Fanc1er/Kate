@@ -16,7 +16,7 @@ Updated: 2026-08-19
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
 - [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
 - [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，阶段 3 全量注解）【必执行】
-- [ ] 全量业务表结构迁移（assets/findings/events/tickets/evidence/audit_logs/api_tokens/notify_channels/noise_rules/worker_nodes/scan_plans/availability_points/trend_points）
+- [ ] 全量业务表结构迁移（assets/vulnerabilities/alerts/findings/events/tickets/evidence/audit_logs/api_tokens/notify_channels/noise_rules/worker_nodes/scan_plans/availability_points/trend_points）
 
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
@@ -38,12 +38,15 @@ Updated: 2026-08-19
 - [ ] 顶部导航（组织名 + 角色 Tag + 切换组织/退出）
 
 ### 1.4 资产模块
-- [ ] 资产 CRUD（表单：URL 归一化/名称/分组/重要程度/备注）
-- [ ] URL 标准化与 BadgerDB MD5 去重
-- [ ] 资产列表（虚拟滚动/模糊搜索/筛选）
-- [ ] 资产画像抽屉（技术栈指纹/ICP/子域名/SSL 倒计时/端口快照）
-- [ ] 资产变更追踪（标题/技术栈/状态码/端口变动历史）
-- [ ] 微信公众号资产字段（公众号名/微信号/头像/粉丝数/简介/认证状态/文章数，扩展自 R5.2）
+- [ ] 资产后端 API：CRUD（GET/POST /api/v1/assets，PUT/DELETE /api/v1/assets/:id）
+- [ ] 资产后端 API：画像（GET /api/v1/assets/:id/profile）
+- [ ] 资产后端 API：变更追踪（GET /api/v1/assets/:id/history）
+- [ ] 资产后端 API：URL 归一化 + BadgerDB MD5 防重
+- [ ] 资产后端 API：微信公众号资产（GET/POST /api/v1/wechat-assets）
+- [ ] 资产列表前端（虚拟滚动/模糊搜索/筛选）
+- [ ] 资产画像抽屉前端（技术栈指纹/ICP/子域名/SSL 倒计时/端口快照）
+- [ ] 资产变更追踪前端（标题/技术栈/状态码/端口变动历史）
+- [ ] 微信公众号资产前端字段（公众号名/微信号/头像/粉丝数/简介/认证状态/文章数，扩展自 R5.2）
 
 ### 1.5 任务调度与可用性引擎
 - [ ] 任务表与策略模板表迁移
@@ -53,6 +56,7 @@ Updated: 2026-08-19
 - [ ] BadgerDB-SQLite 缓存一致性（写入先 Badger 后异步 SQLite + 每小时对账）
 - [ ] Master 任务创建/下发/拉取接口（pending→processing→completed）
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
+- [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
 - [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定）
 - [ ] Worker Outbox 本地缓存与断网回传
 - [ ] Master 启动超时任务对账（30min 重置 processing→pending）
@@ -61,6 +65,8 @@ Updated: 2026-08-19
 ### 1.6 证据链
 - [ ] 证据 gzip 落盘 /data/evidence/{date}/ + MD5 去重 + SHA-256 入库
 - [ ] 证据读取时 Hash 强制校验（不一致返回 EVIDENCE_TAMPERED）
+- [ ] 通用证据读取接口（GET /api/v1/evidence/:id，返回 Req/Resp/HTML/截图元数据 + 文件流）
+- [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence，聚合漏洞关联证据链）
 - [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号）+ 结果回传链路
 - [ ] Worker 页面渲染截图采集（截图取证）
 - [ ] 截图上传接口（POST /api/v1/evidence/screenshots，Base64 或文件流，鉴权 + SHA-256 校验）
@@ -110,7 +116,10 @@ Updated: 2026-08-19
 ### 2.3 事件中心与漏洞管理
 - [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）
 - [ ] 事件类型筛选（12 类）+ 降噪规则配置（白名单/忽略/聚合/风暴抑制）
-- [ ] 漏洞列表（等级/状态/引擎筛选）+ 证据链抽屉接入
+- [ ] 独立告警接口（GET /api/v1/alerts 列表 + PATCH /api/v1/alerts/:id 处置：确认/关闭/静默）
+- [ ] 漏洞表与告警表迁移（vulnerabilities/alerts 独立表，见 design ER 图）
+- [ ] 漏洞列表（GET /api/v1/vulnerabilities，等级/状态/引擎筛选）+ 证据链抽屉接入
+- [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence）对接前端抽屉
 - [ ] 工单闭环（确认→派发→修复→复测→归档）+ SOP 挂载
 - [ ] 告警风暴抑制（单资产每小时 5 条上限）
 

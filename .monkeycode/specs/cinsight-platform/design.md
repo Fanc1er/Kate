@@ -229,13 +229,16 @@ type Finding struct {
 | 事件 | GET | /api/v1/events | 全部角色 | 事件列表（筛选/分页） |
 | 事件 | POST | /api/v1/events/:id/status | org_admin/engineer | 事件状态流转 |
 | 事件 | GET/POST | /api/v1/noise-rules | org_admin | 降噪规则 |
-| 漏洞 | GET | /api/v1/findings | 全部角色 | 漏洞列表 |
-| 漏洞 | POST | /api/v1/findings/:id/ticket | org_admin/engineer | 生成工单 |
-| 漏洞 | POST | /api/v1/findings/:id/retest | org_admin/engineer | 申请复测 |
-| 漏洞 | POST | /api/v1/findings/:id/ignore | org_admin/engineer | 批量忽略 |
+| 告警 | GET | /api/v1/alerts | 全部角色 | 告警列表（筛选/分页） |
+| 告警 | PATCH | /api/v1/alerts/:id | org_admin/engineer | 告警处置（确认/关闭/静默） |
+| 漏洞 | GET | /api/v1/vulnerabilities | 全部角色 | 漏洞列表（等级/状态/引擎筛选） |
+| 漏洞 | GET | /api/v1/vulnerabilities/:id/evidence | 全部角色 | 漏洞证据链（证据抽屉数据） |
+| 漏洞 | POST | /api/v1/vulnerabilities/:id/ticket | org_admin/engineer | 生成工单 |
+| 漏洞 | POST | /api/v1/vulnerabilities/:id/retest | org_admin/engineer | 申请复测 |
+| 漏洞 | POST | /api/v1/vulnerabilities/:id/ignore | org_admin/engineer | 批量忽略 |
 | 工单 | GET/POST | /api/v1/tickets | org_admin/engineer | 工单列表/创建 |
 | 工单 | PUT | /api/v1/tickets/:id | org_admin/engineer | 工单状态/派发 |
-| 证据 | GET | /api/v1/evidence/:id | 全部角色 | 证据详情（Hash 校验） |
+| 证据 | GET | /api/v1/evidence/:id | 全部角色 | 通用证据读取（Req/Resp/HTML/截图，Hash 校验） |
 | 证据 | GET | /api/v1/evidence/:id/download | 全部角色 | 下载 HTML/HAR |
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
 | 报告 | GET/POST | /api/v1/reports | 全部角色(导出) | 报告列表/生成 |
@@ -299,10 +302,15 @@ erDiagram
     assets ||--o{ scan_tasks : scanned
     scan_tasks ||--o{ findings : produces
     findings ||--o{ events : raises
+    findings ||--o{ vulnerabilities : escalates
+    assets ||--o{ vulnerabilities : exposes
+    assets ||--o{ alerts : triggers
+    findings ||--o{ alerts : triggers
     assets ||--o{ events : affects
     events ||--o{ tickets : resolves
     assets ||--o{ evidence : holds
     findings ||--o{ evidence : holds
+    vulnerabilities ||--o{ evidence : holds
 
     organizations {
         int id PK
@@ -377,6 +385,34 @@ erDiagram
         string evidence_id FK
         string status
     }
+    vulnerabilities {
+        int id PK
+        int org_id FK
+        int finding_id FK
+        int asset_id FK
+        string cve_id "CVE/CNVD 编号"
+        string engine_name
+        string severity "critical/high/medium/low/info"
+        string title
+        string description
+        string status "open/verifying/ignored/closed"
+        string evidence_id FK
+        datetime first_seen_at
+        datetime last_seen_at
+    }
+    alerts {
+        int id PK
+        int org_id FK
+        int asset_id FK
+        int finding_id FK
+        string alert_type "vuln/content/hidden_link/webshell/phishing/tamper/availability/port/intel"
+        string severity
+        string title
+        string content
+        string status "open/acknowledged/closed/silenced"
+        datetime created_at
+        datetime resolved_at
+    }
     events {
         int id PK
         int org_id FK
@@ -448,6 +484,8 @@ erDiagram
 | assets | `idx_assets_org_url`, `idx_assets_org_group`, `idx_assets_org_importance` | 资产筛选 |
 | scan_tasks | `idx_tasks_org_status`, `idx_tasks_org_created` | 队列监控/状态流转 |
 | findings | `idx_findings_org_severity`, `idx_findings_org_engine`, `idx_findings_org_status` | 漏洞筛选 |
+| vulnerabilities | `idx_vuln_org_severity`, `idx_vuln_org_status`, `idx_vuln_org_asset`, `idx_vuln_org_cve` | 漏洞列表/资产关联/CVE 检索 |
+| alerts | `idx_alerts_org_status`, `idx_alerts_org_type`, `idx_alerts_org_severity`, `idx_alerts_org_asset` | 告警筛选/处置 |
 | events | `idx_events_org_status`, `idx_events_org_type`, `idx_events_org_severity` | 事件筛选 |
 | evidence | `idx_evidence_org_md5` | 证据去重 |
 | availability_points | `idx_avail_org_asset_ts`（org_id, asset_id, timestamp） | 时序查询 |

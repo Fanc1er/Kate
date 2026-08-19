@@ -69,6 +69,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 系统 SHALL 维护 `users` 表（id, username, password(bcrypt), email, phone, status, last_login_at, is_super_admin）。
 3. 系统 SHALL 维护 `user_orgs` 关联表（user_id, org_id, role, status, joined_at），并禁止 `super_admin` 加入 `user_orgs`。
 4. 所有业务查询 SHALL 强制附带 `org_id` 过滤条件，未携带则拒绝。
+5. 系统 SHALL 维护独立 `vulnerabilities` 表与 `alerts` 表：`vulnerabilities` 记录漏洞实体（cve_id/severity/status/evidence_id），`alerts` 记录告警实体（alert_type/severity/status/resolved_at），均由引擎发现记录触发生成。
 
 ### 2. 十大检测引擎（Worker 核心）
 
@@ -157,9 +158,10 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R3.3 前端证据展示
 
-1. 前端 SHALL 提供全屏抽屉，上方左右分屏展示 HTTP Req/Resp。
-2. 下方 SHALL 展示 HTML 源码（代码高亮 + 行号标红定位）。
-3. 前端 SHALL 提供截图取证标签页展示渲染截图，并提供下载完整 HTML 快照 / HAR 文件按钮。
+1. 系统 SHALL 提供通用证据读取接口 `GET /api/v1/evidence/{id}`，返回证据元数据（Req/Resp/HTML/截图）并经 Hash 校验。
+2. 前端 SHALL 提供全屏抽屉，上方左右分屏展示 HTTP Req/Resp。
+3. 下方 SHALL 展示 HTML 源码（代码高亮 + 行号标红定位）。
+4. 前端 SHALL 提供截图取证标签页展示渲染截图，并提供下载完整 HTML 快照 / HAR 文件按钮。
 
 #### R3.4 截图上传接口
 
@@ -211,11 +213,12 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.2 资产管理
 
-1. 系统 SHALL 提供资产列表（虚拟滚动/模糊搜索/按重要程度/分组/状态筛选）。
-2. 系统 SHALL 提供资产 CRUD（表单含 URL 归一化/名称/分组/重要程度/备注）。
-3. 系统 SHALL 提供资产画像抽屉（技术栈指纹/ICP 备案/子域名/SSL 证书倒计时/端口服务快照）。
-4. 系统 SHALL 记录变更追踪（标题/技术栈/状态码/端口变动历史）。
-5. 系统 SHALL 支持微信公众号资产，字段包含公众号名、微信号、头像、粉丝数、简介、认证状态与文章数。
+1. 系统 SHALL 提供资产后端 API：CRUD（`GET/POST /api/v1/assets`、`PUT/DELETE /api/v1/assets/:id`）。
+2. 系统 SHALL 提供资产画像接口 `GET /api/v1/assets/:id/profile`（技术栈指纹/ICP 备案/子域名/SSL 证书倒计时/端口服务快照）。
+3. 系统 SHALL 提供资产变更追踪接口 `GET /api/v1/assets/:id/history`（标题/技术栈/状态码/端口变动历史）。
+4. 系统 SHALL 在资产入库前执行 URL 归一化，并通过 BadgerDB MD5 防重。
+5. 系统 SHALL 提供微信公众号资产接口 `GET/POST /api/v1/wechat-assets`，字段包含公众号名、微信号、头像、粉丝数、简介、认证状态与文章数。
+6. 系统 SHALL 提供资产列表前端（虚拟滚动/模糊搜索/按重要程度/分组/状态筛选）与资产画像/变更追踪抽屉展示。
 
 #### R5.3 安全事件中心
 
@@ -224,11 +227,21 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 3. 系统 SHALL 提供降噪规则配置（白名单 IP/忽略特定类型/聚合时间窗/风暴抑制）。
 4. 系统 SHALL 支持闭环处置流程：事件确认→工单派发→修复跟踪→复测验证→归档，并自动挂载应急响应 SOP。
 
+#### R5.3b 独立告警中心
+
+**User Story:** AS 安全工程师，I want 独立查看与处置告警，SO THAT 聚焦需优先响应的高危发现。
+
+**Acceptance Criteria:**
+1. 系统 SHALL 提供独立告警列表接口 `GET /api/v1/alerts`（按级别/类型/状态/来源资产筛选与分页）。
+2. 系统 SHALL 提供告警处置接口 `PATCH /api/v1/alerts/:id`（确认/关闭/静默三种状态流转）。
+3. 系统 SHALL 以独立 `alerts` 表存储告警（含 alert_type、severity、status、resolved_at），由发现记录触发生成。
+
 #### R5.4 漏洞与风险管理
 
-1. 系统 SHALL 提供漏洞列表（按等级/状态/引擎类型筛选）。
-2. 系统 SHALL 提供证据链抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图取证）。
-3. 系统 SHALL 支持闭环处置（生成工单/申请复测/批量忽略）。
+1. 系统 SHALL 提供漏洞列表（按等级/状态/引擎类型筛选），基于独立 `vulnerabilities` 表。
+2. 系统 SHALL 提供漏洞证据接口 `GET /api/v1/vulnerabilities/{id}/evidence`，聚合漏洞关联的 Req/Resp/HTML/截图证据链。
+3. 系统 SHALL 提供证据链抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图取证）。
+4. 系统 SHALL 支持闭环处置（生成工单/申请复测/批量忽略）。
 
 #### R5.5 内容安全监测
 
@@ -278,7 +291,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.13 系统设置（仅 org_admin）
 
-1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token）。
+1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报。
 2. 系统 SHALL 提供通知渠道配置（钉钉/企微/飞书 Webhook + 邮件 SMTP + 测试发送）。
 3. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号）。
 4. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），审计日志 SHALL 禁止修改与删除。
