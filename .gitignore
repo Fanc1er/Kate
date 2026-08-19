@@ -1,0 +1,16 @@
+# Node
+node_modules/
+frontend/dist/
+*.local
+
+# Go
+backend/bin/
+backend/kate-backend
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
