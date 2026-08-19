@@ -397,7 +397,7 @@ type Finding struct {
 | 资产 | GET | /api/v1/assets/:id/availability | 全部角色 | 可用性点阵图（engine=http/dns/ping + hours 参数） |
 | 资产 | GET | /api/v1/assets/:id/response-time | 全部角色 | 24h 响应时序折线 |
 | 资产 | POST | /api/v1/assets/:id/dual-ua | org_admin/engineer | 双 UA 对比（正常 UA + 蜘蛛 UA 抓取，返回差异列表） |
-| 资产 | GET | /api/v1/assets/:id/profile | 全部角色 | 资产画像（指纹/ICP/SSL/端口） |
+| 资产 | GET | /api/v1/assets/:id/profile | 全部角色 | 资产画像（技术栈指纹/ICP 备案/子域名/SSL 证书倒计时/端口服务快照） |
 | 资产 | POST | /api/v1/assets/batch-scan | org_admin/engineer | 批量资产加入扫描（ids + policy_id） |
 | 资产 | POST | /api/v1/assets/batch-delete | org_admin | 批量删除资产 |
 | 资产 | POST | /api/v1/assets/batch-group | org_admin/engineer | 批量改分组（ids + group_name） |
