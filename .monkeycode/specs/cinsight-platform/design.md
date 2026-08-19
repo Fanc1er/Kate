@@ -473,6 +473,7 @@ type Finding struct {
 | Worker | POST | /api/v1/worker/evidence | Worker Token | 证据分片上传（单片 ≤8MB，支持断点续传） |
 | Worker | POST | /api/v1/worker/heartbeat | Worker Token | 心跳上报 |
 | 实时 | GET | /api/v1/ws/events | 登录用户 | WebSocket 事件流 |
+| 搜索 | GET | /api/v1/search | 全部角色 | 全局搜索（Bleve 跨 assets/findings/events，q 关键字，org 隔离分页） |
 
 ### 批量操作规范
 
@@ -492,6 +493,7 @@ type Finding struct {
 - **危险操作确认**：删除/批量删除/移除成员/撤销 Token 等危险操作一律二次确认弹窗（含后果说明与需输入名称确认的组织删除）。
 - **复制能力**：资产 URL、API Token、Webhook Secret、Bootstrap Token 提供一键复制按钮。
 - **快捷操作**：资产行内"立即扫描"、事件/漏洞行内"生成工单""申请复测"、告警行内"确认"按钮，减少跳转。
+- **全局搜索**：顶部导航搜索框（回车跳转 `/search?q=` 结果页），按资产/发现/事件分类展示 Bleve 命中结果（走 `GET /api/v1/search`），快捷键 `/` 聚焦。
 - **筛选持久化**：列表筛选条件存 localStorage，刷新/返回后保留；支持 URL 参数分享（`?status=open&severity=high`）。
 - **未读角标**：导航栏事件/告警显示未读数角标（WebSocket 实时更新）。
 - **任务详情**：任务行点击展开详情页（进度条、执行日志、引擎结果统计、Worker 分配）。
@@ -645,6 +647,7 @@ erDiagram
         string evidence_id FK
         datetime first_seen_at
         datetime last_seen_at
+        datetime closed_at "复测通过置 closed 时写入"
     }
     alerts {
         int id PK
@@ -827,8 +830,7 @@ src/
 │   ├── event.ts         # 实时事件流（WebSocket 写入）
 │   └── dashboard.ts     # 仪表盘聚合数据
 ├── router/              # 静态路由 + 动态 addRoute()
-├── layouts/             # 顶部导航/侧边菜单/组织切换
-├── views/               # 页面（按 RBAC 懒加载），与 R5.x 功能模块一一对应：
+├── layouts/             # 顶部导航/侧边菜单/组织切换├── views/               # 页面（按 RBAC 懒加载），与 R5.x 功能模块一一对应：
 │   ├── auth/            # 登录 / 组织选择 / 忘记密码 / 重置密码
 │   ├── dashboard/       # 仪表盘（统计卡片/趋势/Top10/引擎覆盖雷达）
 │   ├── asset/           # 资产列表/画像/变更追踪/公众号资产/批量导入导出
@@ -840,6 +842,7 @@ src/
 │   ├── webshell/        # Webshell 与钓鱼检测
 │   ├── availability/    # 可用性与网络（点阵图/时序折线/端口/多端 UA）
 │   ├── intel/           # 安全情报（列表/详情/订阅配置）
+│   ├── search/          # 全局搜索（顶部导航搜索框 + 资产/发现/事件分类结果页）
 │   ├── task/            # 任务调度（任务列表/详情/队列监控）
 │   ├── policy/          # 策略模板（CRUD/复制/批量删除）
 │   ├── plan/            # Cron 定时计划（CRUD/启停/批量）
@@ -890,6 +893,26 @@ src/
 - 事件分发到 Pinia `event` store，顶部通知角标实时更新；断线期间事件以后端轮询接口兜底补齐。
 
 ## Correctness Properties
+
+### 发现处理链路（finding → 事件/漏洞/告警）
+
+Worker 结果回传后 Master 的处理顺序：
+
+1. **幂等去重**：按 `result_id` 唯一索引，重复回传直接 ack 不处理。
+2. **落库 finding**：写入 findings（含 engine/severity/line_no/confidence/evidence_id/extra）。
+3. **降噪过滤**：按 `noise_rules` 在事件生成前过滤（白名单 IP 目标 / 忽略类型 / 聚合窗口 / 风暴抑制），命中则丢弃该条不再生成事件；规则变更只影响后续生成。
+4. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并）。
+5. **漏洞聚合**：漏洞类引擎（漏洞扫描/DNS）按 `org_id+asset_id+engine+签名` 聚合并入 vulnerabilities：首见创建（status=open），重复仅更新 `last_seen_at`；`vulnerabilities.closed_at` 记录关闭时间。
+6. **告警生成**：severity≥high 或命中告警类型（可用性宕机/端口暴露/篡改/情报预警等）生成 alerts（status=open，resolved_at 空），走通知路由推送（severity/event_type→渠道）。
+7. **WebSocket 广播**：新 event/alert 广播至同 org 连接；导航角标自增。
+
+event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端事件中心/告警中心分别展示，避免重复处置。
+
+**漏洞复测流转**：`POST /vulnerabilities/:id/retest` 置 `verifying` 并创建复测任务 → 复测结果回传：通过自动 `closed`（写 `closed_at`），失败回退 `open` 并追加复测记录（events 或 finding 的 extra 记 retest 轨迹）。`ignored` 经取消忽略恢复 `open`。
+
+**SOP 模板库**：内置按事件类型分组的应急响应 SOP 模板（WebShell/内容违规/篡改/可用性/情报预警等，含"隔离→溯源→加固→验证"步骤），事件确认时按 event_type 自动挂载到 `events.sop_attached`；org_admin 在系统设置维护自定义 SOP（属 `noise_rules` 之外的独立 `sop_templates` 配置，可存于规则库 JSON）。
+
+### 关键不变量
 
 1. **写操作权限不变量**：任何 write API 必经 RBAC 中间件，`viewer` 角色一律 403；该约束由中间件全局注册保障，controller 无法绕过。
 2. **租户隔离不变量**：所有 Repository 查询强制携带 `org_id`，查询构造器在缺省 `org_id` 时返回错误而非空结果。
@@ -1009,6 +1032,7 @@ src/
 | 引擎契约 | 各引擎 mock 输入 → finding 输出 |
 | AI 适配层 | AI 可用→ai 来源 / 超时或 429→regex 回退 / 熔断切换 |
 | MultiUA 评估器 | 三探针抓取比对、四维加权评分、端差异化宕机/单端命中敏感词、probe_failed 降权、结论分级 |
+| 发现处理链路 | 回传幂等去重、降噪过滤（白名单/忽略类型/聚合窗口/风暴抑制）、事件生成、漏洞聚合去重更新 last_seen_at、告警生成与通知路由、WS 广播 |
 | Worker 握手 | Bootstrap Token 一次性使用、长期凭证校验、凭证吊销、token 落库 hash 无明文 |
 | Bleve 索引 | 删除/级联清理同步删索引、index rebuild 全量重建对账 |
 | 审计日志 | IP/User-Agent 服务端捕获、筛选与分页 |

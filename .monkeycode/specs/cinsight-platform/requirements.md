@@ -87,6 +87,18 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 3. 引擎执行 SHALL 遵循策略模板的开关、并发数、超时与速率限制。
 4. 引擎产生的每项发现 SHALL 附带证据链并统一回传 Master。
 
+#### R2.1b 发现处理链路（finding → 事件/漏洞/告警）
+
+**User Story:** AS 平台，I want 引擎发现按统一规则分流到事件/漏洞/告警，SO THAT 三类台账职责清晰、不重复处置。
+
+**Acceptance Criteria:**
+1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。
+2. 降噪规则 SHALL 在**事件生成时**生效（白名单 IP 目标不生成事件、忽略指定类型不生成、聚合时间窗合并同类、风暴抑制限流），命中规则的事件 SHALL 直接丢弃不落库；规则变更仅影响之后的事件生成，不回溯清理已生成事件。
+3. WHEN finding 属于漏洞类引擎（漏洞扫描/DNS 解析类等），系统 SHALL 按 `org_id + asset_id + 引擎 + 特征签名` 聚合：首次命中生成 `vulnerabilities` 记录，重复命中仅更新 `last_seen_at` 并刷新严重级别。
+4. WHEN finding 严重级别为 `high/critical` 或命中告警类型（可用性宕机、端口暴露、页面篡改、情报预警等），系统 SHALL 生成 `alerts` 记录（`resolved_at` 为空），并按通知路由（R5.13-6）推送。
+5. event 与 alert 相互独立：event 全量记录所有发现，alert 仅记录需优先响应项；关闭事件不自动关闭告警，反之亦然，避免两类台账互相覆盖。
+6. 系统 SHALL 提供全局搜索接口 `GET /api/v1/search?q={keyword}`：跨 assets（URL/名称）、findings（标题/描述）、events（内容）经 Bleve 全文索引检索，按 org_id 隔离并分页返回分类结果。
+
 #### R2.2 漏洞扫描引擎
 
 1. WHEN 收到扫描任务，引擎 SHALL 执行 POC 漏洞检测、Fuzzing 测试与参数注入检测。
@@ -300,7 +312,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 系统 SHALL 支持事件类型筛选：漏洞/内容违规/暗链挂马/木马/Webshell/钓鱼/篡改/可用性异常/端口暴露/敏感信息泄漏/信誉异常/情报预警。
 3. 系统 SHALL 提供降噪规则配置完整 CRUD（`GET/POST /api/v1/noise-rules`、`PUT/DELETE /api/v1/noise-rules/:id`），规则类型包含白名单 IP/忽略特定类型/聚合时间窗/风暴抑制。
 4. 系统 SHALL 提供批量状态流转接口 `POST /api/v1/events/batch`（批量确认/关闭/归档）。
-5. 系统 SHALL 支持闭环处置流程：事件确认→工单派发→修复跟踪→复测验证→归档，并自动挂载应急响应 SOP。
+5. 系统 SHALL 支持闭环处置流程：事件确认→工单派发→修复跟踪→复测验证→归档，并自动挂载应急响应 SOP。SOP SHALL 来自内置模板库（按事件类型默认挂载对应处置步骤，如 WebShell 事件挂"隔离+溯源+加固"步骤），org_admin 可在系统设置维护自定义 SOP。
 
 #### R5.3b 独立告警中心
 
@@ -318,7 +330,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 系统 SHALL 提供漏洞证据接口 `GET /api/v1/vulnerabilities/{id}/evidence`，聚合漏洞关联的 Req/Resp/HTML/截图证据链。
 3. 系统 SHALL 提供证据链抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图取证）。
 4. 系统 SHALL 支持闭环处置（生成工单/申请复测/忽略），并提供批量接口 `POST /api/v1/vulnerabilities/batch-ticket`、`batch-retest`、`batch-ignore`。
-5. 系统 SHALL 提供漏洞行内快捷操作（生成工单/申请复测/忽略）与筛选持久化。
+5. 系统 SHALL 支持漏洞状态流转：申请复测 SHALL 将漏洞置为 `verifying` 并生成复测任务；复测通过 SHALL 自动置 `closed` 并记录 `closed_at`，复测失败 SHALL 回退 `open` 并追加复测记录；`ignored` 可取消忽略恢复 `open`。
+6. 系统 SHALL 提供漏洞行内快捷操作（生成工单/申请复测/忽略）与筛选持久化。
 
 #### R5.5 内容安全监测
 

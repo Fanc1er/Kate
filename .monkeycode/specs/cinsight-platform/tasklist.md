@@ -148,6 +148,8 @@ Updated: 2026-08-19
 
 ### 2.3 事件中心与漏洞管理
 - [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id）
+- [ ] 发现处理链路（回传幂等→落 findings→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
+- [ ] 降噪规则在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，规则变更不回溯）
 - [ ] 事件批量状态流转（POST /api/v1/events/batch）
 - [ ] 事件类型筛选（12 类）+ 降噪规则完整 CRUD（GET/POST /api/v1/noise-rules，PUT/DELETE /api/v1/noise-rules/:id）
 - [ ] 独立告警接口（GET /api/v1/alerts 列表 + GET /:id 详情 + PATCH /api/v1/alerts/:id 处置 + POST /api/v1/alerts/batch 批量处置）
@@ -155,7 +157,9 @@ Updated: 2026-08-19
 - [ ] 漏洞列表（GET /api/v1/vulnerabilities，等级/状态/引擎筛选）+ 漏洞详情接口（GET /api/v1/vulnerabilities/:id）+ 证据链抽屉接入
 - [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence）对接前端抽屉
 - [ ] 漏洞批量接口（batch-ticket 批量生成工单 / batch-retest 批量复测 / batch-ignore 批量忽略）
+- [ ] 漏洞复测流转（retest 置 verifying + 复测任务，通过自动 closed 写 closed_at，失败回退 open 追加复测记录，取消忽略恢复 open）
 - [ ] 工单接口（GET/POST /api/v1/tickets 列表/创建 + PUT /api/v1/tickets/:id 状态/派发 + GET /api/v1/tickets/:id 详情）+ 工单闭环（确认→派发→修复→复测→归档）+ SOP 挂载
+- [ ] SOP 模板库（内置按事件类型分组应急响应 SOP + 事件确认自动挂载 sop_attached + org_admin 自定义）
 - [ ] 独立告警中心前端页（列表/等级筛选/处置操作/静默 + 导航未读角标联动）
 - [ ] 漏洞管理前端页（等级/状态/引擎筛选 + 详情 + 证据链抽屉 + 批量生成工单/复测/忽略）
 - [ ] 工单前端页（列表/详情/状态流转/SOP 挂载/复测归档）
@@ -170,15 +174,18 @@ Updated: 2026-08-19
 - [ ] 安全情报中心页（情报列表 + 受影响资产数 + 订阅配置 GET/PUT /api/v1/intel-subscriptions）
 - [ ] 情报后端接口（GET /api/v1/intel 列表筛选分页 + GET /:id 详情含受影响资产）
 - [ ] 任务队列监控页（排队/处理中/完成 + Worker 分配 + 断点续扫状态）
+- [ ] 全局搜索入口（顶部导航搜索框 + 结果页分类展示资产/发现/事件，走 /api/v1/search）
 
 ### 2.5 重组件集成
 - [ ] Bleve 索引 + BatchIndexer（5s/50 条批量提交）
+- [ ] 全局搜索接口（GET /api/v1/search：跨 assets/findings/events 全文检索 + org 隔离 + 分页）
 - [ ] Bleve 删除同步（删除/级联清理时 batch 按 id 删索引 + index rebuild 全量重建命令）
 - [ ] BadgerDB 元数据缓存层（API 毫秒级响应）
 - [ ] 异步批量持久化 SQLite/Bleve 通道
 
 ### 2.6 阶段 2 单元测试【必执行】
 - [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
+- [ ] 发现处理链路单元测试（回传幂等 → 降噪过滤命中丢弃 → 事件生成 → 漏洞聚合首建/更新 last_seen_at → 告警生成按 severity 阈值与通知路由 → WS 广播）
 - [ ] AI 适配层单元测试（AI 可用→ai 来源 / AI 超时/429→regex 回退 / 熔断切换）
 - [ ] MultiUA 评估器单元测试（三探针抓取对比 / 四维加权评分 / 端差异化宕机 / 单端命中敏感词 / probe_failed 降权 / 结论分级）
 - [ ] 脱敏单元测试（身份证/手机号/邮箱/AccessKey 三时机脱敏）
