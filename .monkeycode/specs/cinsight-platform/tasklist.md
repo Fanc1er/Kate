@@ -54,6 +54,7 @@ Updated: 2026-08-19
 - [ ] 资产后端 API：URL 归一化 + BadgerDB MD5 防重
 - [ ] 资产后端 API：微信公众号资产完整 CRUD（GET/POST /api/v1/wechat-assets，PUT/DELETE /api/v1/wechat-assets/:id）
 - [ ] 资产批量操作 API：batch-scan（批量加入扫描）/ batch-delete / batch-group（批量改分组）/ batch-import（URL/CSV 批量导入 + 模板下载 + 逐行校验报告）
+- [ ] 资产导入模板下载（GET /api/v1/assets/import-template）+ 当前筛选结果 CSV 导出（GET /api/v1/assets/export）
 - [ ] 资产列表前端（虚拟滚动/模糊搜索/筛选 + 多选批量操作栏 + 空状态引导）
 - [ ] 资产画像抽屉前端（技术栈指纹/ICP/子域名/SSL 倒计时/端口快照）
 - [ ] 资产变更追踪前端（标题/技术栈/状态码/端口变动历史）
@@ -297,7 +298,7 @@ Updated: 2026-08-19
 ### 4.4 高可用与数据治理
 - [ ] RPO/RTO 指标（Litestream RPO ≤ 5s、RTO ≤ 30min、备份保留 30 天）
 - [ ] Master 只读副本水平扩展（查询路由副本 + 单写通道）
-- [ ] 数据保留与冷归档（事件/漏洞/告警 180 天热数据 + 审计日志 365 天）
+- [ ] 数据保留与冷归档（事件/漏洞/告警 180 天热数据 + 审计日志 365 天 + archived=true 只读查询路由 + 写操作拒绝）
 - [ ] 证据文件保留期清理与空间回收（expires_at + 孤儿文件扫描）
 - [ ] 备份恢复与演练脚本（backup.sh/restore.sh/drill.sh，验证数据完整性与可启动性）
 - [ ] 季度恢复演练 + 容量规划验证（10 万资产/100 Worker/1000 任务并发）

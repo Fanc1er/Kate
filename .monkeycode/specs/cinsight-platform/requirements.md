@@ -265,7 +265,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R4.7 数据治理与合规（企业级）
 
-1. 系统 SHALL 提供数据保留与归档：事件/漏洞/告警热数据 180 天后冷归档，审计日志保留 ≥ 365 天。
+1. 系统 SHALL 提供数据保留与归档：事件/漏洞/告警热数据 180 天后冷归档，审计日志保留 ≥ 365 天。归档后的历史数据 SHALL 保留只读查询能力（列表/详情可查，写操作不可执行），查询接口复用现有列表/详情端点并带 `archived=true` 参数路由到归档库。
 2. 证据文件 SHALL 按保留期（默认 365 天）定时清理：删除孤儿文件、回收磁盘空间，删除前 SHALL 校验无证据记录引用。
 3. 系统 SHALL 支持账户注销与个人信息删除/匿名化，满足 PIPL/GDPR 数据生命周期要求。
 4. 系统 SHALL 提供数据可携权导出（GDPR）：用户可导出本人全部个人数据（账户信息、操作记录、审计相关条目），格式 JSON/CSV 下载，默认保留 72 小时，导出动作 SHALL 写入审计日志。
@@ -288,8 +288,9 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 4. 系统 SHALL 在资产入库前执行 URL 归一化，并通过 BadgerDB MD5 防重。
 5. 系统 SHALL 提供微信公众号资产接口完整 CRUD（`GET/POST /api/v1/wechat-assets`、`GET/PUT/DELETE /api/v1/wechat-assets/:id`），字段包含公众号名、微信号、头像、粉丝数、简介、认证状态与文章数。
 6. 系统 SHALL 提供批量操作接口：`POST /api/v1/assets/batch-scan`（批量加入扫描）、`POST /api/v1/assets/batch-delete`（批量删除）、`POST /api/v1/assets/batch-group`（批量改分组）、`POST /api/v1/assets/batch-import`（URL 列表/CSV 批量导入，含模板下载与逐行校验报告）。
-7. 系统 SHALL 提供资产列表前端（虚拟滚动/模糊搜索/按重要程度/分组/状态筛选）、多选批量操作栏与资产画像/变更追踪抽屉展示。
-8. 系统 SHALL 在资产列表为空时展示空状态引导，并提供"立即添加/批量导入"主操作。
+7. 系统 SHALL 提供导入模板下载 `GET /api/v1/assets/import-template`（返回 URL/CSV 模板文件）与当前筛选结果 CSV 导出 `GET /api/v1/assets/export?filter[..]`（导出当前筛选条件下的资产字段，受 org_id 隔离约束）。
+8. 系统 SHALL 提供资产列表前端（虚拟滚动/模糊搜索/按重要程度/分组/状态筛选）、多选批量操作栏与资产画像/变更追踪抽屉展示。
+9. 系统 SHALL 在资产列表为空时展示空状态引导，并提供"立即添加/批量导入"主操作。
 
 #### R5.3 安全事件中心
 

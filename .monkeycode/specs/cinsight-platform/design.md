@@ -316,6 +316,8 @@ type Finding struct {
 | 资产 | POST | /api/v1/assets/batch-delete | org_admin | 批量删除资产 |
 | 资产 | POST | /api/v1/assets/batch-group | org_admin/engineer | 批量改分组（ids + group_name） |
 | 资产 | POST | /api/v1/assets/batch-import | org_admin/engineer | URL 列表/CSV 批量导入 |
+| 资产 | GET | /api/v1/assets/import-template | 全部角色 | 导入模板下载（URL/CSV 模板文件） |
+| 资产 | GET | /api/v1/assets/export | 全部角色 | 当前筛选结果 CSV 导出（org_id 隔离） |
 | 资产 | GET/POST | /api/v1/wechat-assets | org_admin/engineer | 微信公众号资产 |
 | 资产 | PUT/DELETE | /api/v1/wechat-assets/:id | org_admin/engineer | 公众号资产编辑/删除 |
 | 策略 | GET/POST | /api/v1/policies | org_admin | 策略模板列表/创建 |
@@ -1034,7 +1036,7 @@ src/
 
 - **RPO/RTO 指标**：Litestream 备份 RPO ≤ 5s；故障恢复 RTO ≤ 30min；备份保留 30 天；每季度执行恢复演练并出具报告。
 - **Master 读写分离（水平扩展）**：Master 单写 SQLite，只读副本通过 Litestream 流式复制，查询路由到副本；写入收敛单协程通道，容量规划单 Master 支撑 10 万资产 / 100 Worker / 峰值 1000 任务并发。
-- **数据保留与归档**：事件/漏洞/告警热数据 180 天后冷归档（gzip + 独立卷）；审计日志保留 ≥ 365 天；提供清理任务与归档策略配置。
+- **数据保留与归档**：事件/漏洞/告警热数据 180 天后冷归档（gzip + 独立卷）；审计日志保留 ≥ 365 天；提供清理任务与归档策略配置。归档数据保留只读查询能力：列表/详情端点接受 `archived=true` 参数路由到归档库（SQLite 附加库或独立卷只读打开），仅允许查询，写操作返回 403；归档库按 org_id 同样隔离。
 - **证据文件清理**：按 `evidence_files.expires_at`（默认 365 天）定时清理，先校验无证据记录引用，再删除文件并回收空间；孤儿文件扫描（无 evidence_files 行引用的落盘文件）一并回收。
 - **容量与压测验证**：k6 压测脚本（登录并发/资产列表/事件写入/证据读取），验证 SLO 指标后放行发布。
 
