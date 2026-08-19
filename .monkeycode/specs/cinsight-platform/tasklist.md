@@ -73,6 +73,7 @@ Updated: 2026-08-19
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
 - [ ] Worker 注册握手（POST /api/v1/worker/register：Bootstrap Token 一次性换长期凭证 client_id+client_secret，后续心跳/拉取/回传用长期凭证，支持吊销/重发）
 - [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定）
+- [ ] 可用性引擎接入 MultiUAAssessor（端间状态码/延迟不一致 + 端差异化宕机标记）
 - [ ] Worker Outbox 本地缓存与断网回传
 - [ ] 结果回传幂等键去重（result_id 唯一索引，重复回传不重复入库）
 - [ ] 任务失败自动重试上限（3 次，指数退避，超限置 failed + 告警事件）
@@ -129,6 +130,8 @@ Updated: 2026-08-19
 ### 2.2 引擎实现
 - [ ] 漏洞扫描引擎（POC + Fuzzing + 参数注入，context 30s 超时 + ants 并发）
 - [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息识别 + 篡改基线）
+- [ ] 多端 UA 综合评估器（MultiUAAssessor：PC 随机 UA + 移动 UA + 无头浏览器移动视口模拟三探针 + 可用性/内容/篡改/条件性四维加权评分 + 结论分级 + probe_failed 降权 + 各端快照证据链）
+- [ ] 内容安全引擎接入 MultiUAAssessor（端级敏感词/敏感信息命中计入评分）
 - [ ] AI 内容分类适配层（AIAdapter：endpoint/model/key 环境注入 + 超时/429 失败回退正则 + 结果缓存 + gobreaker 熔断）
 - [ ] 暗链挂马引擎（隐藏外链/木马特征/双 UA 对比）
 - [ ] Webshell 检测引擎（路径枚举 + 特征码 + 流量特征）
@@ -153,10 +156,10 @@ Updated: 2026-08-19
 - [ ] 告警风暴抑制（单资产每小时 5 条上限）
 
 ### 2.4 引擎相关前端模块
-- [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图）
+- [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位）
 - [ ] 暗链木马页（暗链列表/木马列表/双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
 - [ ] Webshell 与钓鱼页
-- [ ] 可用性网络页（12h 点阵图 + 24h 时序折线 + DNS/端口记录）
+- [ ] 可用性网络页（12h 点阵图 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示）
 - [ ] 时序查询后端接口（GET /api/v1/assets/:id/availability 点阵图 + /response-time 折线，读 availability_points 按 org_id 隔离）
 - [ ] 安全情报中心页（情报列表 + 受影响资产数 + 订阅配置 GET/PUT /api/v1/intel-subscriptions）
 - [ ] 情报后端接口（GET /api/v1/intel 列表筛选分页 + GET /:id 详情含受影响资产）
@@ -171,6 +174,7 @@ Updated: 2026-08-19
 ### 2.6 阶段 2 单元测试【必执行】
 - [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
 - [ ] AI 适配层单元测试（AI 可用→ai 来源 / AI 超时/429→regex 回退 / 熔断切换）
+- [ ] MultiUA 评估器单元测试（三探针抓取对比 / 四维加权评分 / 端差异化宕机 / 单端命中敏感词 / probe_failed 降权 / 结论分级）
 - [ ] 脱敏单元测试（身份证/手机号/邮箱/AccessKey 三时机脱敏）
 
 ### 阶段 2 验收

@@ -153,6 +153,7 @@ sequenceDiagram
 | localStore | BadgerDB 本地状态（已爬取 URL/Outbox） | `Set`, `Get`, `Scan` |
 | HeadlessBrowser | 无头浏览器截图取证组件 | `Screenshot(ctx, url) ([]byte, error)` |
 | AIAdapter | AI 内容分类服务适配层（endpoint/model/key 可注入，失败回退正则） | `Classify(ctx, text) (Category, Confidence, error)` |
+| MultiUAAssessor | 多端 UA 综合评估器（PC 随机 UA + 移动 UA + 无头浏览器移动视口模拟三探针，四维加权评分出结论） | `Assess(ctx, target) (*MultiUAReport, error)` |
 | WorkerAuth | Bootstrap Token 注册握手，换取长期凭证 | `Register(token) (clientID, clientSecret)`, `Heartbeat()` |
 
 ### Worker 注册握手与凭证生命周期
@@ -191,6 +192,44 @@ sequenceDiagram
 - **失败回退**：AI 服务不可用/超时（>5s）/429 限流时自动回退到内置敏感词正则引擎判定，判定结果标记 `source: regex`；AI 正常时标记 `source: ai`，双结果可并展示。
 - 结果缓存：同一文本片段结果缓存（BadgerDB，TTL 24h），降低 AI 调用量；调用并发受池约束，失败熔断（gobreaker，连续 5 次熔断 30s 后自动切正则）。
 
+### 多端 UA 综合评估器（MultiUAAssessor）
+
+- **定位**：Worker 侧共享组件，供内容安全引擎与可用性监测引擎复用。同一目标以多端视角抓取比对，输出四维加权评分与结论，识别单端隐藏敏感内容、端差异化宕机/拦截、条件性篡改与 UA 条件加载暗链。
+- **三探针组**（并发受限，默认 2）：
+  - PC 探针：随机 PC 端 UA（Chrome/Edge/Firefox 桌面 UA 池随机），视口 1440x900，普通 HTTP 抓取。
+  - 移动 UA 探针：随机移动端 UA（iOS/Android Safari/Chrome UA 池随机），移动视口，普通 HTTP 抓取。
+  - 移动模拟探针：无头浏览器（chromedp）以移动 UA + 手机宽度视口（默认 375x812，configurable `CINSIGHT_MULTIUA_VIEWPORT`）+ touch 模拟执行 JS 渲染抓取。
+  - 每探针独立记录：status_code、latency_ms、title、图片 Hash 集、正文 DOM 结构指纹、外链集合、敏感词命中列表、页面大小。
+- **四维加权评分**（各维度 0-100，权重默认：可用性一致性 30% / 内容命中 30% / 篡改偏差 25% / 条件性内容 15%，可经策略覆盖）：
+
+  | 维度 | 判定依据 | 权重 |
+  |------|---------|------|
+  | 可用性一致性 | 各端状态码差异（如 PC 200 而移动端 403/5xx/302 拦截）、延迟偏差、任一端连续失败判定端差异化宕机 | 30% |
+  | 内容命中 | 任一探针命中敏感词/敏感信息/AI 判定（来源 `ai` 或 `regex`），按命中数累加 | 30% |
+  | 篡改偏差 | 与基线（标题/图片 Hash/正文 DOM）对比，端间偏差超阈 | 25% |
+  | 条件性内容 | 某端独有外链/脚本/iframe（UA 条件加载，暗链/挂马常见） | 15% |
+
+- **综合分与结论分级**：`total = Σ(维度分 × 权重)`，0-100；结论：0-30 正常 / 30-60 可疑（建议复核）/ 60-85 高危 / 85-100 严重。端级明细记录"哪一端异常、异常类型、对应维度得分"。
+- **输出与回传**：报告结构写入 finding `Extra["multi_ua"]`：
+
+  ```json
+  {
+    "probes": [
+      {"group":"pc","status":200,"latency_ms":120,"hit_sensitive":false,"title":"..."},
+      {"group":"mobile_ua","status":200,"latency_ms":180,"hit_sensitive":true,"sensitive_hits":["x"]},
+      {"group":"mobile_viewport","status":403,"hit_sensitive":false,"probe_failed":false}
+    ],
+    "scores": {"availability":100,"content":60,"tamper":20,"conditional":40},
+    "total_score": 62,
+    "conclusion": "high",
+    "abnormal_ends": ["mobile_viewport"]
+  }
+  ```
+
+  任一探针失败/超时（>30s）标记 `probe_failed: true`，不计入权重，其余探针正常评估。
+- **证据链**：各探针 HTML 快照与移动模拟截图随证据链 gzip 落盘 + SHA-256 入库，前端多端对比标签页展示并可下载。
+- **资源降级**：策略开关可仅启用 PC + 移动 UA 两探针（跳过无头浏览器模拟），供 Worker 低资源环境使用；评估器受 ants 池并发与策略超时约束。
+
 ### 10 大引擎接口契约
 
 ```go
@@ -215,11 +254,11 @@ type Finding struct {
 | 引擎 | Name | 依赖 |
 |------|------|------|
 | 漏洞扫描 | `vuln_scan` | POC 库、ants 协程池、gobreaker |
-| 内容安全 | `content_security` | AI 文本分类 API + 敏感词库正则双判定 |
+| 内容安全 | `content_security` | AI 文本分类 API + 敏感词库正则双判定 + MultiUAAssessor 多端评估 |
 | 暗链挂马 | `hidden_link` | 特征库、双 UA 抓取、沙箱行为分析 |
 | Webshell | `webshell` | 路径字典、特征码库、流量特征 |
 | 钓鱼 | `phishing` | 钓鱼模板库、Levenshtein、证书解析 |
-| 可用性 | `availability` | HTTP/DNS/PING 探针、连续失败计数 |
+| 可用性 | `availability` | HTTP/DNS/PING 探针、连续失败计数、MultiUAAssessor 多端一致性 |
 | 端口服务 | `port_service` | TCP SYN 扫描（非特权 Worker 自动降级 TCP Connect 全连接，结果标记 `scan_mode: connect`）、Banner 抓取 |
 | DNS 安全 | `dns_security` | 多节点解析对比、字典爆破 |
 | 信誉监测 | `reputation` | 威胁情报库查询 |
@@ -491,7 +530,7 @@ erDiagram
         int id PK
         int org_id FK
         string name
-        string engine_switches "JSON"
+        string engine_switches "JSON（含 multi_ua.enabled / ua_sets / weights 等评估参数）"
         int concurrency
         int timeout "任务级超时上限(分钟)，默认 60"
         int rate_limit
@@ -835,6 +874,9 @@ src/
 | `CINSIGHT_WORKER_HEARTBEAT_MS` | 5000 | Worker 心跳间隔（离线判定 >5min） |
 | `CINSIGHT_CHANNEL_KEY` | 空 | 通知渠道密钥加密主密钥（AES-256-GCM，32 字节，缺失则渠道密钥类字段禁用） |
 | `CINSIGHT_HAR_MAX_BODY` | 1MB | HAR 文件响应体截断上限 |
+| `CINSIGHT_MULTIUA_ENABLED` | true | 多端 UA 综合评估器开关（Worker 端） |
+| `CINSIGHT_MULTIUA_VIEWPORT` | 375x812 | 移动视口模拟尺寸（宽x高） |
+| `CINSIGHT_MULTIUA_CONCURRENCY` | 2 | 多端评估器并发探针上限 |
 | `CINSIGHT_SWAGGER_ENABLED` | false | Swagger 文档开关（生产默认关闭，true 时暴露 /swagger/*） |
 | `CINSIGHT_TIMEZONE` | Asia/Shanghai | 定时任务/定时报告 Cron 执行时区 |
 
@@ -866,6 +908,7 @@ src/
 | 任务调度 | 状态机流转、超时对账、断点续扫 |
 | 引擎契约 | 各引擎 mock 输入 → finding 输出 |
 | AI 适配层 | AI 可用→ai 来源 / 超时或 429→regex 回退 / 熔断切换 |
+| MultiUA 评估器 | 三探针抓取比对、四维加权评分、端差异化宕机/单端命中敏感词、probe_failed 降权、结论分级 |
 | Worker 握手 | Bootstrap Token 一次性使用、长期凭证校验、凭证吊销、token 落库 hash 无明文 |
 | Bleve 索引 | 删除/级联清理同步删索引、index rebuild 全量重建对账 |
 | 审计日志 | IP/User-Agent 服务端捕获、筛选与分页 |
