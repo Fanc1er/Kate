@@ -1095,7 +1095,7 @@ src/
 │   ├── plan/            # Cron 定时计划（CRUD/启停/批量）
 │   ├── report/          # 报告中心（模板/生成/导出/定时报告）
 │   ├── team/            # 团队管理（成员列表/邀请/角色）
-│   ├── settings/        # 系统设置（Worker/通知渠道/通知路由/规则库/API Token/Webhook/审计）
+│   ├── settings/        # 系统设置（Worker/通知渠道/通知路由/规则库/扫描白名单/API Token/Webhook/审计）
 │   ├── platform/        # 平台管理（组织管理/平台统计/Worker 总览，仅 super_admin）
 │   └── error/           # 异常兜底页（404/403/500）
 ├── components/          # 复用组件（证据抽屉/图表/脱敏显示）

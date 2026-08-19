@@ -230,7 +230,7 @@ Updated: 2026-08-19
 - [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent + action 统一 resource.verb 枚举见 design audit_logs 段 + 覆盖范围见 design audit_logs 段，批量逐条记录，读操作与引擎回传不审计）
 - [ ] API Token 管理（GET/POST 列表/创建，scopes 取 RBAC 权限码子集勾选 + 有效期 + 撤销 DELETE :id + 停用/恢复 PATCH :id/status，校验时接口所需权限码须为 token scopes 子集，无 scope 返回 2101 SCOPE_DENIED，scopes 不可改需撤销重建）
 - [ ] 团队管理前端页（成员列表/邀请/批量移除/禁用/改角色）
-- [ ] 系统设置前端页（Worker 节点管理/通知渠道 CRUD+测试/通知路由规则/规则库管理/API Token/Webhook/审计日志筛选）
+- [ ] 系统设置前端页（Worker 节点管理/通知渠道 CRUD+测试/通知路由规则/规则库管理/扫描白名单/API Token/Webhook/审计日志筛选）
 
 ### 3.2 平台管理
 - [ ] 组织列表/创建/详情/编辑/禁用/启用/删除（GET/POST /api/v1/orgs + GET/PUT/DELETE /api/v1/orgs/:id + POST :id/disable + :id/enable，DELETE 需输入组织名二次确认 + 级联清理；enable 恢复 cron 与写操作）— 仅 super_admin
