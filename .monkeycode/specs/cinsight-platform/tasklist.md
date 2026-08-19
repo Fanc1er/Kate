@@ -16,7 +16,7 @@ Updated: 2026-08-19
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
 - [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
 - [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
-- [ ] 全量业务表结构迁移（assets/vulnerabilities/alerts/findings/events/tickets/evidence/audit_logs/api_tokens/notify_channels/noise_rules/worker_nodes/scan_plans/availability_points/trend_points）
+- [ ] 全量业务表结构迁移（assets/vulnerabilities/alerts/findings/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points）
 
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
@@ -68,7 +68,7 @@ Updated: 2026-08-19
 - [ ] BadgerDB-SQLite 缓存一致性（写入先 Badger 后异步 SQLite + 每小时对账）
 - [ ] Master 任务创建/下发/拉取接口（pending→processing→completed）
 - [ ] 任务详情接口（GET /api/v1/tasks/:id，状态/进度/执行日志/结果统计/Worker 分配）
-- [ ] 任务停止/删除/批量停止/失败重跑（POST :id/stop、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
+- [ ] 任务停止/删除/批量停止/失败重跑（POST :id/stop 置 failed 标记 stopped_by_user + Worker stop_check 感知中止回传 cancelled、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
 - [ ] Worker 注册握手（POST /api/v1/worker/register：Bootstrap Token 一次性换长期凭证 client_id+client_secret，后续心跳/拉取/回传用长期凭证，支持吊销/重发）
@@ -97,6 +97,7 @@ Updated: 2026-08-19
 - [ ] 前端全屏证据抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图标签页 + 下载按钮；HTML 经 DOMPurify 白名单净化后渲染，禁止直接 v-html 注入防存储型 XSS）
 
 ### 1.7 仪表盘与报告
+- [ ] 仪表盘后端接口（GET /api/v1/dashboard/stats 统计卡片 + trends 7 天趋势 + top-risks 风险 Top10 + engine-coverage 引擎覆盖率）
 - [ ] 统计卡片 + 7 天趋势 + 风险 Top10
 - [ ] 引擎覆盖率雷达图（10 大引擎检测覆盖率）
 - [ ] WebSocket 实时事件滚动 + 指数退避重连 + 心跳保活（每 30s ping / 服务端 ReadDeadline 60s / 连续 3 次无 pong 触发重连，/api/v1/ws/events 订阅协议）
@@ -109,7 +110,7 @@ Updated: 2026-08-19
 - [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作，表驱动）
 - [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/refresh token 换发/jti 黑名单/组织选择/登录锁定/禁用用户与禁用组织登录拦截）
 - [ ] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
-- [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫/任务级超时上限中止）
+- [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫/任务级超时上限中止/stop 停止信号与 Worker cancelled 回传）
 
 ### 阶段 1 验收
 - [ ] go vet ./... && go build . 通过【必执行】
@@ -140,15 +141,15 @@ Updated: 2026-08-19
 - [ ] 安全情报引擎（CVE/CNVD/CNNVD 订阅 + 资产影响匹配）
 
 ### 2.3 事件中心与漏洞管理
-- [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）
+- [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id）
 - [ ] 事件批量状态流转（POST /api/v1/events/batch）
 - [ ] 事件类型筛选（12 类）+ 降噪规则完整 CRUD（GET/POST /api/v1/noise-rules，PUT/DELETE /api/v1/noise-rules/:id）
-- [ ] 独立告警接口（GET /api/v1/alerts 列表 + PATCH /api/v1/alerts/:id 处置 + POST /api/v1/alerts/batch 批量处置）
+- [ ] 独立告警接口（GET /api/v1/alerts 列表 + GET /:id 详情 + PATCH /api/v1/alerts/:id 处置 + POST /api/v1/alerts/batch 批量处置）
 - [ ] 漏洞表与告警表迁移（vulnerabilities/alerts 独立表，见 design ER 图）
-- [ ] 漏洞列表（GET /api/v1/vulnerabilities，等级/状态/引擎筛选）+ 证据链抽屉接入
+- [ ] 漏洞列表（GET /api/v1/vulnerabilities，等级/状态/引擎筛选）+ 漏洞详情接口（GET /api/v1/vulnerabilities/:id）+ 证据链抽屉接入
 - [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence）对接前端抽屉
 - [ ] 漏洞批量接口（batch-ticket 批量生成工单 / batch-retest 批量复测 / batch-ignore 批量忽略）
-- [ ] 工单闭环（确认→派发→修复→复测→归档）+ SOP 挂载 + 工单详情接口（GET /api/v1/tickets/:id）
+- [ ] 工单接口（GET/POST /api/v1/tickets 列表/创建 + PUT /api/v1/tickets/:id 状态/派发 + GET /api/v1/tickets/:id 详情）+ 工单闭环（确认→派发→修复→复测→归档）+ SOP 挂载
 - [ ] 告警风暴抑制（单资产每小时 5 条上限）
 
 ### 2.4 引擎相关前端模块
@@ -156,6 +157,7 @@ Updated: 2026-08-19
 - [ ] 暗链木马页（暗链列表/木马列表/双 UA 对比）
 - [ ] Webshell 与钓鱼页
 - [ ] 可用性网络页（12h 点阵图 + 24h 时序折线 + DNS/端口记录）
+- [ ] 时序查询后端接口（GET /api/v1/assets/:id/availability 点阵图 + /response-time 折线，读 availability_points 按 org_id 隔离）
 - [ ] 安全情报中心页（情报列表 + 受影响资产数 + 订阅配置 GET/PUT /api/v1/intel-subscriptions）
 - [ ] 任务队列监控页（排队/处理中/完成 + Worker 分配 + 断点续扫状态）
 
@@ -186,7 +188,7 @@ Updated: 2026-08-19
 - [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 移除离线节点 DELETE /api/v1/worker/nodes/:id）
 - [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP 多渠道 + 按 id 测试 POST :id/test）
 - [ ] 通知渠道密钥加密（AES-256-GCM 主密钥 CINSIGHT_CHANNEL_KEY + 接口掩码脱敏 + 编辑留空保持原值）
-- [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4290 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
+- [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4291 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
 - [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
 - [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent）
@@ -251,7 +253,7 @@ Updated: 2026-08-19
 ### 阶段 3 验收
 - [ ] 全部 15 个功能模块上线【必执行】
 - [ ] 平台管理/团队管理权限隔离正确【必执行】
-- [ ] 组织配额单元测试（资产/成员/Worker 超限返回 4290 + 批量逐条 failed + 到期组织写操作拒绝）
+- [ ] 组织配额单元测试（资产超 max_assets → 4290 / 成员超 max_members → 4292 / Worker 超 max_workers → 4291 + 批量逐条 failed + 到期组织写操作拒绝）
 - [ ] 通知渠道密钥加密单元测试（AES-256-GCM 加解密 + 返回掩码脱敏 + 留空保持原值）
 - [ ] 审计日志筛选单元测试（operator/action/resource_type/时间范围过滤 + 分页）
 - [ ] 集成测试：Master + 单 Worker 全链路（任务下发→引擎执行→结果回传→证据入库→前端展示）【必执行】

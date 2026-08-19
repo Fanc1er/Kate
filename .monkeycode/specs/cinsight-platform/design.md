@@ -259,10 +259,16 @@ type Finding struct {
 | 组织 | POST | /api/v1/orgs/:id/enable | super_admin | 启用组织（恢复 cron 计划与写操作） |
 | 平台 | GET | /api/v1/platform/stats | super_admin | 平台统计 |
 | 平台 | GET | /api/v1/platform/workers | super_admin | 平台 Worker 总览 |
+| 仪表盘 | GET | /api/v1/dashboard/stats | 全部角色 | 统计卡片（资产总数/可用率/高危漏洞/待处理事件） |
+| 仪表盘 | GET | /api/v1/dashboard/trends | 全部角色 | 7 天趋势（漏洞发现/事件趋势） |
+| 仪表盘 | GET | /api/v1/dashboard/top-risks | 全部角色 | 资产风险 Top10 排行 |
+| 仪表盘 | GET | /api/v1/dashboard/engine-coverage | 全部角色 | 10 大引擎检测覆盖率雷达图数据 |
 | 资产 | GET/POST | /api/v1/assets | org_admin/engineer | 资产列表/创建 |
 | 资产 | PUT/DELETE | /api/v1/assets/:id | org_admin/engineer | 资产编辑/删除 |
 | 资产 | GET | /api/v1/assets/:id | 全部角色 | 资产详情 |
 | 资产 | GET | /api/v1/assets/:id/history | 全部角色 | 资产变更追踪 |
+| 资产 | GET | /api/v1/assets/:id/availability | 全部角色 | 可用性点阵图（engine=http/dns/ping + hours 参数） |
+| 资产 | GET | /api/v1/assets/:id/response-time | 全部角色 | 24h 响应时序折线 |
 | 资产 | GET | /api/v1/assets/:id/profile | 全部角色 | 资产画像（指纹/ICP/SSL/端口） |
 | 资产 | POST | /api/v1/assets/batch-scan | org_admin/engineer | 批量资产加入扫描（ids + policy_id） |
 | 资产 | POST | /api/v1/assets/batch-delete | org_admin | 批量删除资产 |
@@ -288,14 +294,17 @@ type Finding struct {
 | 任务 | GET | /api/v1/tasks/:id/progress | 全部角色 | 断点续扫状态 |
 | 任务 | GET | /api/v1/tasks/queue | 全部角色 | 队列监控 |
 | 事件 | GET | /api/v1/events | 全部角色 | 事件列表（筛选/分页） |
+| 事件 | GET | /api/v1/events/:id | 全部角色 | 事件详情（关联证据/工单/时间线） |
 | 事件 | POST | /api/v1/events/:id/status | org_admin/engineer | 事件状态流转 |
 | 事件 | POST | /api/v1/events/batch | org_admin/engineer | 批量状态流转（确认/关闭/归档） |
 | 事件 | GET/POST | /api/v1/noise-rules | org_admin | 降噪规则 |
 | 事件 | PUT/DELETE | /api/v1/noise-rules/:id | org_admin | 降噪规则编辑/删除 |
 | 告警 | GET | /api/v1/alerts | 全部角色 | 告警列表（筛选/分页） |
+| 告警 | GET | /api/v1/alerts/:id | 全部角色 | 告警详情 |
 | 告警 | PATCH | /api/v1/alerts/:id | org_admin/engineer | 告警处置（确认/关闭/静默） |
 | 告警 | POST | /api/v1/alerts/batch | org_admin/engineer | 批量告警处置 |
 | 漏洞 | GET | /api/v1/vulnerabilities | 全部角色 | 漏洞列表（等级/状态/引擎筛选） |
+| 漏洞 | GET | /api/v1/vulnerabilities/:id | 全部角色 | 漏洞详情 |
 | 漏洞 | GET | /api/v1/vulnerabilities/:id/evidence | 全部角色 | 漏洞证据链（证据抽屉数据） |
 | 漏洞 | POST | /api/v1/vulnerabilities/:id/ticket | org_admin/engineer | 生成工单 |
 | 漏洞 | POST | /api/v1/vulnerabilities/:id/retest | org_admin/engineer | 申请复测 |
@@ -490,6 +499,7 @@ erDiagram
         string cron_expr
         int progress
         string outbox_state
+        bool stopped_by_user "stop 置 failed 标记"
     }
     findings {
         int id PK
@@ -579,6 +589,16 @@ erDiagram
 **降噪规则表（noise_rules）**：`id, org_id, type(whitelist_ip/ignore_type/agg_window/storm_limit), config(JSON), enabled`。
 
 **扫描授权白名单表（scan_whitelists）**：`id, org_id, kind(domain/ip/cidr), value, remark, enabled`，`unique(org_id, kind, value)`。Worker 以规则 Hash 周期同步白名单，发起请求前校验目标命中白名单且非内网段，未命中直接拒绝并计数。
+
+**定时计划表（scan_plans）**：`id, org_id, name, policy_id FK, asset_group_name, cron_expr, timezone, status(enabled/paused), last_run_at`。Cron 按 `timezone`（默认 `CINSIGHT_TIMEZONE`）计算执行时间，暂停/启用经 `PATCH /:id/status` 切换。
+
+**情报订阅表（intel_subscriptions）**：`id, org_id, source(cve/cnvd/cnnvd), enabled, last_sync_at`，`unique(org_id, source)`。
+
+**报告模板表（report_templates）**：`id, org_id, name, sections(JSON，执行摘要/漏洞详情/内容安全/可用性统计/整改建议)，updated_at`。
+
+**报告表（reports）**：`id, org_id, name, template_id FK, asset_ids(JSON), period(JSON), format(pdf/excel), status(pending/generating/completed/failed), file_path, created_at`。生成异步执行，进度经 `GET /api/v1/reports/:id` 轮询。
+
+**Webhook 配置表（webhooks）**：`id, org_id, name, url, secret_hash, events(JSON 订阅事件列表), enabled, last_status(success/failed), last_error, retry_count`。推送经 HMAC-SHA256 签名（`X-Webhook-Signature`），失败重试 3 次后 `last_status=failed` 落库标记。
 
 **Worker 节点表（worker_nodes）**：`id, org_id, name, ip, version, status, heartbeat_at, load, boot_token_hash, client_id, client_secret_hash`。token/secret 仅存 hash（boot_token_hash=SHA-256，client_secret_hash=bcrypt），不落明文。
 
@@ -677,6 +697,7 @@ src/
 │   ├── event.ts         # 事件/工单/降噪
 │   ├── finding.ts       # 漏洞/证据
 │   ├── report.ts        # 报告
+│   ├── dashboard.ts     # 仪表盘（stats/trends/top-risks/engine-coverage）
 │   ├── admin.ts         # 团队/设置/平台/Token/Webhook
 │   └── ws.ts            # WebSocket 封装（订阅/重连）
 ├── stores/              # Pinia
@@ -734,7 +755,7 @@ src/
 1. **写操作权限不变量**：任何 write API 必经 RBAC 中间件，`viewer` 角色一律 403；该约束由中间件全局注册保障，controller 无法绕过。
 2. **租户隔离不变量**：所有 Repository 查询强制携带 `org_id`，查询构造器在缺省 `org_id` 时返回错误而非空结果。
 3. **证据完整性**：证据文件 gzip 落盘时计算 SHA-256 并入库；读取展示前强制复算校验，不一致返回 `EVIDENCE_TAMPERED` 错误，前端标红。
-4. **任务状态机**：`pending → processing → completed/failed`；Master 启动将超时 30min 的 processing 重置为 pending；Worker 断点续扫保证不重复执行已爬取 URL。任务级超时（`scan_policies.timeout`，默认 60min）由 TaskScheduler 对账：超时未完成中止并置 `failed`，Worker 侧执行超时同样终止并在结果标记 `task_timeout`。
+4. **任务状态机**：`pending → processing → completed/failed`；`POST /api/v1/tasks/:id/stop` 将任务置 `failed`（标记 `stopped_by_user=true`）并向执行中的 Worker 下发停止信号：Worker 在结果轮询/心跳间隙携带 `stop_check` 查询，发现任务已停止即中止当前引擎并回传 `cancelled` 状态，不再继续拉取；Master 启动将超时 30min 的 processing 重置为 pending；Worker 断点续扫保证不重复执行已爬取 URL。任务级超时（`scan_policies.timeout`，默认 60min）由 TaskScheduler 对账：超时未完成中止并置 `failed`，Worker 侧执行超时同样终止并在结果标记 `task_timeout`。
 5. **告警风暴抑制**：单资产每小时通知上限 5 条，超出静默入库并追加高频提示标记。
 6. **熔断保护**：gobreaker 连续失败 5 次熔断目标；扫描授权违规 3 次自动熔断 Worker。
 7. **审计不可变**：audit_logs 表仅允许 insert/select，禁止 update/delete。

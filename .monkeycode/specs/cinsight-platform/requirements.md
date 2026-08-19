@@ -264,6 +264,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 展示统计卡片（资产总数/可用率/高危漏洞/待处理事件）。
 2. 系统 SHALL 展示 7 天趋势图（漏洞发现/事件趋势）、资产风险 Top10 排行、实时事件 WebSocket 滚动。
 3. 系统 SHALL 展示引擎覆盖率雷达图（10 大引擎检测覆盖率）。
+4. 系统 SHALL 提供仪表盘聚合后端接口 `GET /api/v1/dashboard/stats`（统计卡片）与 `GET /api/v1/dashboard/trends`（7 天趋势）、`GET /api/v1/dashboard/top-risks`（风险 Top10）、`GET /api/v1/dashboard/engine-coverage`（引擎覆盖率），各卡片与图表独立拉取、互不阻塞。
 
 #### R5.2 资产管理
 
@@ -325,6 +326,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供 12 小时可用性点阵图（绿/红竖线，支持 HTTP/DNS/PING 三维度切换）。
 2. 系统 SHALL 提供 24 小时响应时序折线图与 DNS 劫持/污染记录。
 3. 系统 SHALL 提供端口服务监测（开放端口列表/服务指纹/新增端口告警/高危服务暴露）。
+4. 系统 SHALL 提供时序查询接口 `GET /api/v1/assets/:id/availability?engine=http&hours=12`（点阵图）与 `GET /api/v1/assets/:id/response-time?hours=24`（响应折线），数据来自时序降级表（availability_points），按 org_id 隔离。
 
 #### R5.9 安全情报中心
 
