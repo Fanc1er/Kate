@@ -145,7 +145,7 @@ Updated: 2026-08-19
 - [ ] 多端 UA 综合评估器（MultiUAAssessor：PC 随机 UA + 标准移动 UA + 微信内置浏览器 UA + 无头浏览器移动视口模拟四探针 + 基础/特征/场景三级加权评分 + SimHash DOM 相似度阈值 + SPA 空壳识别容错 + 结论分级与处置建议 + probe_failed 降权 + 各端快照证据链）
 - [ ] 内容安全引擎接入 MultiUAAssessor（端级敏感词/敏感信息命中计入评分）
 - [ ] AI 内容分类适配层（AIAdapter：endpoint/model/key 环境注入 + 超时/429 失败回退正则 + 结果缓存 + gobreaker 熔断）
-- [ ] 暗链挂马引擎（隐藏外链/木马特征/双 UA 对比）
+- [ ] 暗链挂马引擎（检测器子单元：关键字整词匹配 + HTML 双通道[正则 URL 打分/DOM 结构 script/frame/link/form] + JS 高危函数与混淆手法/信息熵 + CSS 隐藏手法与危险链接 + 隐藏手法专项[零宽/同色/出屏/实体编码] + 自定义规则逐条匹配 + 无头浏览器动态检测[运行时样式判隐藏/动态链接打分，复用 R3.2b 组件] + 双 UA 对比）
 - [ ] Webshell 检测引擎（路径枚举 + 特征码 + 流量特征）
 - [ ] 钓鱼检测引擎（模板比对 + Levenshtein + 证书异常）
 - [ ] 端口服务监测引擎（TCP SYN 扫描，非特权 Worker 降级 TCP Connect 全连接并标记 scan_mode:connect + Banner 指纹 + 高危暴露告警）
@@ -180,7 +180,7 @@ Updated: 2026-08-19
 
 ### 2.4 引擎相关前端模块
 - [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示）
-- [ ] 暗链木马页（暗链列表/木马列表/双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
+- [ ] 暗链木马页（暗链列表/木马列表含检测维度来源标注 + 双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
 - [ ] Webshell 与钓鱼页
 - [ ] 可用性网络页（12h 点阵图 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示）
 - [ ] 时序查询后端接口（GET /api/v1/assets/:id/availability 点阵图 + /response-time 折线，读 availability_points 按 org_id 隔离）
