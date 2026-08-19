@@ -629,6 +629,7 @@ erDiagram
         float confidence "0~1 引擎判定可信度"
         string evidence_id FK
         string status
+        string extra "JSON 扩展数据，如 MultiUA 报告 Extra['multi_ua']（probes/scores/total_score/conclusion/abnormal_ends）"
     }
     vulnerabilities {
         int id PK
@@ -727,6 +728,8 @@ erDiagram
 **核心表乐观锁**：`assets / scan_policies / alerts / tickets` 均含 `version`（INTEGER DEFAULT 1），更新接口要求请求体或 `If-Match` 头携带 version，与库内不一致返回 409。
 
 **结果回传幂等**：`findings / events / vulnerabilities` 表含 `result_id`（Worker 生成的 UUID），建唯一索引 `idx_result_id`，重复回传直接返回成功不重复入库。
+
+**findings 扩展字段（extra）**：`extra` 为 JSON TEXT，承载引擎扩展结果——MultiUA 报告写入 `Extra["multi_ua"]`（probes 三端明细 / scores 四维得分 / total_score 0~100 / conclusion 分级 / abnormal_ends 端级异常列表）；前端多端对比页读取该字段渲染，缺失时该 finding 不做多端展示。其余引擎的扩展结构同规则追加，不新增列。
 
 ### 字段类型与约束规范
 
