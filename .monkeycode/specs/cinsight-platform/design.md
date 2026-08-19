@@ -278,8 +278,8 @@ type Finding struct {
 | 暗链挂马 | `hidden_link` | 特征库、双 UA 抓取、沙箱行为分析 |
 | Webshell | `webshell` | 路径字典、特征码库、流量特征 |
 | 钓鱼 | `phishing` | 钓鱼模板库、Levenshtein、证书解析 |
-| 可用性 | `availability` | HTTP/DNS/PING 探针、连续失败计数、MultiUAAssessor 多端一致性 |
-| 端口服务 | `port_service` | TCP SYN 扫描（非特权 Worker 自动降级 TCP Connect 全连接，结果标记 `scan_mode: connect`）、Banner 抓取 |
+| 可用性 | `availability` | HTTP/DNS/PING 探针、连续失败计数（连续 3 次失败判定宕机）、MultiUAAssessor 多端一致性 |
+| 端口服务 | `port_service` | TCP SYN 扫描（Top 常见端口 22/21/3389/3306/6379 等；非特权 Worker 自动降级 TCP Connect 全连接，结果标记 `scan_mode: connect`）、Banner 抓取 |
 | DNS 安全 | `dns_security` | 多节点解析对比、字典爆破 |
 | 信誉监测 | `reputation` | 威胁情报库查询 |
 | 安全情报 | `intelligence` | CVE/CNVD/CNNVD 订阅、资产匹配 |
