@@ -86,6 +86,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 每次 POC 执行 SHALL 使用 `context.WithTimeout(30s)` 控制超时，使用 `ants` 协程池控制并发。
 3. 引擎执行 SHALL 遵循策略模板的开关、并发数、超时与速率限制。
 4. 引擎产生的每项发现 SHALL 附带证据链并统一回传 Master。
+5. 发现严重级别 SHALL 统一枚举为 `critical/high/medium/low/info`（info 为信息级/正常态记录），阈值配色与通知路由按级别分级（critical/high 高优先、medium 中、low 低、info 静默）处理。
 
 #### R2.1b 发现处理链路（finding → 事件/漏洞/告警）
 
