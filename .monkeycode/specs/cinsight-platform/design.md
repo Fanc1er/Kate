@@ -280,8 +280,8 @@ type Finding struct {
 | 钓鱼 | `phishing` | 钓鱼模板库、Levenshtein、证书解析 |
 | 可用性 | `availability` | HTTP/DNS/PING 探针、连续失败计数（连续 3 次失败判定宕机）、MultiUAAssessor 多端一致性 |
 | 端口服务 | `port_service` | TCP SYN 扫描（Top 常见端口 22/21/3389/3306/6379 等；非特权 Worker 自动降级 TCP Connect 全连接，结果标记 `scan_mode: connect`）、Banner 抓取 |
-| DNS 安全 | `dns_security` | 多节点解析对比、字典爆破 |
-| 信誉监测 | `reputation` | 威胁情报库查询 |
+| DNS 安全 | `dns_security` | 多节点解析对比、异常 TTL 与异常解析记录识别、字典爆破 + 被动 DNS 子域名发现 |
+| 信誉监测 | `reputation` | 威胁情报库查询（IP 恶意/代理/Tor 标记、域名历史解析记录与恶意标记） |
 | 安全情报 | `intelligence` | CVE/CNVD/CNNVD 订阅、资产匹配 |
 
 ## API 设计规范
@@ -357,7 +357,7 @@ type Finding struct {
 | 组织管理：读/写（CRUD/禁用/启用） | ✓ | - | - | - |
 | 平台统计/Worker 总览：读 | ✓ | - | - | - |
 | 认证：login/forgot-password/reset-password | 公开 | 公开 | 公开 | 公开 |
-| 认证：refresh/change-password/select-org/logout/me/data-export | 登录用户（依赖 JWT，无需角色判断） | | | |
+| 认证：refresh/change-password/select-org/logout/delete-account/me/data-export | 登录用户（依赖 JWT，无需角色判断） | | | |
 | WebSocket /ws/events | 登录用户（JWT + org 绑定，禁止跨组织订阅） | | | |
 | Worker 内部 /worker/*（register/tasks/evidence/heartbeat） | Worker 凭证鉴权（Bootstrap 一次性 / client_id+secret），不经 RBAC | | | |
 
@@ -372,6 +372,7 @@ type Finding struct {
 | 认证 | POST | /api/v1/auth/change-password | 登录用户 | 登录态改密（校验旧密码，改后失效全部 refresh token） |
 | 认证 | POST | /api/v1/auth/select-org | 登录用户 | 组织选择，换发带 org_id 的 JWT，失效旧 token |
 | 认证 | POST | /api/v1/auth/logout | 登录用户 | 退出登录 |
+| 认证 | POST | /api/v1/auth/delete-account | 登录用户 | 账户注销（二次确认，删除/匿名化本人数据，失效全部 refresh token，PIPL/GDPR） |
 | 认证 | POST | /api/v1/auth/forgot-password | 公开 | 忘记密码（邮件验证码下发） |
 | 认证 | POST | /api/v1/auth/reset-password | 公开 | 重置密码（验证码校验 + 新密码，重置后失效旧 token） |
 | 认证 | GET | /api/v1/me/data-export | 登录用户 | 个人数据可携权导出（JSON/CSV，保留 72h，动作记审计） |
@@ -947,7 +948,7 @@ erDiagram
 
 **user_orgs 约束**：`user_orgs` 表不允许 `is_super_admin` 用户插入；平台超管通过全局 `org_id=0` 查询平台数据。
 
-**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询参数为 `operator`（映射 `username` 列，操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end），与 R5.13-11 一致。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。审计覆盖范围：登录/登出、资产增删改与批量、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎回传不审计，批量操作逐条记录。action 取值统一为 `<resource>.<verb>`（如 `auth.login / auth.logout / asset.create / asset.update / asset.delete / task.start / task.stop / event.acknowledge / alert.silence / vuln.ignore / ticket.assign / member.invite / member.remove / rule.update / channel.update / token.create / webhook.create / org.disable`），resource_type 取资源名（asset/task/event/alert/vuln/ticket/member/policy/plan/rule/whitelist/channel/route/token/webhook/org）。
+**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询参数为 `operator`（映射 `username` 列，操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end），与 R5.13-11 一致。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。审计覆盖范围：登录/登出、资产增删改与批量、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎回传不审计，批量操作逐条记录。action 取值统一为 `<resource>.<verb>`（如 `auth.login / auth.logout / auth.delete_account / asset.create / asset.update / asset.delete / task.start / task.stop / event.acknowledge / alert.silence / vuln.ignore / ticket.assign / member.invite / member.remove / rule.update / channel.update / token.create / webhook.create / org.disable`），resource_type 取资源名（asset/task/event/alert/vuln/ticket/member/policy/plan/rule/whitelist/channel/route/token/webhook/org）。
 
 **API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), status(active/disabled), expires_at, last_used_at`。scopes 取值为 RBAC 权限码（`src/config/permissions.ts` 清单，如 `asset:read`、`event:write`、`evidence:upload`）的子集，创建时勾选；请求校验时接口所需权限码必须是 token scopes 子集，token 无对应 scope 返回 2101 `SCOPE_DENIED`。scopes 随创建固定，修改需撤销重建。`status=disabled` 临时停用（`PATCH /api/v1/api-tokens/:id/status`），校验时拒绝，恢复为 `active` 后继续生效；撤销走 `DELETE /api/v1/api-tokens/:id`。
 
@@ -1256,13 +1257,19 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 | 角色无权限写操作 | 403 | 2100 `FORBIDDEN` | 前端隐藏入口 + Toast |
 | 缺少 X-Org-Id | 400 | 1001 `ORG_REQUIRED` | 提示携带组织上下文 |
 | 资产/成员/Worker 超配额 | 429 | 4290 `ASSET_QUOTA_EXCEEDED` / 4292 `MEMBER_QUOTA_EXCEEDED` / 4291 `WORKER_QUOTA_EXCEEDED` | 前端提示升级套餐 |
+| 组织级业务限制（配额 4290 之外的组织级上限） | 409 | 3002 `ORG_LIMIT_EXCEEDED` | 前端提示组织资源已达上限 |
+| 创建/导入资产 URL 与组织内已有资产重复 | 409 | 3000 `DUPLICATE_URL` | 前端表单/导入报告逐行标注"URL 已存在" |
 | 证据 Hash 校验失败 | 422 | 4001 `EVIDENCE_TAMPERED` | 前端证据抽屉标红 |
+| 目标资源不存在 | 404 | 4000 `NOT_FOUND` | 列表/详情返回空，操作提示目标不存在 |
 | 截图上传类型/大小不符 | 422 | 1000 `VALIDATION_FAILED` | 拒绝上传并提示原因 |
 | 引擎超时 | 408 | 5000 `ENGINE_TIMEOUT` | 单 POC `context.WithTimeout(30s)` 中止，记录 finding=timeout |
 | 目标连续失败 5 次 | 502 | 5001 `TARGET_BREAKER_OPEN` | gobreaker 熔断目标，后续任务跳过并记录 |
+| Worker 凭证非法/失效 | 401 | 5002 `WORKER_UNAUTHORIZED` | 心跳/回传鉴权失败拒绝，触发重新注册握手 |
 | Worker 断网 | - | - | 结果写入本地 Outbox，指数退避重试回传 |
 | SQLite 写冲突 | 409 | 3001 `TASK_STATE_CONFLICT`（任务状态）/ 乐观锁冲突（版本不匹配 409） | GORM 事务重试（最多 3 次），写并发收敛到单协程通道 |
 | 规则文件格式错误 | 422 | 1002 `INVALID_FORMAT` | fsnotify 热加载失败保留旧版本并告警 |
+| 规则版本冲突 | 409 | 4002 `RULE_VERSION_MISMATCH` | 并发更新规则集时版本号不匹配，前端提示刷新后重试 |
+| 情报源离线/同步失败 | 502 | 6001 `INTEL_SOURCE_OFFLINE` | 本轮情报同步跳过，保留上次数据并告警 |
 | 通知推送失败 | 500 | 6000 `NOTIFY_FAILED` | 重试 3 次后降级为入库标记，不阻塞主流程 |
 
 统一响应格式：

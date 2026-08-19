@@ -352,7 +352,7 @@ Updated: 2026-08-19
 - [ ] 全局错误处理（axios 拦截器 + 异常兜底页 + 骨架屏 + 请求失败 Toast + WS 断线提示条）
 - [ ] i18n（vue-i18n 中/英）+ 可访问性（键盘可达/ARIA）
 - [ ] 路由懒加载 + 组件分包，首屏 < 3s
-- [ ] 账户注销 + 个人信息删除/匿名化（PIPL/GDPR）
+- [ ] 账户注销（POST /api/v1/auth/delete-account：二次确认 + 删除/匿名化本人数据 + 失效全部 refresh token）+ 个人信息删除/匿名化（PIPL/GDPR）
 - [ ] 个人数据可携权导出（GET /api/v1/me/data-export：JSON/CSV + 保留 72h + 审计记录）
 - [ ] 等保 2.0 对齐（身份鉴别/访问控制/安全审计/数据完整保密）
 
