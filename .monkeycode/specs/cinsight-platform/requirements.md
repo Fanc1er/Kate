@@ -35,9 +35,10 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 3. WHEN 多组织用户通过 `POST /api/v1/auth/select-org` 提交目标组织，系统 SHALL 校验该用户在此组织的有效成员关系并签发携带 `org_id` 的新 JWT。
 4. WHEN 用户请求受保护 API，系统 SHALL 校验请求头 `Authorization: Bearer {jwt}` 与 `X-Org-Id: {org_id}`，任一项缺失或无效时返回 401。
 5. IF 密码连续校验失败达到锁定阈值，系统 SHALL 临时锁定该账户并返回友好提示。
-6. WHEN 用户退出登录，前端 SHALL 清除本地 JWT 并跳转登录页。
-7. WHEN 用户 `status` 为 `disabled`（禁用用户）提交登录，系统 SHALL 拒绝登录返回 403 `USER_DISABLED`，不签发 JWT；WHEN 用户所在组织被禁用，系统 SHALL 同样拒绝登录并返回 403 `ORG_DISABLED`。
-8. WHEN 用户持有已签发 JWT 后账户被禁用或所在组织被禁用，系统 SHALL 在后续受保护 API 校验时拒绝（401/403）并使该 JWT 失效。
+6. WHEN 用户退出登录，系统 SHALL 提供 `POST /api/v1/auth/logout`：注销当前会话（refresh token 入 jti 黑名单），前端 SHALL 清除本地 JWT 并跳转登录页。
+7. WHEN 用户请求当前用户信息，系统 SHALL 提供 `GET /api/v1/auth/me` 返回当前用户资料（用户名/邮箱/角色/当前组织/头像/权限码集），前端据此渲染顶部导航与按钮权限；me 接口 SHALL 只依赖 JWT，不需要 `X-Org-Id`。
+8. WHEN 用户 `status` 为 `disabled`（禁用用户）提交登录，系统 SHALL 拒绝登录返回 403 `USER_DISABLED`，不签发 JWT；WHEN 用户所在组织被禁用，系统 SHALL 同样拒绝登录并返回 403 `ORG_DISABLED`。
+9. WHEN 用户持有已签发 JWT 后账户被禁用或所在组织被禁用，系统 SHALL 在后续受保护 API 校验时拒绝（401/403）并使该 JWT 失效。
 
 #### R1.2 四层角色与权限矩阵
 

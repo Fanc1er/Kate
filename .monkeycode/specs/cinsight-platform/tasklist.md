@@ -21,6 +21,7 @@ Updated: 2026-08-19
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
 - [ ] 登录接口（bcrypt 校验 + JWT 签发，不含 org_id）
+- [ ] 当前用户信息接口（GET /api/v1/auth/me：用户名/邮箱/角色/当前组织/头像/权限码集，仅依赖 JWT 不需 X-Org-Id）+ 登出接口（POST /api/v1/auth/logout，refresh token 入 jti 黑名单）
 - [ ] 禁用用户/禁用组织登录拦截（users.status / user_orgs.status / org.status 校验，403 USER_DISABLED/ORG_DISABLED + 后续 API 校验失效）
 - [ ] refresh token 机制（POST /api/v1/auth/refresh，access 15min + refresh 7d，jti 黑名单）
 - [ ] 登出/换组织/改密/重置后 token 失效（黑名单生效）
@@ -332,3 +333,4 @@ Updated: 2026-08-19
 - [ ] CI/CD 流水线全绿（lint→test→build→scan→deploy）【必执行】
 - [ ] E2E 关键路径 + k6 压测满足 SLO【必执行】
 - [ ] 恢复演练 + 故障注入演练报告【必执行】
+- [ ] go test ./... 全部通过 + 前端 vue-tsc + vite build 通过【必执行】

@@ -291,7 +291,7 @@ type Finding struct {
 | 认证 | POST | /api/v1/auth/forgot-password | 公开 | 忘记密码（邮件验证码下发） |
 | 认证 | POST | /api/v1/auth/reset-password | 公开 | 重置密码（验证码校验 + 新密码，重置后失效旧 token） |
 | 认证 | GET | /api/v1/me/data-export | 登录用户 | 个人数据可携权导出（JSON/CSV，保留 72h，动作记审计） |
-| 认证 | GET | /api/v1/auth/me | 登录用户 | 当前用户信息 + 组织列表 |
+| 认证 | GET | /api/v1/auth/me | 登录用户 | 当前用户信息 + 组织列表（仅依赖 JWT，不需 X-Org-Id，前端渲染导航/按钮权限） |
 | 组织 | GET | /api/v1/orgs | super_admin | 组织列表 |
 | 组织 | POST | /api/v1/orgs | super_admin | 创建组织 |
 | 组织 | GET | /api/v1/orgs/:id | super_admin | 组织详情 |
