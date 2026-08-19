@@ -497,7 +497,7 @@ type Finding struct {
 - **筛选持久化**：列表筛选条件存 localStorage，刷新/返回后保留；支持 URL 参数分享（`?status=open&severity=high`）。
 - **未读角标**：导航栏事件/告警显示未读数角标（WebSocket 实时更新）。
 - **任务详情**：任务行点击展开详情页（进度条、执行日志、引擎结果统计、Worker 分配）。
-- **报告进度**：报告生成为异步任务，进度条 + 完成后 Toast 通知 + 列表状态"生成中/已完成"。
+- **报告进度**：报告生成为异步任务，进度条 + 完成后 Toast 通知 + 列表状态"生成中/已完成"。报告内容基于生成时刻数据快照（漏洞/发现/可用性在生成时点固化），生成后处置变更不影响已生成报告。
 - **导入导出**：资产支持 URL 列表/CSV 批量导入（模板下载 + 逐行校验报告）；列表支持 CSV 导出（当前筛选结果）。
 - **加载反馈**：页面级骨架屏、按钮级 loading、分页加载 "加载中" 占位，避免白屏。
 - **时间展示**：相对时间（"5 分钟前"）+ 悬浮完整时间；状态色统一（高危红/中危橙/低危黄/正常绿）。
@@ -512,6 +512,7 @@ type Finding struct {
   - 下行：`{"type":"event","data":{...}}` / `{"type":"finding","data":{...}}` / `{"type":"pong"}`
 - 断线策略：ReconnectingWebSocket 指数退避重连（1s→2s→4s…上限 60s），订阅在重连后自动恢复；前端展示断线提示条，重连成功自动清除。
 - 心跳保活：前端每 30s 发送 `{"type":"ping"}`，服务端即时回 `{"type":"pong"}`；服务端 ReadDeadline 60s（读超时判定死连接并关闭），前端连续 3 次 ping 无 pong 判定连接异常并触发重连。
+- 组织切换：切换组织后前端关闭旧连接，携带新 JWT 重建连接绑定新 org_id，避免收到旧组织事件。
 
 ### Webhook 推送协议
 
@@ -676,7 +677,8 @@ erDiagram
     tickets {
         int id PK
         int org_id FK
-        int event_id FK
+        int event_id FK "事件来源工单（可空）"
+        int vuln_id FK "漏洞来源工单（可空），event_id 与 vuln_id 至少其一非空"
         string assignee
         string status "open/in_progress/verify/closed"
         datetime due_at
@@ -911,6 +913,14 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 **漏洞复测流转**：`POST /vulnerabilities/:id/retest` 置 `verifying` 并创建复测任务 → 复测结果回传：通过自动 `closed`（写 `closed_at`），失败回退 `open` 并追加复测记录（events 或 finding 的 extra 记 retest 轨迹）。`ignored` 经取消忽略恢复 `open`。
 
 **SOP 模板库**：内置按事件类型分组的应急响应 SOP 模板（WebShell/内容违规/篡改/可用性/情报预警等，含"隔离→溯源→加固→验证"步骤），事件确认时按 event_type 自动挂载到 `events.sop_attached`；org_admin 在系统设置维护自定义 SOP（属 `noise_rules` 之外的独立 `sop_templates` 配置，可存于规则库 JSON）。
+
+### 任务调度交互
+
+- **Pull 模型**：Worker 定时轮询 `GET /api/v1/worker/tasks/pull` 拉取 `pending` 任务，Master 返回后原子置 `processing`（单事务，避免两个 Worker 拉到同一任务）；任务以任务为单位整体执行，不拆分。
+- **负载分配**：Worker 心跳上报 `load`，调度器出队时优先分配 `load` 最低的在线 Worker；无在线 Worker 时任务保持 `pending` 等待。
+- **任务去重**：创建任务时按 `org_id + asset_id + policy_id` 检查是否存在 `pending`/`processing` 任务，存在返回 3001 `TASK_STATE_CONFLICT`，防止同目标并发重复扫描。
+- **停止信号**：`POST /tasks/:id/stop` 置 `failed(stopped_by_user)`，Worker 在心跳/拉取间隙经 `stop_check` 感知后中止当前引擎，回传 `cancelled`，不再拉取新任务。
+- **复测任务**：漏洞复测经 retest 创建专用任务（policy 使用默认复测策略），结果回传驱动 `verifying → closed/open` 流转。
 
 ### 关键不变量
 

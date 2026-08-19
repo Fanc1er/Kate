@@ -62,7 +62,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. WHEN 用户登录成功，前端 SHALL 依据 `role` 通过 `addRoute()` 动态注册路由：`org_admin` 含仪表盘/资产/漏洞/告警/任务/内容安全/报告/团队管理/系统设置；`engineer` 含仪表盘/资产/漏洞/告警/任务/内容安全/报告；`viewer` 含仪表盘/资产/漏洞/告警/报告。
 2. WHEN 用户为 `super_admin`，前端 SHALL 展示"进入平台管理"与"选择组织"两个入口。
 3. WHEN 顶部导航栏加载，系统 SHALL 展示当前组织名 + 用户角色 Tag，并支持多组织用户点击切换组织。
-4. WHEN 用户切换组织，前端 SHALL 调用 `POST /api/v1/auth/select-org` 换取新 JWT 并刷新全部数据请求。
+4. WHEN 用户切换组织，前端 SHALL 调用 `POST /api/v1/auth/select-org` 换取新 JWT 并刷新全部数据请求；SHALL 同时关闭旧组织 WebSocket 连接并携带新 JWT 重新建立 `/api/v1/ws/events` 连接（绑定新 org_id，防止收到旧组织事件）。
 
 #### R1.4 核心数据模型
 
@@ -374,12 +374,14 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口），完整 CRUD（`GET/POST /api/v1/scan-plans`、`PUT/DELETE /api/v1/scan-plans/:id`）、启停开关 `PATCH /api/v1/scan-plans/:id/status` 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。Cron 表达式 SHALL 绑定明确时区（默认 `Asia/Shanghai`，可经 `CINSIGHT_TIMEZONE` 覆盖），服务端按该时区计算执行时间，前端创建/编辑时展示所选时区。
 3. 系统 SHALL 提供任务列表、任务详情 `GET /api/v1/tasks/:id`（状态/进度/执行日志/结果统计/Worker 分配）、停止 `POST /api/v1/tasks/:id/stop`、失败重跑 `POST /api/v1/tasks/:id/rerun`、删除历史任务 `DELETE /api/v1/tasks/:id`、批量停止 `POST /api/v1/tasks/batch-stop` 与批量失败重跑 `POST /api/v1/tasks/batch-rerun`。
 4. 系统 SHALL 提供任务队列监控（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示。
+5. 任务分发 SHALL 采用 Worker 拉取（Pull）模型，以任务为单位整体分配给单个 Worker 执行，不在任务内分片；同一任务同一时刻仅一个 Worker 执行（`processing` 状态锁定）；调度器 SHALL 按心跳上报的负载（`load`）优先分发给负载最低的在线 Worker。
+6. 系统 SHALL 对同一资产执行任务去重：同一资产 + 相同策略存在 `pending`/`processing` 任务时，重复下发 SHALL 返回冲突错误（3001 `TASK_STATE_CONFLICT`），避免同一目标被并发重复扫描。
 
 #### R5.11 报告中心
 
 1. 系统 SHALL 提供报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议），完整 CRUD（`GET/POST /api/v1/report-templates`、`PUT/DELETE /api/v1/report-templates/:id`）。
 2. 系统 SHALL 支持定时报告（Cron 生成周报/月报），Cron 执行时区 SHALL 与扫描计划一致（默认 `Asia/Shanghai`，`CINSIGHT_TIMEZONE` 可覆盖）。
-3. 系统 SHALL 支持报告导出（PDF 含水印/Excel 漏洞清单/按资产与时间范围导出截图合集），提供报告详情 `GET /api/v1/reports/:id`、删除 `DELETE /api/v1/reports/:id` 与异步生成进度通知。
+3. 系统 SHALL 支持报告导出（PDF 含水印/Excel 漏洞清单/按资产与时间范围导出截图合集），提供报告详情 `GET /api/v1/reports/:id`、删除 `DELETE /api/v1/reports/:id` 与异步生成进度通知。报告生成 SHALL 基于生成时刻的数据快照（漏洞/发现/可用性统计在生成时点固化），报告生成后的处置变更 SHALL 不改变已生成报告内容。
 
 #### R5.12 团队管理（仅 org_admin）
 

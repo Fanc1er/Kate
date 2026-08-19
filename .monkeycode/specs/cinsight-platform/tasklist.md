@@ -26,6 +26,7 @@ Updated: 2026-08-19
 - [ ] refresh token 机制（POST /api/v1/auth/refresh，access 15min + refresh 7d，jti 黑名单）
 - [ ] 登出/换组织/改密/重置后 token 失效（黑名单生效）
 - [ ] 组织选择接口 POST /api/v1/auth/select-org（换取带 org_id 的 JWT）
+- [ ] 切换组织前端处理（刷新数据 + 关闭旧 WS 重建连接绑定新 org_id）
 - [ ] JWT 中间件 + X-Org-Id 校验 + RBAC 中间件（RequireRoles/RequireWrite）
 - [ ] super_admin 全局 org_id=0 平台查询通道
 - [ ] super_admin 禁止加入 user_orgs 约束（触发器/服务层校验）
@@ -70,6 +71,8 @@ Updated: 2026-08-19
 - [ ] 核心表索引落地（org_id/状态/时间索引，见 design 索引设计）
 - [ ] BadgerDB-SQLite 缓存一致性（写入先 Badger 后异步 SQLite + 每小时对账）
 - [ ] Master 任务创建/下发/拉取接口（pending→processing→completed）
+- [ ] 任务分发 Pull 模型（Worker 轮询拉取 + 原子置 processing 防双拉 + 按心跳 load 最低优先分配 + 任务不拆分）
+- [ ] 任务去重（同 org+asset+policy 存在 pending/processing 时返回 3001 TASK_STATE_CONFLICT）
 - [ ] 任务详情接口（GET /api/v1/tasks/:id，状态/进度/执行日志/结果统计/Worker 分配）
 - [ ] 任务停止/删除/批量停止/失败重跑（POST :id/stop 置 failed 标记 stopped_by_user + Worker stop_check 感知中止回传 cancelled、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
@@ -159,6 +162,7 @@ Updated: 2026-08-19
 - [ ] 漏洞批量接口（batch-ticket 批量生成工单 / batch-retest 批量复测 / batch-ignore 批量忽略）
 - [ ] 漏洞复测流转（retest 置 verifying + 复测任务，通过自动 closed 写 closed_at，失败回退 open 追加复测记录，取消忽略恢复 open）
 - [ ] 工单接口（GET/POST /api/v1/tickets 列表/创建 + PUT /api/v1/tickets/:id 状态/派发 + GET /api/v1/tickets/:id 详情）+ 工单闭环（确认→派发→修复→复测→归档）+ SOP 挂载
+- [ ] 工单来源关联（tickets.event_id 事件来源 / vuln_id 漏洞来源，至少其一非空，漏洞批量生成工单可关联）
 - [ ] SOP 模板库（内置按事件类型分组应急响应 SOP + 事件确认自动挂载 sop_attached + org_admin 自定义）
 - [ ] 独立告警中心前端页（列表/等级筛选/处置操作/静默 + 导航未读角标联动）
 - [ ] 漏洞管理前端页（等级/状态/引擎筛选 + 详情 + 证据链抽屉 + 批量生成工单/复测/忽略）
@@ -248,6 +252,7 @@ Updated: 2026-08-19
 - [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 时区 CINSIGHT_TIMEZONE 默认 Asia/Shanghai + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
 - [ ] 策略模板复制（POST /api/v1/policies/:id/copy 深拷贝引擎开关）
 - [ ] 定时报告（Cron 生成周报/月报 + 时区 CINSIGHT_TIMEZONE + 异步生成进度条 + 完成通知）
+- [ ] 报告生成基于生成时刻数据快照（漏洞/发现/可用性时点固化，后续处置不影响已生成报告）
 - [ ] 报告截图合集导出（按资产/时间范围，format=screenshots 下载 ZIP）
 - [ ] 报告详情（GET /api/v1/reports/:id）+ 报告删除（DELETE /api/v1/reports/:id）
 
