@@ -9,8 +9,8 @@ Updated: 2026-08-19
 ## 阶段 1 — MVP 闭环（RBAC + 资产 + 任务 + 证据链）
 
 ### 1.1 技术底座
-- [ ] 初始化 Go 模块与 Gin 脚手架（cmd/master、cmd/worker）
-- [ ] 引入依赖：Gin、GORM、SQLite 驱动（WAL 模式）、BadgerDB、Bleve、ants、gobreaker、fsnotify、swaggo/swag、gorilla/websocket
+- [ ] 初始化 Go 模块与标准库 `net/http` + `http.NewServeMux` 脚手架（cmd/master、cmd/worker）
+- [ ] 引入依赖：SQLite 驱动（WAL 模式）、BadgerDB、Bleve、ants、gobreaker、fsnotify、swaggo/swag、gorilla/websocket
 - [ ] 统一响应中间件（code/message/data 格式）与错误码定义（见 design 错误码枚举）
 - [ ] 统一约定落地：响应格式 {code/message/data}（code=0 成功，业务码非 0）+ 分页 page/page_size（默认 20 上限 200，返回 list+total）/排序 sort/filter 筛选/RFC3339 时间/鉴权分层（JWT / API Token / Worker Bootstrap）
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
@@ -68,7 +68,7 @@ Updated: 2026-08-19
 ### 1.5 任务调度与可用性引擎
 - [ ] 任务表与策略模板表迁移
 - [ ] SQLite 连接与 WAL 配置（journal_mode/busy_timeout/synchronous/foreign_keys，单写连接池 + 连接参数 MaxOpenConns(1)/ConnMaxLifetime(30m)/ConnMaxIdleTime(10m)）
-- [ ] GORM 迁移策略落地（AutoMigrate + schema_migrations + 种子数据）
+- [ ] `database/sql` 迁移策略落地（SQL 迁移脚本 + schema_migrations 版本表 + 种子数据）
 - [ ] 核心表索引落地（org_id/状态/时间索引，见 design 索引设计）
 - [ ] BadgerDB-SQLite 缓存一致性（写入先 Badger 后异步 SQLite + 每小时对账）
 - [ ] Master 任务创建/下发/拉取接口（pending→processing→completed）

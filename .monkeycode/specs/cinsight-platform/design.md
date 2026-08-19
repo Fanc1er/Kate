@@ -9,7 +9,7 @@ Status: 已确认（技术栈全套 / 全量设计+分阶段实施 / 内嵌库�
 CInsight 是基于 Master-Worker 架构的多租户安全监测平台。Master 负责 API、任务调度、持久化与证据管理，Worker 负责执行 10 大检测引擎并回传结果。平台以"全量证据链"为核心取证理念，通过 SHA-256 签名保证证据不可篡改，通过多租户 RBAC 保证数据隔离。
 
 技术方案遵循三项用户确认的决策：
-1. **全套技术栈落地**：后端 Gin + GORM + SQLite/WAL + BadgerDB + Bleve + ants + gobreaker + fsnotify + swaggo + gorilla/websocket；前端 Vue3 + Vite + Pinia + Router4 + ReconnectingWebSocket + TinyVue。
+1. **全套技术栈落地**：后端 Go 标准库 `net/http` + `http.NewServeMux`（无 Gin）+ `database/sql`（无 GORM）+ SQLite/WAL + BadgerDB + Bleve + ants + gobreaker + fsnotify + gorilla/websocket；前端 Vue3 + Vite + Pinia + Router4 + ReconnectingWebSocket + TinyVue。
 2. **全量设计 + 分阶段实施**：设计覆盖 10 引擎与 15+ 功能模块，实施按 MVP → 引擎扩展 → 全量功能三个阶段推进。
 3. **内嵌库降级方案**：BadgerDB、Bleve 直接作为 Go 内嵌库引入；VictoriaMetrics 时序能力由 SQLite 时序表（`availability_points` / `trend_points`）替代，保留未来迁移接口。
 
@@ -25,7 +25,7 @@ graph TD
     end
 
     subgraph Master["Master 节点"]
-        GATE["Gin 网关 + CORS"]
+        GATE["HTTP 网关（net/http + ServeMux + CORS）"]
         MID["JWT/RBAC/OrgId 中间件"]
         CTRL["Controller 层"]
         SVC["Service 层"]
@@ -130,13 +130,13 @@ sequenceDiagram
 
 | 组件 | 职责 | 关键接口 |
 |------|------|---------|
-| Gateway | Gin 引擎、CORS、日志、恢复中间件 | `gin.New()` |
+| Gateway | 标准库 `http.Server` + `http.NewServeMux`、CORS、日志、恢复中间件 | `ServeMux.HandleFunc()`, `Server.Handler` |
 | AuthMiddleware | JWT 校验 + 解析 user_id/org_id | `Authorization: Bearer {jwt}`, `X-Org-Id: {org_id}` |
 | RBACMiddleware | 按角色校验写操作权限 | `RequireRoles(role...)`, `RequireWrite()` |
 | OrgIsolation | 强制业务查询附带 org_id | `WithOrg(ctx, orgID)` |
 | Controller | 各功能模块 HTTP 处理器（验证请求参数） | `assetsController`, `taskController`, `eventController`... |
 | Service | 业务逻辑层（脱敏/风暴抑制/证据校验） | `assetsService`, `evidenceService`... |
-| Repository | GORM/SQLite + BadgerDB 数据访问 | `assetRepo`, `taskRepo`, `eventRepo`, `kvRepo` |
+| Repository | `database/sql`/SQLite + BadgerDB 数据访问 | `assetRepo`, `taskRepo`, `eventRepo`, `kvRepo` |
 | TaskScheduler | 任务分发、超时对账、断点续扫状态 | `PullTask()`, `MarkProcessing()`, `AckResult()` |
 | CronScheduler | 按 scan_plans.cron_expr 定时生成 scan_tasks、按 report_templates.cron_expr 定时生成 reports（计划/模板绑定时区计算；paused/组织禁用/到期跳过触发，启用后恢复；计划 time_window 窗口外跳过触发） | `GenerateTasks()`, `Tick()` |
 | WebSocketHub | 实时事件推送、指数退避重连 | `Broadcast(event)` |
@@ -829,6 +829,7 @@ erDiagram
         string name
         string token_hash
         string scopes
+        string status "active/disabled"
         datetime expires_at
         datetime last_used_at
     }
@@ -936,7 +937,7 @@ erDiagram
 
 **审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询参数为 `operator`（映射 `username` 列，操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end），与 R5.13-11 一致。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。审计覆盖范围：登录/登出、资产增删改与批量、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎回传不审计，批量操作逐条记录。action 取值统一为 `<resource>.<verb>`（如 `auth.login / auth.logout / asset.create / asset.update / asset.delete / task.start / task.stop / event.acknowledge / alert.silence / vuln.ignore / ticket.assign / member.invite / member.remove / rule.update / channel.update / token.create / webhook.create / org.disable`），resource_type 取资源名（asset/task/event/alert/vuln/ticket/member/policy/plan/rule/whitelist/channel/route/token/webhook/org）。
 
-**API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), expires_at, last_used_at`。scopes 取值为 RBAC 权限码（`src/config/permissions.ts` 清单，如 `asset:read`、`event:write`、`evidence:upload`）的子集，创建时勾选；请求校验时接口所需权限码必须是 token scopes 子集，token 无对应 scope 返回 2101 `SCOPE_DENIED`。scopes 随创建固定，修改需撤销重建。
+**API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), status(active/disabled), expires_at, last_used_at`。scopes 取值为 RBAC 权限码（`src/config/permissions.ts` 清单，如 `asset:read`、`event:write`、`evidence:upload`）的子集，创建时勾选；请求校验时接口所需权限码必须是 token scopes 子集，token 无对应 scope 返回 2101 `SCOPE_DENIED`。scopes 随创建固定，修改需撤销重建。`status=disabled` 临时停用（`PATCH /api/v1/api-tokens/:id/status`），校验时拒绝，恢复为 `active` 后继续生效；撤销走 `DELETE /api/v1/api-tokens/:id`。
 
 **通知渠道表（notify_channels）**：`id, org_id, type(dingtalk/wecom/feishu/smtp), config(JSON), enabled`。config 中密钥/令牌类字段（webhook_secret、smtp_password 等）入库前经 **AES-256-GCM 加密**（主密钥 `CINSIGHT_CHANNEL_KEY` 环境注入，独立于 JWT Secret），接口返回时掩码脱敏（如 `sk-****abcd`）；编辑时不回显明文，留空表示保持原值。
 
@@ -1011,17 +1012,17 @@ erDiagram
 
 ### 迁移策略
 
-- 使用 GORM `AutoMigrate` 初始建表 + 版本化迁移表 `schema_migrations`（version, applied_at）。
+- 使用 `database/sql` 初始化建表 + 版本化迁移表 `schema_migrations`（version, applied_at）。
 - 每次变更新增迁移函数（`up/down`），按版本号顺序执行，重复执行幂等。
-- 开发环境 `AutoMigrate` 一键同步；生产环境执行显式迁移命令 `master migrate --to={version}`。
+- 开发环境迁移脚本一键同步；生产环境执行显式迁移命令 `master migrate --to={version}`。
 - 种子数据：启动时自动写入 `super_admin` 默认账户（首次初始化密码随机生成并打印一次）、初始策略模板、初始 POC/敏感词/木马特征库。首次启动需完成 `super_admin` 引导初始化（可通过 `--init-super-admin` 或首启向导），未初始化前平台管理功能禁用。
 
 ### SQLite 连接与 WAL 配置
 
 ```go
-db, _ := gorm.Open(sqlite.Open("file:cinsight.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)"))
-db.DB().SetMaxOpenConns(1)   // Master 单写
-db.DB().SetMaxIdleConns(1)
+db, _ := sql.Open("sqlite", "file:cinsight.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)")
+db.SetMaxOpenConns(1)   // Master 单写
+db.SetMaxIdleConns(1)
 ```
 
 - **连接池参数**（针对 SQLite 单写特性收敛，防止写锁争用）：
@@ -1245,7 +1246,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 | 引擎超时 | 408 | 5000 `ENGINE_TIMEOUT` | 单 POC `context.WithTimeout(30s)` 中止，记录 finding=timeout |
 | 目标连续失败 5 次 | 502 | 5001 `TARGET_BREAKER_OPEN` | gobreaker 熔断目标，后续任务跳过并记录 |
 | Worker 断网 | - | - | 结果写入本地 Outbox，指数退避重试回传 |
-| SQLite 写冲突 | 409 | 3001 `TASK_STATE_CONFLICT`（任务状态）/ 乐观锁冲突（版本不匹配 409） | GORM 事务重试（最多 3 次），写并发收敛到单协程通道 |
+| SQLite 写冲突 | 409 | 3001 `TASK_STATE_CONFLICT`（任务状态）/ 乐观锁冲突（版本不匹配 409） | 事务重试（最多 3 次），写并发收敛到单协程通道 |
 | 规则文件格式错误 | 422 | 1002 `INVALID_FORMAT` | fsnotify 热加载失败保留旧版本并告警 |
 | 通知推送失败 | 500 | 6000 `NOTIFY_FAILED` | 重试 3 次后降级为入库标记，不阻塞主流程 |
 
@@ -1384,7 +1385,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 
 ### 阶段 1（MVP 闭环）：RBAC + 资产 + 任务 + 证据链
 
-- 技术底座：Gin 脚手架、JWT/RBAC 中间件、SQLite 迁移、统一响应、Swagger 文档集成（swag init + /swagger/* 端点）。
+- 技术底座：标准库 `net/http` + `http.NewServeMux` 脚手架、JWT/RBAC 中间件、SQLite 迁移（`database/sql`）、统一响应、Swagger 文档集成（swag 生成 + /swagger/* 端点）。
 - 认证：登录/组织选择/动态路由。
 - 资产 CRUD（URL 归一化 + BadgerDB 去重，含微信公众号资产字段：公众号名/微信号/头像/粉丝数/简介/认证状态/文章数）。
 - 任务调度：Master 下发/Worker 拉取/结果回传 + 可用性引擎。
