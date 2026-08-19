@@ -110,7 +110,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. WHEN 检测敏感信息，引擎 SHALL 基于可配置规则集（HaENet Rules.yml 风格）按 scope 分层提取并识别敏感信息：每条规则含 `group/name/f_regex/s_regex/scope/engine/sensitive` 字段，scope SHALL 支持 request line / request header / response header / response body 分层匹配；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证（AccessKey 等）等敏感数据与安全凭证，命中结果 SHALL 记录命中原文、scope、来源 URL 与递归深度（落 `sensitive_info_hits` 明细表，findings 记录主命中）。
 3. WHEN 监控页面篡改，引擎 SHALL 以标题、图片 Hash、正文 DOM 结构三维度建立基线，WHEN 偏离阈值超过设定值，系统 SHALL 生成篡改告警。
 4. WHEN 执行内容安全监测，引擎 SHALL 调用多端 UA 综合评估器（R2.12）：以随机 PC UA、标准移动 UA、微信内置浏览器 UA、无头浏览器移动视口模拟（移动 UA + 手机宽度视口）四探针抓取比对，WHEN 任一探针命中敏感词/敏感信息或与基线偏差超阈，系统 SHALL 将对应维度计入综合评分并输出端级结论（哪一端异常、异常类型）。
-5. WHEN 执行敏感信息监测，引擎 SHALL 支持深度递归扫描与资产发现：以种子 URL 递归抓取并解析页面链接与静态资源（JS/CSS/图片/音视频），`max_depth` 范围 1-5（默认 2）、单站点并发上限 2-32（默认 4，可配置），自动过滤静态文件与无效链接（404/死链），URL 归一化去重（同任务内去重）；递归进度 SHALL 经任务进度接口（R5.10-4）实时上报（已抓 URL 数/已发现资产数/命中数），已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）SHALL 写入 `assets` 表并标注来源类型。
+5. WHEN 执行敏感信息监测，引擎 SHALL 支持深度递归扫描与资产发现：以种子 URL 递归抓取并解析页面链接与静态资源（JS/CSS/图片/音视频），`scan_depth` 范围 1-5（默认 2）、单站点并发上限 2-32（默认 4，可配置），自动过滤静态文件与无效链接（404/死链），URL 归一化去重（同任务内去重）；递归进度 SHALL 经任务进度接口（R5.10-4）实时上报（已抓 URL 数/已发现资产数/命中数），已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）SHALL 写入 `assets` 表并标注来源类型。
 
 #### R2.4 暗链挂马引擎
 
