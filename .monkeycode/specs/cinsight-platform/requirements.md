@@ -322,7 +322,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 系统 SHALL 支持事件类型筛选：漏洞/内容违规/暗链挂马/木马/Webshell/钓鱼/篡改/可用性异常/端口暴露/敏感信息泄漏/信誉异常/情报预警。
 3. 系统 SHALL 提供降噪规则配置完整 CRUD（`GET/POST /api/v1/noise-rules`、`PUT/DELETE /api/v1/noise-rules/:id`），规则类型包含白名单 IP/忽略特定类型/聚合时间窗/风暴抑制。
 4. 系统 SHALL 提供单事件状态流转 `POST /api/v1/events/{id}/status`（待处理→处理中→已关闭→已归档）与批量状态流转接口 `POST /api/v1/events/batch`（批量确认/关闭/归档）。
-5. 系统 SHALL 支持闭环处置流程：事件确认→工单派发→修复跟踪→复测验证→归档，并自动挂载应急响应 SOP。SOP SHALL 来自内置模板库（按事件类型默认挂载对应处置步骤，如 WebShell 事件挂"隔离+溯源+加固"步骤），org_admin 可在系统设置维护自定义 SOP。
+5. 系统 SHALL 支持闭环处置流程：事件确认→工单派发→修复跟踪→复测验证→归档；工单状态 SHALL 按 `open`（生成/派发）→ `in_progress`（修复跟踪）→ `verify`（复测验证）→ `closed`（关闭归档）流转并记录状态变更时间线。流程 SHALL 自动挂载应急响应 SOP，SOP SHALL 来自内置模板库（按事件类型默认挂载对应处置步骤，如 WebShell 事件挂"隔离+溯源+加固"步骤），org_admin 可在系统设置维护自定义 SOP。
 
 #### R5.3b 独立告警中心
 
