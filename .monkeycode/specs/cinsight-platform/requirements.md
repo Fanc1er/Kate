@@ -255,7 +255,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 经网关终结 TLS，响应头含 CSP / X-Frame-Options / X-Content-Type-Options / HSTS。
 2. 系统 SHALL 提供 API 通用限流（每用户/IP 100 req/min，超限返回 HTTP 429 + `Retry-After` 头）与登录接口独立限流（5 次/min/IP，连续失败 5 次 SHALL 锁定账户 15 分钟，防暴力破解）。
 3. 系统 SHALL 执行密码策略：≥ 12 位含大小写/数字/特殊字符，90 天轮换，禁止复用最近 5 次，首次登录强制改密。
-4. 系统 SHALL 提供密码重置流程：`POST /api/v1/auth/forgot-password`（邮件验证码）+ `POST /api/v1/auth/reset-password`，重置后 SHALL 失效旧 token 并强制重新登录。登录态改密 SHALL 走 `POST /api/v1/auth/change-password`（校验旧密码 + 符合密码策略），改密后 SHALL 立即失效全部 refresh token 并强制重新登录。
+4. 系统 SHALL 提供密码重置流程：`POST /api/v1/auth/forgot-password`（邮件验证码）+ `POST /api/v1/auth/reset-password`，重置后 SHALL 失效旧 token 并强制重新登录。登录态改密 SHALL 走 `POST /api/v1/auth/change-password`（校验旧密码 + 符合密码策略），改密后 SHALL 立即失效全部 refresh token 并强制重新登录。验证码邮件与成员邀请邮件 SHALL 由系统级 SMTP 发送（`CINSIGHT_SMTP_*` 配置），独立于组织通知渠道，保证登录前/未入组场景可用；验证码 SHALL 5 分钟内有效、一次性使用。
 5. 系统 SHALL 预留 MFA（TOTP）二次认证开关。
 6. 系统 SHALL 将 Secrets（JWT_SECRET/Webhook secret/Bootstrap Token）经环境/K8s Secret 注入，支持轮换，严禁写入代码与日志。
 7. 系统 SHALL 将依赖漏洞扫描（govulncheck）与容器镜像扫描（Trivy）纳入 CI 门禁。
@@ -378,7 +378,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 3. Bootstrap Token 与长期凭证 SHALL 加密/哈希存储（Bootstrap Token 存 SHA-256 且一次性领取即失效，client_secret 存 bcrypt），库中禁止明文；Token 仅在创建时一次性返回，刷新即作废旧值。
 4. 受邀成员 SHALL 首次登录激活：邀请状态 `invited`，首次登录后激活为 `active` 并强制设密码/改密；邀请链接默认 7 天过期。
 5. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP 多渠道），并按 id 测试发送 `POST /api/v1/notify-channels/:id/test`。
-6. 通知渠道的密钥/令牌类字段（Webhook Secret、SMTP 密码等）SHALL 加密存储（AES-256-GCM，主密钥经环境变量注入），接口返回时 SHALL 脱敏（仅掩码显示），编辑回显 SHALL 提供"留空则保持原值"。
+6. 系统 SHALL 提供通知路由规则配置 `GET/PUT /api/v1/notify-routes`：按事件类型与严重级别（如 critical/high 走钉钉 + 邮件、medium 走企微、低危静默）映射到具体渠道，未命中路由的告警 SHALL 按默认渠道发送；渠道启用开关与风暴抑制（R4.2-4）在路由层生效。
+7. 通知渠道的密钥/令牌类字段（Webhook Secret、SMTP 密码等）SHALL 加密存储（AES-256-GCM，主密钥经环境变量注入），接口返回时 SHALL 脱敏（仅掩码显示），编辑回显 SHALL 提供"留空则保持原值"。
 7. Worker 注册 SHALL 受组织 Worker 配额约束：已注册 Worker 数达到该组织 `max_workers` 时，注册握手 SHALL 返回 4291 `WORKER_QUOTA_EXCEEDED` 拒绝注册；移除节点释放配额。
 8. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
 9. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。

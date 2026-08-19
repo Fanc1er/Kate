@@ -16,7 +16,7 @@ Updated: 2026-08-19
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
 - [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
 - [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
-- [ ] 全量业务表结构迁移（assets/vulnerabilities/alerts/findings/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points）
+- [ ] 全量业务表结构迁移（assets/vulnerabilities/alerts/findings/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points）
 
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
@@ -31,13 +31,14 @@ Updated: 2026-08-19
 - [ ] Repository 层 org_id 强制过滤守卫（缺省 org_id 拒绝查询）
 - [ ] 登录锁定阈值控制
 - [ ] 密码重置流程（POST /api/v1/auth/forgot-password + reset-password，重置后失效旧 token）
+- [ ] 系统级邮件发送（CINSIGHT_SMTP_*：验证码/邀请邮件，验证码 5min 一次性，独立于组织通知渠道）
 - [ ] 登录态改密（POST /api/v1/auth/change-password：校验旧密码 + 符合密码策略 + 改后失效全部 refresh token）
 - [ ] 首启引导初始化 super_admin/默认策略/降噪规则（--init-super-admin 或首启向导，未初始化禁用平台管理）
 
 ### 1.3 前端基础框架
 - [ ] 引入 TinyVue (@opentiny/vue) + Pinia + Vue Router 4 + ReconnectingWebSocket + ECharts + DOMPurify
 - [ ] 前端目录结构落地（src/api|stores|router|layouts|views|components|utils，见 design 前端架构）
-- [ ] axios 封装 + 模块化 API 层（Bearer + X-Org-Id + 401 跳转 + 模块拆分）
+- [ ] axios 封装 + 模块化 API 层（Bearer + X-Org-Id + 401 跳转 + 模块拆分：http/auth/asset/task/event/finding/report/dashboard/intel/admin/ws）
 - [ ] Pinia store 划分（auth/menu/asset/event/dashboard）
 - [ ] 登录页 /login + 组织选择卡片页
 - [ ] 基于 role 的动态 addRoute() 路由与菜单（含 super_admin 平台管理/选择组织双入口）
@@ -194,6 +195,7 @@ Updated: 2026-08-19
 - [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 移除离线节点 DELETE /api/v1/worker/nodes/:id）
 - [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP 多渠道 + 按 id 测试 POST :id/test）
 - [ ] 通知渠道密钥加密（AES-256-GCM 主密钥 CINSIGHT_CHANNEL_KEY + 接口掩码脱敏 + 编辑留空保持原值）
+- [ ] 通知路由规则（GET/PUT /api/v1/notify-routes：severity/event_type → 渠道映射 + 默认渠道 + 风暴抑制在路由层生效）
 - [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4291 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
 - [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）

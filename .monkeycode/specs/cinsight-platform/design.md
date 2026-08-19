@@ -163,6 +163,7 @@ sequenceDiagram
 - **后续鉴权**：Worker 心跳/拉取/回传均用长期凭证（`X-Worker-ID` + `X-Worker-Secret` 或 Basic Auth），不再依赖 Bootstrap Token。
 - **凭证轮换**：Master 可撤销/重发凭证，泄露时可吊销；Worker 离线超期（>5min 无心跳）标记离线，可被删除（DELETE /api/v1/worker/nodes/:id）。
 - **受邀成员首次登录激活**：邀请发出后成员状态 `invited`，首次登录（验证码/初始密码）后自动激活为 `active`，同时强制设密码/改密；邀请链接过期时间（默认 7 天）。
+- **系统级邮件发送**：forgot-password 验证码、reset-password 确认、成员邀请邮件由系统级 SMTP（`CINSIGHT_SMTP_*`）发送，与组织 `notify_channels` 的 SMTP 渠道解耦——登录前与未入组场景无组织上下文，只能走系统 SMTP。验证码 5 分钟有效、一次性使用（服务端存储 hash + 失效时间，使用后即删）。
 
 ### 页面截图取证（无头浏览器组件）
 
@@ -382,6 +383,7 @@ type Finding struct {
 | 通知 | GET/POST | /api/v1/notify-channels | org_admin | 通知渠道（钉钉/企微/飞书/SMTP 多渠道） |
 | 通知 | PUT/DELETE | /api/v1/notify-channels/:id | org_admin | 通知渠道编辑/删除 |
 | 通知 | POST | /api/v1/notify-channels/:id/test | org_admin | 按 id 测试发送 |
+| 通知 | GET/PUT | /api/v1/notify-routes | org_admin | 通知路由规则（severity/event_type → 渠道映射 + 默认渠道） |
 | 规则库 | GET | /api/v1/rules | org_admin | 规则库版本/内容 |
 | 规则库 | PUT | /api/v1/rules | org_admin | 规则热更新 |
 | 规则库 | GET/POST | /api/v1/rules/items | org_admin | 规则项列表/新建（POC/敏感词/特征库单项） |
@@ -633,6 +635,8 @@ erDiagram
 
 **通知渠道表（notify_channels）**：`id, org_id, type(dingtalk/wecom/feishu/smtp), config(JSON), enabled`。config 中密钥/令牌类字段（webhook_secret、smtp_password 等）入库前经 **AES-256-GCM 加密**（主密钥 `CINSIGHT_CHANNEL_KEY` 环境注入，独立于 JWT Secret），接口返回时掩码脱敏（如 `sk-****abcd`）；编辑时不回显明文，留空表示保持原值。
 
+**通知路由表（notify_routes）**：`id, org_id, name, rule(JSON，severity/event_type → channel_ids 映射), default_channel_id, enabled`。告警触发时按 severity/event_type 匹配路由，未命中走默认渠道；路由层同时应用渠道启用开关与风暴抑制（单资产每小时上限）。
+
 **降噪规则表（noise_rules）**：`id, org_id, type(whitelist_ip/ignore_type/agg_window/storm_limit), config(JSON), enabled`。
 
 **扫描授权白名单表（scan_whitelists）**：`id, org_id, kind(domain/ip/cidr), value, remark, enabled`，`unique(org_id, kind, value)`。Worker 以规则 Hash 周期同步白名单，发起请求前校验目标命中白名单且非内网段，未命中直接拒绝并计数。
@@ -860,6 +864,12 @@ src/
 | `CINSIGHT_JWT_TTL` | 15m | 登录 access token 有效期 |
 | `CINSIGHT_REFRESH_TTL` | 7d | refresh token 有效期 |
 | `CINSIGHT_SUPER_ADMIN_USER` | admin | 初始超管用户名 |
+| `CINSIGHT_SMTP_HOST` | 空 | 系统级 SMTP 服务器（验证码/邀请邮件发送，独立于组织通知渠道） |
+| `CINSIGHT_SMTP_PORT` | 465 | 系统 SMTP 端口 |
+| `CINSIGHT_SMTP_USER` | 空 | 系统 SMTP 用户名 |
+| `CINSIGHT_SMTP_PASSWORD` | 空 | 系统 SMTP 密码（K8s Secret 注入） |
+| `CINSIGHT_SMTP_FROM` | 空 | 系统邮件发件人地址 |
+| `CINSIGHT_MAIL_CODE_TTL` | 5m | 邮件验证码有效期（一次性） |
 | `CINSIGHT_RULES_DIR` | /data/rules | fsnotify 监听规则目录 |
 | `CINSIGHT_LITESTREAM_URI` | 空 | Litestream 备份目标（S3/文件） |
 | `CINSIGHT_NOTIFY_RETRY` | 3 | 通知/Webhook 重试次数 |
