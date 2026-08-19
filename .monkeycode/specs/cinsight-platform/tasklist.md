@@ -152,7 +152,7 @@ Updated: 2026-08-19
 ### 2.3 事件中心与漏洞管理
 - [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id）
 - [ ] 发现处理链路（回传幂等→落 findings→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
-- [ ] 降噪规则在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，规则变更不回溯）
+- [ ] 降噪在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，命中同时抑制告警与推送，规则变更不回溯）
 - [ ] 事件批量状态流转（POST /api/v1/events/batch）
 - [ ] 事件类型筛选（12 类）+ 降噪规则完整 CRUD（GET/POST /api/v1/noise-rules，PUT/DELETE /api/v1/noise-rules/:id）
 - [ ] 独立告警接口（GET /api/v1/alerts 列表 + GET /:id 详情 + PATCH /api/v1/alerts/:id 处置 + POST /api/v1/alerts/batch 批量处置）
@@ -214,7 +214,7 @@ Updated: 2026-08-19
 - [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4291 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
 - [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
-- [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent）
+- [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent + 覆盖范围见 design audit_logs 段，批量逐条记录，读操作与引擎回传不审计）
 - [ ] API Token 管理（细粒度权限/有效期 + 撤销 DELETE + 停用/恢复 PATCH :id/status）
 - [ ] 团队管理前端页（成员列表/邀请/批量移除/禁用/改角色）
 - [ ] 系统设置前端页（Worker 节点管理/通知渠道 CRUD+测试/通知路由规则/规则库管理/API Token/Webhook/审计日志筛选）

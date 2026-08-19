@@ -700,7 +700,7 @@ erDiagram
 
 **user_orgs 约束**：`user_orgs` 表不允许 `is_super_admin` 用户插入；平台超管通过全局 `org_id=0` 查询平台数据。
 
-**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询支持 `username`（操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end）。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。
+**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询支持 `username`（操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end）。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。审计覆盖范围：登录/登出、资产增删改与批量、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎回传不审计，批量操作逐条记录。
 
 **API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), expires_at, last_used_at`。
 
@@ -902,7 +902,7 @@ Worker 结果回传后 Master 的处理顺序：
 
 1. **幂等去重**：按 `result_id` 唯一索引，重复回传直接 ack 不处理。
 2. **落库 finding**：写入 findings（含 engine/severity/line_no/confidence/evidence_id/extra）。
-3. **降噪过滤**：按 `noise_rules` 在事件生成前过滤（白名单 IP 目标 / 忽略类型 / 聚合窗口 / 风暴抑制），命中则丢弃该条不再生成事件；规则变更只影响后续生成。
+3. **降噪过滤**：按 `noise_rules` 在事件生成前过滤（白名单 IP 目标 / 忽略类型 / 聚合窗口 / 风暴抑制），命中则丢弃该条不再生成事件，**同时不生成告警、不触发推送**（降噪在告警生成与推送之前拦截）；规则变更只影响后续生成。
 4. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并）。
 5. **漏洞聚合**：漏洞类引擎（漏洞扫描/DNS）按 `org_id+asset_id+engine+签名` 聚合并入 vulnerabilities：首见创建（status=open），重复仅更新 `last_seen_at`；`vulnerabilities.closed_at` 记录关闭时间。
 6. **告警生成**：severity≥high 或命中告警类型（可用性宕机/端口暴露/篡改/情报预警等）生成 alerts（status=open，resolved_at 空），走通知路由推送（severity/event_type→渠道）。

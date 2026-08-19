@@ -93,7 +93,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 **Acceptance Criteria:**
 1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。
-2. 降噪规则 SHALL 在**事件生成时**生效（白名单 IP 目标不生成事件、忽略指定类型不生成、聚合时间窗合并同类、风暴抑制限流），命中规则的事件 SHALL 直接丢弃不落库；规则变更仅影响之后的事件生成，不回溯清理已生成事件。
+2. 降噪规则 SHALL 在**事件生成时**生效（白名单 IP 目标不生成事件、忽略指定类型不生成、聚合时间窗合并同类、风暴抑制限流），命中规则的事件 SHALL 直接丢弃不落库；命中降噪规则的 finding SHALL 同时不生成告警、不触发通知推送（降噪在告警生成与推送之前拦截）；规则变更仅影响之后的事件生成，不回溯清理已生成事件。
 3. WHEN finding 属于漏洞类引擎（漏洞扫描/DNS 解析类等），系统 SHALL 按 `org_id + asset_id + 引擎 + 特征签名` 聚合：首次命中生成 `vulnerabilities` 记录，重复命中仅更新 `last_seen_at` 并刷新严重级别。
 4. WHEN finding 严重级别为 `high/critical` 或命中告警类型（可用性宕机、端口暴露、页面篡改、情报预警等），系统 SHALL 生成 `alerts` 记录（`resolved_at` 为空），并按通知路由（R5.13-6）推送。
 5. event 与 alert 相互独立：event 全量记录所有发现，alert 仅记录需优先响应项；关闭事件不自动关闭告警，反之亦然，避免两类台账互相覆盖。
@@ -400,7 +400,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 8. Worker 注册 SHALL 受组织 Worker 配额约束：已注册 Worker 数达到该组织 `max_workers` 时，注册握手 SHALL 返回 4291 `WORKER_QUOTA_EXCEEDED` 拒绝注册；移除节点释放配额。
 9. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
 10. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
-11. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 记录客户端 IP 与 User-Agent（服务端请求中间件捕获，不依赖前端上报），并禁止修改与删除。
+11. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 记录客户端 IP 与 User-Agent（服务端请求中间件捕获，不依赖前端上报），并禁止修改与删除。审计 SHALL 覆盖：登录/登出、资产增删改与批量操作、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎内部回传不审计，批量操作逐条记录。
 12. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
 
 #### R5.14 平台管理（仅 super_admin）
