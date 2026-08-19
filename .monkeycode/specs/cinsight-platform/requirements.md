@@ -73,7 +73,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 系统 SHALL 维护 `users` 表（id, username, password(bcrypt), email, phone, avatar_url, status, last_login_at, is_super_admin）。
 3. 系统 SHALL 维护 `user_orgs` 关联表（user_id, org_id, role, status, joined_at），并禁止 `super_admin` 加入 `user_orgs`。
 4. 所有业务查询 SHALL 强制附带 `org_id` 过滤条件，未携带则拒绝。
-5. 系统 SHALL 维护独立 `vulnerabilities` 表与 `alerts` 表：`vulnerabilities` 记录漏洞实体（cve_id/severity/status/evidence_id），`alerts` 记录告警实体（alert_type/severity/status/resolved_at），均由引擎发现记录触发生成。
+5. 系统 SHALL 维护独立 `vulnerabilities` 表与 `alerts` 表：`vulnerabilities` 记录漏洞实体（cve_id/severity/status/evidence_ids），`alerts` 记录告警实体（alert_type/severity/status/resolved_at），均由引擎发现记录触发生成。
 
 ### 2. 十大检测引擎（Worker 核心）
 

@@ -96,7 +96,7 @@ Updated: 2026-08-19
 - [ ] 通用证据读取接口（GET /api/v1/evidence/:id，返回 Req/Resp/HTML/截图元数据 + 文件流）
 - [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence，聚合漏洞关联证据链）
 - [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号/confidence 置信度）+ 结果回传链路
-- [ ] 结果回传协议实现（result_id 幂等 + status completed/failed/cancelled + task_timeout/stopped_by_user + findings 统一结构 + evidence_id 引用 + 内联证据落盘，见 design「Worker 结果回传协议」）
+- [ ] 结果回传协议实现（result_id 幂等 + status completed/failed/cancelled + task_timeout/stopped_by_user + findings 统一结构 + evidence_ids 数组引用 + 内联证据落盘，见 design「Worker 结果回传协议」）
 - [ ] 证据传输协议（POST /api/v1/worker/evidence：<1MB 内联 / ≥1MB 分片 ≤8MB / upload_id 断点续传 / 收齐合并 SHA-256 校验）
 - [ ] Worker HAR 文件生成（HAR 1.2 组装：entries 请求/响应头、Body、时间戳、大小、MIME + Body 超限截断标记 + gzip 落盘入库）
 - [ ] 证据下载接口支持 format=har（HAR 文件导出，可导入 DevTools/Fiddler）

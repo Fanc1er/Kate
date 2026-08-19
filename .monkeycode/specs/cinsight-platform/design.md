@@ -185,7 +185,7 @@ sequenceDiagram
 - **内联小文件**：单证据 < 1MB 时随结果 JSON 内联回传（Base64 + sha256），Master 直接落盘，无额外请求。
 - **分片上传**：≥ 1MB 走 `POST /api/v1/worker/evidence`（multipart/form-data：`upload_id + chunk_index + total_chunks + data + sha256`），单片 ≤ 8MB，顺序上传；Master 收齐合并至 `/data/evidence/{date}/` 后复算 SHA-256 校验，入库返回 `evidence_id`。
 - **断点续传**：`upload_id` 对应 Master 临时目录，重传时携带 `resume=true` 返回已收分片列表，Worker 仅补传缺失分片；传输超时（30min）后由 Master 清理临时分片并允许 Worker 重新发起。
-- **结果关联**：结果回传 `POST /api/v1/worker/tasks/:id/result` 引用 `evidence_id` 列表，证据与 finding/event 关联，避免重复回传。
+- **结果关联**：结果回传 `POST /api/v1/worker/tasks/:id/result` 以 `evidence_ids` 数组引用证据，证据与 finding/event 关联，避免重复回传。
 
 ### AI 内容分类服务适配层
 
@@ -542,7 +542,7 @@ type Finding struct {
     "asset_id": 100,
     "title": "...",
     "severity": "critical",
-    "evidence_id": 88,
+    "evidence_ids": [88],
     "timestamp": "2026-08-19T10:00:00Z"
   }
   ```
@@ -673,7 +673,7 @@ erDiagram
         string description
         int line_no "触发点行号，无代码定位为空"
         float confidence "0~1 引擎判定可信度"
-        string evidence_id FK
+        string evidence_ids "关联证据 ID 数组（JSON），对应 evidence 表多条，见回传协议 evidence_ids"
         string status
         string extra "JSON 扩展数据，如 MultiUA 报告 Extra['multi_ua']（probes/scores base+feature+scene/total_score/conclusion/abnormal_ends/dom_similarity/spa_suspected）"
     }
@@ -716,7 +716,7 @@ erDiagram
         string title
         string description
         string status "open/verifying/ignored/closed"
-        string evidence_id FK
+        string evidence_ids "关联证据 ID 数组（JSON，聚合关联 finding 的证据链）"
         datetime first_seen_at
         datetime last_seen_at
         datetime closed_at "复测通过置 closed 时写入"
@@ -742,6 +742,7 @@ erDiagram
         string event_type
         string severity
         string content
+        string evidence_ids "关联证据 ID 数组（JSON，由生成事件的 finding 关联证据继承，可空）"
         string status "pending/processing/closed/archived"
         string sop_attached
     }
@@ -1159,7 +1160,7 @@ src/
 
 - `status=cancelled`：Worker 收到 stop 信号（`stop_check`）后中止引擎回传；`stopped_by_user=true`。
 - `status=failed` + `task_timeout=true`：任务级超时中止。
-- 引擎结果统一映射为 findings 数组（字段对应 findings 表），evidence 先经 `/api/v1/worker/evidence` 上传取得 `evidence_id`，result 仅引用；内联证据（<1MB）允许随 finding 直接回传，Master 落盘后生成 evidence_id。
+- 引擎结果统一映射为 findings 数组（字段对应 findings 表），evidence 先经 `/api/v1/worker/evidence` 上传取得 `evidence_id`，result 以 `evidence_ids` 数组引用；内联证据（<1MB）允许随 finding 直接回传，Master 落盘后生成 evidence_id 并入 evidence_ids。
 - Master 处理：幂等去重 → 落 findings → 降噪过滤 → 生成事件 → 漏洞聚合 → 告警生成 → WS 广播（见「发现处理链路」）。
 
 **Webhook 订阅事件枚举**（`webhooks.events` JSON 存储下列事件名数组，事件发生时按订阅过滤推送）：`finding.critical / finding.high / finding.medium`、`vulnerability.new / vulnerability.closed`、`event.new / event.acknowledged / event.closed`、`alert.new / alert.acknowledged / alert.closed`、`task.completed / task.failed`、`intel.high`。
@@ -1169,9 +1170,9 @@ src/
 Worker 结果回传后 Master 的处理顺序：
 
 1. **幂等去重**：按 `result_id` 唯一索引，重复回传直接 ack 不处理。
-2. **落库 finding**：写入 findings（含 engine/severity/line_no/confidence/evidence_id/extra）。
+2. **落库 finding**：写入 findings（含 engine/severity/line_no/confidence/evidence_ids/extra）。
 3. **降噪过滤**：按 `noise_rules` 在事件生成前过滤（白名单 IP 目标 / 忽略类型 / 聚合窗口 / 风暴抑制），命中则丢弃该条不再生成事件，**同时不生成告警、不触发推送**（降噪在告警生成与推送之前拦截）；规则变更只影响后续生成。
-4. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并）。
+4. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并），事件 `evidence_ids` 继承 finding 的证据关联（多条 finding 合并时取并集）。
 
 | 引擎 | 事件类型（R5.3-2） | 说明 |
 |------|------|------|
