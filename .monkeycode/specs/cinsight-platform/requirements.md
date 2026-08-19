@@ -173,6 +173,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 前端 SHALL 提供全屏抽屉，上方左右分屏展示 HTTP Req/Resp。
 3. 下方 SHALL 展示 HTML 源码（代码高亮 + 行号标红定位）。
 4. 前端 SHALL 提供截图取证标签页展示渲染截图，并提供下载完整 HTML 快照 / HAR 文件按钮。
+5. HTML 源码属不可信外部内容，前端 SHALL 禁止直接 `v-html` 注入；渲染前 SHALL 经 DOMPurify 白名单净化（剥离 script/style/iframe/on* 事件属性等），净化后高亮展示，防止存储型 XSS 经证据链回放。
 
 #### R3.4 截图上传接口
 
@@ -199,6 +200,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. Bleve 索引 SHALL 引入 BatchIndexer，后台协程每 5 秒或凑齐 50 条批量提交。
 3. 万级列表 SHALL 启用虚拟滚动；WebSocket SHALL 断线指数退避重连。
 4. 系统 SHALL 执行告警风暴抑制：单资产每小时通知上限 5 条，超出部分静默入库并追加高频提示。
+5. SQLite SHALL 配置单写连接池（`MaxOpenConns=1`）与连接参数（`ConnMaxLifetime` 30m、`ConnMaxIdleTime` 10m、`busy_timeout` 5s），写冲突由事务重试兜底；只读副本连接池独立配置。
+6. 删除业务（单条/批量/级联清理）SHALL 同步删除对应 Bleve 索引文档，保持全文索引与 SQLite 一致；SHALL 提供 `index rebuild` 全量重建命令用于故障后对账。
 
 #### R4.3 高可用容灾
 
@@ -328,14 +331,14 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.10 任务调度与策略
 
 1. 系统 SHALL 提供策略模板（10 大引擎开关/扫描并发/超时/速率限制），完整 CRUD（`GET/POST /api/v1/policies`、`PUT/DELETE /api/v1/policies/:id`）、复制模板 `POST /api/v1/policies/:id/copy` 与批量删除 `POST /api/v1/policies/batch-delete`。
-2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口），完整 CRUD（`GET/POST /api/v1/scan-plans`、`PUT/DELETE /api/v1/scan-plans/:id`）、启停开关 `PATCH /api/v1/scan-plans/:id/status` 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。
+2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口），完整 CRUD（`GET/POST /api/v1/scan-plans`、`PUT/DELETE /api/v1/scan-plans/:id`）、启停开关 `PATCH /api/v1/scan-plans/:id/status` 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。Cron 表达式 SHALL 绑定明确时区（默认 `Asia/Shanghai`，可经 `CINSIGHT_TIMEZONE` 覆盖），服务端按该时区计算执行时间，前端创建/编辑时展示所选时区。
 3. 系统 SHALL 提供任务列表、任务详情 `GET /api/v1/tasks/:id`（状态/进度/执行日志/结果统计/Worker 分配）、停止 `POST /api/v1/tasks/:id/stop`、失败重跑 `POST /api/v1/tasks/:id/rerun`、删除历史任务 `DELETE /api/v1/tasks/:id`、批量停止 `POST /api/v1/tasks/batch-stop` 与批量失败重跑 `POST /api/v1/tasks/batch-rerun`。
 4. 系统 SHALL 提供任务队列监控（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示。
 
 #### R5.11 报告中心
 
 1. 系统 SHALL 提供报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议），完整 CRUD（`GET/POST /api/v1/report-templates`、`PUT/DELETE /api/v1/report-templates/:id`）。
-2. 系统 SHALL 支持定时报告（Cron 生成周报/月报）。
+2. 系统 SHALL 支持定时报告（Cron 生成周报/月报），Cron 执行时区 SHALL 与扫描计划一致（默认 `Asia/Shanghai`，`CINSIGHT_TIMEZONE` 可覆盖）。
 3. 系统 SHALL 支持报告导出（PDF 含水印/Excel 漏洞清单/按资产与时间范围导出截图合集），提供报告详情 `GET /api/v1/reports/:id`、删除 `DELETE /api/v1/reports/:id` 与异步生成进度通知。
 
 #### R5.12 团队管理（仅 org_admin）
@@ -347,13 +350,14 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报，支持移除离线节点 `DELETE /api/v1/worker/nodes/:id`。
 2. Worker 注册 SHALL 走握手流程：首次注册用一次性 Bootstrap Token 调用 `POST /api/v1/worker/register` 换取长期凭证（client_id + client_secret，服务端存 hash），后续心跳/拉取/回传 SHALL 用长期凭证鉴权；凭证支持撤销/重发，泄露可吊销。
+3. Bootstrap Token 与长期凭证 SHALL 加密/哈希存储（Bootstrap Token 存 SHA-256 且一次性领取即失效，client_secret 存 bcrypt），库中禁止明文；Token 仅在创建时一次性返回，刷新即作废旧值。
 3. 受邀成员 SHALL 首次登录激活：邀请状态 `invited`，首次登录后激活为 `active` 并强制设密码/改密；邀请链接默认 7 天过期。
 4. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP 多渠道），并按 id 测试发送 `POST /api/v1/notify-channels/:id/test`。
 5. 通知渠道的密钥/令牌类字段（Webhook Secret、SMTP 密码等）SHALL 加密存储（AES-256-GCM，主密钥经环境变量注入），接口返回时 SHALL 脱敏（仅掩码显示），编辑回显 SHALL 提供"留空则保持原值"。
 6. Worker 注册 SHALL 受组织 Worker 配额约束：已注册 Worker 数达到该组织 `max_workers` 时，注册握手 SHALL 返回 4290 `WORKER_QUOTA_EXCEEDED` 拒绝注册；移除节点释放配额。
 7. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
 8. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
-9. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 禁止修改与删除。
+9. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 记录客户端 IP 与 User-Agent（服务端请求中间件捕获，不依赖前端上报），并禁止修改与删除。
 10. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
 
 #### R5.14 平台管理（仅 super_admin）
@@ -369,6 +373,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 全量开放 REST API（Swagger 文档）。
 2. 系统 SHALL 提供 API Token 认证（独立于 JWT，支持细粒度权限）。
 3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。
+4. Swagger 文档（`/swagger/*`）SHALL 受开关控制：生产环境默认关闭，仅当 `CINSIGHT_SWAGGER_ENABLED=true` 时暴露，防止生产环境信息泄露。
 
 #### R5.16 部署模式与 CI/CD
 
@@ -385,16 +390,16 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供路由守卫：`beforeEach` 校验 token 有效性、组织选择态与 role 权限。
 2. 系统 SHALL 提供按钮级权限指令 `v-permission`，菜单/路由/按钮三级权限 SHALL 一致（同一 RBAC 权限表驱动，禁止某级绕过）。
 3. 系统 SHALL 提供全局错误处理：axios 拦截器统一错误提示 + 异常兜底页 + 全局错误边界组件。
-3. 系统 SHALL 在页面加载提供骨架屏占位，请求失败 SHALL 显示 Toast 提示并支持重试。
-4. 系统 SHALL 在 WebSocket 断线时显示断线提示条，重连成功 SHALL 自动恢复并清除提示。
-5. 系统 SHALL 预留 i18n（中/英）与可访问性支持，路由懒加载 + 组件分包保证首屏 < 3s。
-6. 系统 SHALL 提供前端组件测试（vitest）：覆盖登录表单校验、路由守卫权限、权限菜单渲染。
-7. 所有列表页 SHALL 提供空状态引导（插画 + 文案 + 主操作按钮），危险操作（删除/移除/撤销）SHALL 二次确认弹窗。
-8. 列表多选后 SHALL 显示批量操作栏（已选 N 项/全选/跨页记忆），批量结果 SHALL Toast 汇总"成功 M / 失败 K"并可展开失败明细。
-9. 资产 URL、API Token、Webhook Secret、Bootstrap Token SHALL 提供一键复制；资产列表 SHALL 支持 URL/CSV 批量导入（模板下载 + 逐行校验报告）与当前筛选结果 CSV 导出。
-10. 导航栏事件/告警 SHALL 显示未读数角标（WebSocket 实时更新）；任务行 SHALL 支持点击展开详情（进度/日志/结果统计）。
-11. 列表筛选条件 SHALL 持久化（localStorage）并支持 URL 参数分享；报告生成 SHALL 异步化并展示进度条 + 完成通知。
-12. 系统 SHALL 提供统一批量操作规范：`POST /api/v1/{resource}/batch` 携带 `{ids}`（上限 500），返回 `{success, failed}`，逐条失败不中断，批量操作幂等。
+4. 系统 SHALL 在页面加载提供骨架屏占位，请求失败 SHALL 显示 Toast 提示并支持重试。
+5. 系统 SHALL 在 WebSocket 断线时显示断线提示条，重连成功 SHALL 自动恢复并清除提示；WebSocket SHALL 提供心跳保活（每 30s ping，服务端 60s 读超时关闭死连接，连续 3 次无 pong 触发重连）。
+6. 系统 SHALL 预留 i18n（中/英）与可访问性支持，路由懒加载 + 组件分包保证首屏 < 3s。
+7. 系统 SHALL 提供前端组件测试（vitest）：覆盖登录表单校验、路由守卫权限、权限菜单渲染。
+8. 所有列表页 SHALL 提供空状态引导（插画 + 文案 + 主操作按钮），危险操作（删除/移除/撤销）SHALL 二次确认弹窗。
+9. 列表多选后 SHALL 显示批量操作栏（已选 N 项/全选/跨页记忆），批量结果 SHALL Toast 汇总"成功 M / 失败 K"并可展开失败明细。
+10. 资产 URL、API Token、Webhook Secret、Bootstrap Token SHALL 提供一键复制；资产列表 SHALL 支持 URL/CSV 批量导入（模板下载 + 逐行校验报告）与当前筛选结果 CSV 导出。
+11. 导航栏事件/告警 SHALL 显示未读数角标（WebSocket 实时更新）；任务行 SHALL 支持点击展开详情（进度/日志/结果统计）。
+12. 列表筛选条件 SHALL 持久化（localStorage）并支持 URL 参数分享；报告生成 SHALL 异步化并展示进度条 + 完成通知。
+13. 系统 SHALL 提供统一批量操作规范：`POST /api/v1/{resource}/batch` 携带 `{ids}`（上限 500），返回 `{success, failed}`，逐条失败不中断，批量操作幂等。
 
 #### R5.18 Webhook 配置管理
 

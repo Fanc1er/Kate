@@ -158,6 +158,7 @@ sequenceDiagram
 ### Worker 注册握手与凭证生命周期
 
 - **首次注册**：Worker 启动携带安装时下发的 Bootstrap Token 调用 `POST /api/v1/worker/register`，Master 校验 Token 有效（未过期/未使用）后签发长期凭证 `worker_client_id + worker_client_secret`（服务端存 hash），Token 一次性使用即作废。
+- **凭证存储**：Bootstrap Token 与长期凭证在库中一律不落明文——Bootstrap Token 存 hash（SHA-256）且仅可读一次（领取即失效），`worker_client_secret` 存 bcrypt/hash，页面列表仅展示掩码；Token 值只在创建时一次性返回并可一键复制，刷新即作废旧值。
 - **后续鉴权**：Worker 心跳/拉取/回传均用长期凭证（`X-Worker-ID` + `X-Worker-Secret` 或 Basic Auth），不再依赖 Bootstrap Token。
 - **凭证轮换**：Master 可撤销/重发凭证，泄露时可吊销；Worker 离线超期（>5min 无心跳）标记离线，可被删除（DELETE /api/v1/worker/nodes/:id）。
 - **受邀成员首次登录激活**：邀请发出后成员状态 `invited`，首次登录（验证码/初始密码）后自动激活为 `active`，同时强制设密码/改密；邀请链接过期时间（默认 7 天）。
@@ -351,7 +352,7 @@ type Finding struct {
 - **通用表格基座（15.2）**：TinyVue Grid 封装组件，内置多选批量操作栏（已选 N 项/全选当前页/跨页记忆）、分页、排序、筛选重置、日期选择器、空态、骨架屏、搜索防抖（300ms）。
 - **表单基座（15.3）**：统一表单校验规则库（必填/URL/邮箱/手机号/密码强度）、新建/编辑共用抽屉组件（同表单不同标题）、保存中按钮禁用防重复提交。
 - **图表基座（15.4）**：ECharts 统一配色（主色/辅助色/成功/警告/危险/信息）、阈值配色（高危红/中危橙/低危黄/正常绿）、角色 Tag 颜色规范（super_admin 紫/org_admin 蓝/engineer 青/viewer 灰）。
-- **详情抽屉基座（15.5）**：通用详情抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图 tab + 下载按钮 + 时间线），资产画像/漏洞证据/事件详情复用。
+- **详情抽屉基座（15.5）**：通用详情抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图 tab + 下载按钮 + 时间线），资产画像/漏洞证据/事件详情复用。HTML 源码为不可信内容（采集自外部站点），渲染前 SHALL 经白名单净化（DOMPurify：剥离 script/style/iframe/事件属性等危险元素），禁止直接 `v-html` 注入未净化内容，防止存储型 XSS 经证据链回放。
 - **空状态**：所有列表在无数据时展示引导性空状态（插画 + 文案 + 主操作按钮，如"暂无资产，去添加"）。
 - **危险操作确认**：删除/批量删除/移除成员/撤销 Token 等危险操作一律二次确认弹窗（含后果说明与需输入名称确认的组织删除）。
 - **复制能力**：资产 URL、API Token、Webhook Secret、Bootstrap Token 提供一键复制按钮。
@@ -373,6 +374,7 @@ type Finding struct {
   - 上行：`{"type":"subscribe","channels":["event","finding"]}` / `{"type":"ping"}`
   - 下行：`{"type":"event","data":{...}}` / `{"type":"finding","data":{...}}` / `{"type":"pong"}`
 - 断线策略：ReconnectingWebSocket 指数退避重连（1s→2s→4s…上限 60s），订阅在重连后自动恢复；前端展示断线提示条，重连成功自动清除。
+- 心跳保活：前端每 30s 发送 `{"type":"ping"}`，服务端即时回 `{"type":"pong"}`；服务端 ReadDeadline 60s（读超时判定死连接并关闭），前端连续 3 次 ping 无 pong 判定连接异常并触发重连。
 
 ### Webhook 推送协议
 
@@ -554,7 +556,7 @@ erDiagram
 
 **user_orgs 约束**：`user_orgs` 表不允许 `is_super_admin` 用户插入；平台超管通过全局 `org_id=0` 查询平台数据。
 
-**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, created_at`。禁止 update/delete，仅可 insert/select。筛选查询支持 `username`（操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end）。
+**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询支持 `username`（操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end）。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。
 
 **API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), expires_at, last_used_at`。
 
@@ -562,7 +564,7 @@ erDiagram
 
 **降噪规则表（noise_rules）**：`id, org_id, type(whitelist_ip/ignore_type/agg_window/storm_limit), config(JSON), enabled`。
 
-**Worker 节点表（worker_nodes）**：`id, org_id, name, ip, version, status, heartbeat_at, load, boot_token`。
+**Worker 节点表（worker_nodes）**：`id, org_id, name, ip, version, status, heartbeat_at, load, boot_token_hash, client_id, client_secret_hash`。token/secret 仅存 hash（boot_token_hash=SHA-256，client_secret_hash=bcrypt），不落明文。
 
 **时序降级表（availability_points / trend_points）**：VictoriaMetrics 的内嵌替代。`availability_points(id, org_id, asset_id, engine, timestamp, status_code, latency_ms, up)`, `trend_points(id, org_id, metric, date, value)`。预留 `MetricsExporter` 接口以支持未来切换 VM。
 
@@ -618,6 +620,11 @@ db.DB().SetMaxOpenConns(1)   // Master 单写
 db.DB().SetMaxIdleConns(1)
 ```
 
+- **连接池参数**（针对 SQLite 单写特性收敛，防止写锁争用）：
+  - `SetMaxOpenConns(1)`：Master 单写约束，写并发收敛到单连接；只读副本独立实例另行配置（Litestream 复制，`SetMaxOpenConns(8)` + `SetMaxIdleConns(4)`）。
+  - `SetConnMaxLifetime(30m)` / `SetConnMaxIdleTime(10m)`：连接复用与空闲回收，避免 SQLite 文件句柄长期驻留。
+  - `busy_timeout=5000`：写锁等待上限 5s，超时返回 `SQLITE_BUSY` 由事务重试（最多 3 次）兜底。
+
 ### BadgerDB-SQLite 缓存一致性
 
 - 写入链路：Master 接收结果 → 先写 BadgerDB 元数据（即时可查）→ 异步批量持久化 SQLite（成功 ack）。
@@ -637,6 +644,8 @@ db.DB().SetMaxIdleConns(1)
 ### Bleve 索引设计
 
 索引对象：`findings`（标题/描述/URL）、`events`（内容）、`assets`（URL/名称/技术栈）。BatchIndexer 后台协程每 5 秒或凑齐 50 条批量提交，写入失败重试 3 次后降级为直接提交。
+
+**删除同步**：任何删除/级联清理 SQLite 数据时 SHALL 同步删除对应索引文档（`batch.Index(id, nil)` 即按 id 删除），由删除业务在同一事务/命令中触发，确保全文索引与 DB 一致；DB→索引批量重建脚本（`index rebuild`）用于故障后全量对账修复。
 
 ## 前端架构设计
 
@@ -782,6 +791,8 @@ src/
 | `CINSIGHT_WORKER_HEARTBEAT_MS` | 5000 | Worker 心跳间隔（离线判定 >5min） |
 | `CINSIGHT_CHANNEL_KEY` | 空 | 通知渠道密钥加密主密钥（AES-256-GCM，32 字节，缺失则渠道密钥类字段禁用） |
 | `CINSIGHT_HAR_MAX_BODY` | 1MB | HAR 文件响应体截断上限 |
+| `CINSIGHT_SWAGGER_ENABLED` | false | Swagger 文档开关（生产默认关闭，true 时暴露 /swagger/*） |
+| `CINSIGHT_TIMEZONE` | Asia/Shanghai | 定时任务/定时报告 Cron 执行时区 |
 
 ### 日志与请求追踪
 
@@ -811,7 +822,9 @@ src/
 | 任务调度 | 状态机流转、超时对账、断点续扫 |
 | 引擎契约 | 各引擎 mock 输入 → finding 输出 |
 | AI 适配层 | AI 可用→ai 来源 / 超时或 429→regex 回退 / 熔断切换 |
-| Worker 握手 | Bootstrap Token 一次性使用、长期凭证校验、凭证吊销 |
+| Worker 握手 | Bootstrap Token 一次性使用、长期凭证校验、凭证吊销、token 落库 hash 无明文 |
+| Bleve 索引 | 删除/级联清理同步删索引、index rebuild 全量重建对账 |
+| 审计日志 | IP/User-Agent 服务端捕获、筛选与分页 |
 | 脱敏 | 身份证/手机号/邮箱/AccessKey 三时机脱敏 |
 
 ### 集成测试
@@ -820,6 +833,8 @@ src/
 - 认证→建资产→下发任务→Worker 结果回传→事件生成→前端数据闭环全链路。
 - SQLite 内存模式 + BadgerDB 临时目录跑通 Repository 层租户隔离查询。
 - WebSocket 推送：事件产生后订阅者收到实时通知，断线重连（指数退避）成功。
+- WebSocket 心跳保活：ping 30s 正常回 pong；服务端 ReadDeadline 60s 超时关闭死连接；前端连续 3 次无 pong 触发重连。
+- 审计日志：写操作记录 IP/User-Agent（服务端捕获），按 operator/action/resource_type/时间范围筛选正确。
 - Worker 注册握手：Bootstrap Token 换长期凭证 → 心跳/拉取/回传全链路鉴权通过。
 - 无头浏览器截图：真实 URL 渲染出 PNG，超时降级 `screenshot: skipped` 不阻断任务。
 - 限流：超阈值请求返回 429 + `Retry-After`，登录锁定 15min。
@@ -837,6 +852,7 @@ src/
 - 路由守卫（无 token 跳登录、无 org 弹组织选择、越权角色 403）。
 - 权限菜单渲染（按 RBAC 权限表过滤）。
 - v-permission 按钮级权限（无权限角色按钮隐藏）。
+- 证据 HTML XSS 净化（DOMPurify：注入 `<script>`/`onerror`/`<iframe>` 断言被剥离，净化后无危险节点）。
 
 ### 性能基准
 

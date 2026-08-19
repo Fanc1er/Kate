@@ -15,7 +15,7 @@ Updated: 2026-08-19
 - [ ] 统一约定落地：分页/排序/筛选参数、RFC3339 时间、鉴权分层（JWT / API Token / Worker Bootstrap）
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
 - [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
-- [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，阶段 3 全量注解）【必执行】
+- [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
 - [ ] 全量业务表结构迁移（assets/vulnerabilities/alerts/findings/events/tickets/evidence/audit_logs/api_tokens/notify_channels/noise_rules/worker_nodes/scan_plans/availability_points/trend_points）
 
 ### 1.2 认证与 RBAC
@@ -34,7 +34,7 @@ Updated: 2026-08-19
 - [ ] 首启引导初始化 super_admin/默认策略/降噪规则（--init-super-admin 或首启向导，未初始化禁用平台管理）
 
 ### 1.3 前端基础框架
-- [ ] 引入 TinyVue (@opentiny/vue) + Pinia + Vue Router 4 + ReconnectingWebSocket + ECharts
+- [ ] 引入 TinyVue (@opentiny/vue) + Pinia + Vue Router 4 + ReconnectingWebSocket + ECharts + DOMPurify
 - [ ] 前端目录结构落地（src/api|stores|router|layouts|views|components|utils，见 design 前端架构）
 - [ ] axios 封装 + 模块化 API 层（Bearer + X-Org-Id + 401 跳转 + 模块拆分）
 - [ ] Pinia store 划分（auth/menu/asset/event/dashboard）
@@ -61,7 +61,7 @@ Updated: 2026-08-19
 
 ### 1.5 任务调度与可用性引擎
 - [ ] 任务表与策略模板表迁移
-- [ ] SQLite 连接与 WAL 配置（journal_mode/busy_timeout/synchronous/foreign_keys，单写连接池）
+- [ ] SQLite 连接与 WAL 配置（journal_mode/busy_timeout/synchronous/foreign_keys，单写连接池 + 连接参数 MaxOpenConns(1)/ConnMaxLifetime(30m)/ConnMaxIdleTime(10m)）
 - [ ] GORM 迁移策略落地（AutoMigrate + schema_migrations + 种子数据）
 - [ ] 核心表索引落地（org_id/状态/时间索引，见 design 索引设计）
 - [ ] BadgerDB-SQLite 缓存一致性（写入先 Badger 后异步 SQLite + 每小时对账）
@@ -92,12 +92,12 @@ Updated: 2026-08-19
 - [ ] 截图上传接口（POST /api/v1/evidence/screenshots，Base64 或文件流，鉴权 + SHA-256 校验）
 - [ ] 截图上传安全校验（MIME 仅 png/jpeg/webp + 大小 ≤10MB + 文件名防路径穿越/UUID 落盘）
 - [ ] 证据文件保留期清理与空间回收（expires_at 365 天 + 孤儿文件扫描）
-- [ ] 前端全屏证据抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图标签页 + 下载按钮）
+- [ ] 前端全屏证据抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图标签页 + 下载按钮；HTML 经 DOMPurify 白名单净化后渲染，禁止直接 v-html 注入防存储型 XSS）
 
 ### 1.7 仪表盘与报告
 - [ ] 统计卡片 + 7 天趋势 + 风险 Top10
 - [ ] 引擎覆盖率雷达图（10 大引擎检测覆盖率）
-- [ ] WebSocket 实时事件滚动 + 指数退避重连（/api/v1/ws/events 订阅协议）
+- [ ] WebSocket 实时事件滚动 + 指数退避重连 + 心跳保活（每 30s ping / 服务端 ReadDeadline 60s / 连续 3 次无 pong 触发重连，/api/v1/ws/events 订阅协议）
 - [ ] ECharts 图表集成（雷达图/趋势图/折线图/可用性点阵图）
 - [ ] 结构化日志 + request_id 请求追踪中间件 + 敏感字段脱敏（密码/Token/身份证/手机号/Headers）
 - [ ] 报告导出（PDF 含水印 / Excel 漏洞清单）
@@ -159,6 +159,7 @@ Updated: 2026-08-19
 
 ### 2.5 重组件集成
 - [ ] Bleve 索引 + BatchIndexer（5s/50 条批量提交）
+- [ ] Bleve 删除同步（删除/级联清理时 batch 按 id 删索引 + index rebuild 全量重建命令）
 - [ ] BadgerDB 元数据缓存层（API 毫秒级响应）
 - [ ] 异步批量持久化 SQLite/Bleve 通道
 
@@ -186,7 +187,7 @@ Updated: 2026-08-19
 - [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4290 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
 - [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
-- [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页）
+- [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent）
 - [ ] API Token 管理（细粒度权限/有效期 + 撤销 DELETE + 停用/恢复 PATCH :id/status）
 
 ### 3.2 平台管理
@@ -218,9 +219,9 @@ Updated: 2026-08-19
 
 ### 3.4 报告中心全量
 - [ ] 报告模板完整 CRUD（执行摘要/漏洞详情/内容安全/可用性统计/整改建议 + PUT/DELETE :id）
-- [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
+- [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 时区 CINSIGHT_TIMEZONE 默认 Asia/Shanghai + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
 - [ ] 策略模板复制（POST /api/v1/policies/:id/copy 深拷贝引擎开关）
-- [ ] 定时报告（Cron 生成周报/月报 + 异步生成进度条 + 完成通知）
+- [ ] 定时报告（Cron 生成周报/月报 + 时区 CINSIGHT_TIMEZONE + 异步生成进度条 + 完成通知）
 - [ ] 报告截图合集导出（按资产/时间范围）
 - [ ] 报告详情（GET /api/v1/reports/:id）+ 报告删除（DELETE /api/v1/reports/:id）
 
