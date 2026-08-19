@@ -12,7 +12,7 @@ Updated: 2026-08-19
 - [ ] 初始化 Go 模块与 Gin 脚手架（cmd/master、cmd/worker）
 - [ ] 引入依赖：Gin、GORM、SQLite 驱动（WAL 模式）、BadgerDB、Bleve、ants、gobreaker、fsnotify、swaggo/swag、gorilla/websocket
 - [ ] 统一响应中间件（code/message/data 格式）与错误码定义（见 design 错误码枚举）
-- [ ] 统一约定落地：分页/排序/筛选参数、RFC3339 时间、鉴权分层（JWT / API Token / Worker Bootstrap）
+- [ ] 统一约定落地：响应格式 {code/message/data}（code=0 成功，业务码非 0）+ 分页 page/page_size（默认 20 上限 200，返回 list+total）/排序 sort/filter 筛选/RFC3339 时间/鉴权分层（JWT / API Token / Worker Bootstrap）
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
 - [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
 - [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
