@@ -171,6 +171,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供 `POST /api/v1/evidence/screenshots` 上传接口，接受 Base64 或文件流。
 2. 上传接口 SHALL 经鉴权（JWT/API Token）并校验文件类型与大小，上传后 SHALL 经 gzip 落盘并计算 SHA-256 入库。
 3. 截图 SHALL 关联目标资产或证据记录，可在证据抽屉截图标签页展示。
+4. 上传文件 SHALL 校验 MIME 类型（仅允许 png/jpeg/webp）与大小上限（默认 10MB），超限或类型不符 SHALL 拒绝并返回 4001。
+5. 文件名 SHALL 防路径穿越：禁止 `..`、`/`、`\` 等字符，落盘文件名 SHALL 由服务端生成 UUID，忽略客户端文件名。
 
 ### 4. 工程化与极限容灾
 
@@ -194,6 +196,9 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 3. Master 启动时 SHALL 将超时（30min）未回传的 `processing` 任务重置为 `pending`。
 4. Master SQLite SHALL 通过 Litestream 实时流式备份，RPO ≤ 5s，备份保留 30 天。
 5. Master SHALL 支持只读副本水平扩展（查询路由到副本，写入收敛单写通道），单 Master 支撑 10 万资产 / 100 Worker。
+6. 结果回传 SHALL 携带幂等键（`result_id`，Worker 端生成 UUID），Master SHALL 按幂等键去重，重复回传 SHALL 忽略并返回已接收。
+7. 任务失败 SHALL 自动重试，重试上限 3 次，超过上限 SHALL 置为 `failed` 并生成告警事件。
+8. Master 收到 SIGTERM SHALL 优雅停机：停止接收新任务、排空在途 HTTP 请求与任务对账、完成 Outbox 落盘后退出，退出超时 30s。
 
 #### R4.4 深度安全对抗
 
@@ -210,21 +215,28 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 系统 SHALL 提供 `GET /healthz`（存活）与 `GET /readyz`（就绪：SQLite/Badger/证据目录/Litestream），供 K8s 探针使用。
 3. 系统 SHALL 以 OpenTelemetry 输出 `trace_id` 贯穿 Master→Worker→外部调用，采样率 10%（错误路径全采样）。
 4. 系统 SHALL 满足 SLO：API 可用性 ≥ 99.9%，p99 延迟 < 500ms，任务成功率 ≥ 99%。
+5. 系统 SHALL 输出结构化日志（JSON），含 `ts/level/org_id/user_id/trace_id/path/latency_ms/status`，请求中间件逐请求记录。
+6. 日志 SHALL 对敏感字段（密码/Token/身份证/手机号/Headers）自动脱敏后输出，禁止明文落日志。
+7. 系统 SHALL 提供备份恢复与演练脚本（backup.sh/restore.sh/drill.sh），恢复演练 SHALL 验证数据完整性与可启动性。
 
 #### R4.6 安全加固（企业级）
 
 1. 系统 SHALL 经网关终结 TLS，响应头含 CSP / X-Frame-Options / X-Content-Type-Options / HSTS。
-2. 系统 SHALL 提供 API 通用限流（每用户/IP 100 req/min）与登录接口独立限流（5 次/min/IP）。
+2. 系统 SHALL 提供 API 通用限流（每用户/IP 100 req/min）与登录接口独立限流（5 次/min/IP，连续失败 5 次 SHALL 锁定账户 15 分钟，防暴力破解）。
 3. 系统 SHALL 执行密码策略：≥ 12 位含大小写/数字/特殊字符，90 天轮换，禁止复用最近 5 次，首次登录强制改密。
-4. 系统 SHALL 预留 MFA（TOTP）二次认证开关。
-5. 系统 SHALL 将 Secrets（JWT_SECRET/Webhook secret/Bootstrap Token）经环境/K8s Secret 注入，支持轮换，严禁写入代码与日志。
-6. 系统 SHALL 将依赖漏洞扫描（govulncheck）与容器镜像扫描（Trivy）纳入 CI 门禁。
+4. 系统 SHALL 提供密码重置流程：`POST /api/v1/auth/forgot-password`（邮件验证码）+ `POST /api/v1/auth/reset-password`，重置后 SHALL 失效旧 token 并强制重新登录。
+5. 系统 SHALL 预留 MFA（TOTP）二次认证开关。
+6. 系统 SHALL 将 Secrets（JWT_SECRET/Webhook secret/Bootstrap Token）经环境/K8s Secret 注入，支持轮换，严禁写入代码与日志。
+7. 系统 SHALL 将依赖漏洞扫描（govulncheck）与容器镜像扫描（Trivy）纳入 CI 门禁。
+8. WebSocket 握手 SHALL 校验 JWT 与 org_id，订阅通道 SHALL 绑定连接所属 org，禁止越权订阅/接收他组织事件。
+9. 数据写入 SHALL 支持乐观锁：核心表（assets/scan_policies/alerts/tickets）SHALL 含 `version` 字段，更新时携带 `If-Match` 或请求体 version，版本不匹配 SHALL 返回 409。
 
 #### R4.7 数据治理与合规（企业级）
 
 1. 系统 SHALL 提供数据保留与归档：事件/漏洞/告警热数据 180 天后冷归档，审计日志保留 ≥ 365 天。
-2. 系统 SHALL 支持账户注销与个人信息删除/匿名化，满足 PIPL/GDPR 数据生命周期要求。
-3. 系统 SHALL 按等保 2.0 对齐身份鉴别、访问控制、安全审计、数据完整性与保密性要求。
+2. 证据文件 SHALL 按保留期（默认 365 天）定时清理：删除孤儿文件、回收磁盘空间，删除前 SHALL 校验无证据记录引用。
+3. 系统 SHALL 支持账户注销与个人信息删除/匿名化，满足 PIPL/GDPR 数据生命周期要求。
+4. 系统 SHALL 按等保 2.0 对齐身份鉴别、访问控制、安全审计、数据完整性与保密性要求。
 
 ### 5. 功能模块需求
 
@@ -340,9 +352,13 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 4. 系统 SHALL 提供 CI/CD 流水线：lint（golangci-lint + go vet）→ 单测（go test -race -cover）→ 构建 → 镜像安全扫描 → 部署 dev/staging/prod。
 5. 系统 SHALL 采用 SemVer 版本管理与 CHANGELOG，核心包行覆盖率 ≥ 80% 作为质量门禁。
 6. 系统 SHALL 提供 E2E 测试（Playwright 覆盖登录→资产→任务→证据→报告关键路径）与 k6 压测验证 SLO。
+7. 系统 SHALL 提供集成测试，覆盖认证→资产→任务下发→引擎结果回传→事件→闭环全链路。
 
-#### R5.17 前端工程化
+#### R5.17 前端工程化与体验
 
 1. 系统 SHALL 提供路由守卫：`beforeEach` 校验 token 有效性、组织选择态与 role 权限。
-2. 系统 SHALL 提供全局错误处理：axios 拦截器统一错误提示 + 异常兜底页。
-3. 系统 SHALL 预留 i18n（中/英）与可访问性支持，路由懒加载 + 组件分包保证首屏 < 3s。
+2. 系统 SHALL 提供全局错误处理：axios 拦截器统一错误提示 + 异常兜底页 + 全局错误边界组件。
+3. 系统 SHALL 在页面加载提供骨架屏占位，请求失败 SHALL 显示 Toast 提示并支持重试。
+4. 系统 SHALL 在 WebSocket 断线时显示断线提示条，重连成功 SHALL 自动恢复并清除提示。
+5. 系统 SHALL 预留 i18n（中/英）与可访问性支持，路由懒加载 + 组件分包保证首屏 < 3s。
+6. 系统 SHALL 提供前端组件测试（vitest）：覆盖登录表单校验、路由守卫权限、权限菜单渲染。

@@ -27,6 +27,8 @@ Updated: 2026-08-19
 - [ ] super_admin 禁止加入 user_orgs 约束（触发器/服务层校验）
 - [ ] Repository 层 org_id 强制过滤守卫（缺省 org_id 拒绝查询）
 - [ ] 登录锁定阈值控制
+- [ ] 密码重置流程（POST /api/v1/auth/forgot-password + reset-password，重置后失效旧 token）
+- [ ] 首启引导初始化 super_admin/默认策略/降噪规则（--init-super-admin 或首启向导，未初始化禁用平台管理）
 
 ### 1.3 前端基础框架
 - [ ] 引入 TinyVue (@opentiny/vue) + Pinia + Vue Router 4 + ReconnectingWebSocket + ECharts
@@ -36,6 +38,9 @@ Updated: 2026-08-19
 - [ ] 登录页 /login + 组织选择卡片页
 - [ ] 基于 role 的动态 addRoute() 路由与菜单（含 super_admin 平台管理/选择组织双入口）
 - [ ] 顶部导航（组织名 + 角色 Tag + 切换组织/退出）
+- [ ] 全局错误边界 + 骨架屏 + 请求失败 Toast（axios 拦截器 + 异常兜底页）
+- [ ] WebSocket 断线提示条 + 重连自动恢复清除
+- [ ] 乐观锁 409 冲突前端提示（"数据已被他人修改，请刷新后重试"）
 
 ### 1.4 资产模块
 - [ ] 资产后端 API：CRUD（GET/POST /api/v1/assets，PUT/DELETE /api/v1/assets/:id）
@@ -59,8 +64,11 @@ Updated: 2026-08-19
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
 - [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定）
 - [ ] Worker Outbox 本地缓存与断网回传
+- [ ] 结果回传幂等键去重（result_id 唯一索引，重复回传不重复入库）
+- [ ] 任务失败自动重试上限（3 次，指数退避，超限置 failed + 告警事件）
 - [ ] Master 启动超时任务对账（30min 重置 processing→pending）
 - [ ] 断点续扫（local:crawled:{task_id}）
+- [ ] Master/Worker 优雅停机（SIGTERM 排空在途任务 + Outbox 落盘，超时 30s）
 
 ### 1.6 证据链
 - [ ] 证据 gzip 落盘 /data/evidence/{date}/ + MD5 去重 + SHA-256 入库
@@ -70,6 +78,8 @@ Updated: 2026-08-19
 - [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号）+ 结果回传链路
 - [ ] Worker 页面渲染截图采集（截图取证）
 - [ ] 截图上传接口（POST /api/v1/evidence/screenshots，Base64 或文件流，鉴权 + SHA-256 校验）
+- [ ] 截图上传安全校验（MIME 仅 png/jpeg/webp + 大小 ≤10MB + 文件名防路径穿越/UUID 落盘）
+- [ ] 证据文件保留期清理与空间回收（expires_at 365 天 + 孤儿文件扫描）
 - [ ] 前端全屏证据抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图标签页 + 下载按钮）
 
 ### 1.7 仪表盘与报告
@@ -77,8 +87,9 @@ Updated: 2026-08-19
 - [ ] 引擎覆盖率雷达图（10 大引擎检测覆盖率）
 - [ ] WebSocket 实时事件滚动 + 指数退避重连（/api/v1/ws/events 订阅协议）
 - [ ] ECharts 图表集成（雷达图/趋势图/折线图/可用性点阵图）
-- [ ] 结构化日志 + request_id 请求追踪中间件
+- [ ] 结构化日志 + request_id 请求追踪中间件 + 敏感字段脱敏（密码/Token/身份证/手机号/Headers）
 - [ ] 报告导出（PDF 含水印 / Excel 漏洞清单）
+- [ ] 前端 vitest 组件测试：登录表单校验/路由守卫/权限菜单渲染
 
 ### 1.8 阶段 1 单元测试【必执行】
 - [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作，表驱动）
@@ -207,8 +218,10 @@ Updated: 2026-08-19
 
 ### 4.2 安全加固
 - [ ] TLS 终结（网关）+ HSTS + 安全响应头中间件（CSP/X-Frame-Options/nosniff/Referrer-Policy）
-- [ ] API 通用限流（每用户/IP 100 req/min）+ 登录接口独立限流（5 次/min/IP）
+- [ ] API 通用限流（每用户/IP 100 req/min）+ 登录接口独立限流（5 次/min/IP，连续失败 5 次锁 15 分钟）
 - [ ] 密码策略（≥12 位复杂度/90 天轮换/禁复用 5 次/首登强制改密）
+- [ ] WebSocket 越权订阅防护（握手校验 JWT + org_id，通道绑定 org，禁止跨组织订阅）
+- [ ] 乐观锁并发控制（assets/scan_policies/alerts/tickets 含 version，不匹配返回 409）
 - [ ] MFA 预留（TOTP 二次认证开关）
 - [ ] Secrets 管理（环境/K8s Secret 注入 + 轮换，禁止入日志）
 - [ ] 依赖漏洞扫描（govulncheck）+ 容器镜像扫描（Trivy）+ distroless 最小化镜像
@@ -224,16 +237,19 @@ Updated: 2026-08-19
 - [ ] RPO/RTO 指标（Litestream RPO ≤ 5s、RTO ≤ 30min、备份保留 30 天）
 - [ ] Master 只读副本水平扩展（查询路由副本 + 单写通道）
 - [ ] 数据保留与冷归档（事件/漏洞/告警 180 天热数据 + 审计日志 365 天）
+- [ ] 证据文件保留期清理与空间回收（expires_at + 孤儿文件扫描）
+- [ ] 备份恢复与演练脚本（backup.sh/restore.sh/drill.sh，验证数据完整性与可启动性）
 - [ ] 季度恢复演练 + 容量规划验证（10 万资产/100 Worker/1000 任务并发）
 
 ### 4.5 测试完备性
 - [ ] E2E 测试（Playwright：登录→组织切换→建资产→任务→证据抽屉→报告导出）
+- [ ] 集成测试：认证→资产→任务→结果→事件→闭环全链路（含幂等键去重/乐观锁/WS 越权拒绝/截图上传校验）
 - [ ] k6 压测脚本（登录并发/资产列表/事件写入/证据读取）验证 SLO
 - [ ] 故障注入演练（磁盘写满/网络延迟抖动/Litestream 中断/Worker 断网）
 
 ### 4.6 前端工程化与合规
 - [ ] 路由守卫（beforeEach：token/org/role 校验）
-- [ ] 全局错误处理（axios 拦截器 + 异常兜底页）
+- [ ] 全局错误处理（axios 拦截器 + 异常兜底页 + 骨架屏 + 请求失败 Toast + WS 断线提示条）
 - [ ] i18n（vue-i18n 中/英）+ 可访问性（键盘可达/ARIA）
 - [ ] 路由懒加载 + 组件分包，首屏 < 3s
 - [ ] 账户注销 + 个人信息删除/匿名化（PIPL/GDPR）

@@ -265,11 +265,12 @@ type Finding struct {
 
 ### WebSocket 协议（/api/v1/ws/events）
 
-- 连接鉴权：`?token={jwt}` 或首个消息携带 token，握手校验 X-Org-Id。
+- 连接鉴权：`?token={jwt}` 或首个消息携带 token，握手校验 JWT + X-Org-Id。
+- 通道隔离：Hub 以 `org_id` 为订阅粒度，连接建立后绑定 org，`Broadcast` 仅推送至同 org 连接，禁止跨组织订阅/接收（后端强制校验，不依赖前端过滤）。
 - 消息帧（JSON）：
   - 上行：`{"type":"subscribe","channels":["event","finding"]}` / `{"type":"ping"}`
   - 下行：`{"type":"event","data":{...}}` / `{"type":"finding","data":{...}}` / `{"type":"pong"}`
-- 断线策略：ReconnectingWebSocket 指数退避重连（1s→2s→4s…上限 60s），订阅在重连后自动恢复。
+- 断线策略：ReconnectingWebSocket 指数退避重连（1s→2s→4s…上限 60s），订阅在重连后自动恢复；前端展示断线提示条，重连成功自动清除。
 
 ### Webhook 推送协议
 
@@ -463,7 +464,11 @@ erDiagram
 
 **微信公众号资产表（wechat_assets）**：`id, org_id, app_name(公众号名), wechat_id(微信号), avatar_url, fans_count, intro(简介), verify_status(认证状态), article_count(文章数), status, created_at`。
 
-**证据-截图关联（evidence_files）**：`id, evidence_id, org_id, kind(html/har/screenshot/req/resp), file_path, md5, sha256, size, created_at`，支持一条证据链多文件（Req/Resp/HTML/截图各一文件）。
+**证据-截图关联（evidence_files）**：`id, evidence_id, org_id, kind(html/har/screenshot/req/resp), file_path, md5, sha256, size, mime_type, created_at, expires_at`，支持一条证据链多文件（Req/Resp/HTML/截图各一文件）。`expires_at` 默认 `created_at + 365 天`，超期文件由清理任务删除并回收空间。
+
+**核心表乐观锁**：`assets / scan_policies / alerts / tickets` 均含 `version`（INTEGER DEFAULT 1），更新接口要求请求体或 `If-Match` 头携带 version，与库内不一致返回 409。
+
+**结果回传幂等**：`findings / events / vulnerabilities` 表含 `result_id`（Worker 生成的 UUID），建唯一索引 `idx_result_id`，重复回传直接返回成功不重复入库。
 
 ### 字段类型与约束规范
 
@@ -499,7 +504,7 @@ erDiagram
 - 使用 GORM `AutoMigrate` 初始建表 + 版本化迁移表 `schema_migrations`（version, applied_at）。
 - 每次变更新增迁移函数（`up/down`），按版本号顺序执行，重复执行幂等。
 - 开发环境 `AutoMigrate` 一键同步；生产环境执行显式迁移命令 `master migrate --to={version}`。
-- 种子数据：启动时自动写入 `super_admin` 默认账户（首次初始化密码随机生成并打印一次）、初始策略模板、初始 POC/敏感词/木马特征库。
+- 种子数据：启动时自动写入 `super_admin` 默认账户（首次初始化密码随机生成并打印一次）、初始策略模板、初始 POC/敏感词/木马特征库。首次启动需完成 `super_admin` 引导初始化（可通过 `--init-super-admin` 或首启向导），未初始化前平台管理功能禁用。
 
 ### SQLite 连接与 WAL 配置
 
@@ -657,9 +662,18 @@ src/
 ### 日志与请求追踪
 
 - 统一结构化日志（logrus/slog），输出 JSON，字段含 `ts, level, org_id, user_id, request_id, path, latency_ms, status`。
-- 请求中间件生成 `request_id`（UUID），贯穿 Controller→Service→Repository→外部调用，异常堆栈附带 request_id。
+- 请求中间件生成 `request_id`（UUID），贯穿 Controller→Service→Repository→外部调用，异常堆栈附带 request_id；逐请求记录访问日志（方法/路径/状态/耗时）。
+- 敏感字段脱敏：密码、Token、Authorization/Set-Cookie 头、身份证、手机号在落日志前统一脱敏（`***`），禁止明文输出。
 - 审计日志独立落库（audit_logs），仅 insert/select。
 - 日志轮转：`/data/logs` 按天 + 大小轮转（默认 50MB），保留 14 天。
+
+### 优雅停机与备份恢复
+
+- 优雅停机：Master 监听 SIGTERM/SIGINT，先停止接收新任务与 WebSocket 新连接，再排空在途 HTTP 请求与任务对账，最后退出（整体超时 30s）；Worker 停机前将 Outbox 与 `local:crawled` 状态落盘。
+- 备份恢复脚本：`backup.sh`（触发 Litestream snapshot + 校验副本）、`restore.sh`（从副本恢复指定时间点 + 校验库完整性）、`drill.sh`（沙箱环境恢复演练，验证 `/readyz` 通过 + 抽样数据比对）。
+- 结果回传幂等：Worker 为每条结果生成 `result_id`（UUID），Master 唯一索引去重，重复回传返回 `{code:0, received:true}`。
+- 任务重试：失败任务自动重试上限 3 次（指数退避），超限置 `failed` 并生成告警事件。
+- 乐观锁：assets/scan_policies/alerts/tickets 表含 `version` 字段，更新接口校验请求 version 与库内一致，不一致返回 409 冲突，前端提示"数据已被他人修改，请刷新后重试"。
 
 ## Test Strategy
 
@@ -680,11 +694,22 @@ src/
 - SQLite 内存模式 + BadgerDB 临时目录跑通 Repository 层租户隔离查询。
 - WebSocket 推送：事件产生后订阅者收到实时通知，断线重连（指数退避）成功。
 
-### 前端测试
+### 前端测试（vitest）
 
 - 动态路由按 role 渲染权限（org_admin/engineer/viewer 三套菜单）。
 - 证据抽屉 Hash 校验失败时标红提示。
 - 万级列表虚拟滚动性能（TinyVue `virtual-scroll`）。
+- 登录表单校验（字段格式/密码策略/错误提示）。
+- 路由守卫（无 token 跳登录、无 org 弹组织选择、越权角色 403）。
+- 权限菜单渲染（按 RBAC 权限表过滤）。
+
+### 集成测试（go test integration）
+
+- 认证→建资产→下发任务→Worker 结果回传→事件生成→前端数据闭环全链路。
+- 截图上传（MIME 校验/大小上限/路径穿越拒绝）。
+- 结果回传幂等键去重（同 result_id 重复回传不重复入库）。
+- 乐观锁冲突（并发更新同 version 返回 409）。
+- WebSocket 越权订阅拒绝（org A 连接订阅 org B 事件被拒）。
 
 ### 性能基准
 
@@ -767,6 +792,7 @@ src/
 - **RPO/RTO 指标**：Litestream 备份 RPO ≤ 5s；故障恢复 RTO ≤ 30min；备份保留 30 天；每季度执行恢复演练并出具报告。
 - **Master 读写分离（水平扩展）**：Master 单写 SQLite，只读副本通过 Litestream 流式复制，查询路由到副本；写入收敛单协程通道，容量规划单 Master 支撑 10 万资产 / 100 Worker / 峰值 1000 任务并发。
 - **数据保留与归档**：事件/漏洞/告警热数据 180 天后冷归档（gzip + 独立卷）；审计日志保留 ≥ 365 天；提供清理任务与归档策略配置。
+- **证据文件清理**：按 `evidence_files.expires_at`（默认 365 天）定时清理，先校验无证据记录引用，再删除文件并回收空间；孤儿文件扫描（无 evidence_files 行引用的落盘文件）一并回收。
 - **容量与压测验证**：k6 压测脚本（登录并发/资产列表/事件写入/证据读取），验证 SLO 指标后放行发布。
 
 ### 测试完备性
