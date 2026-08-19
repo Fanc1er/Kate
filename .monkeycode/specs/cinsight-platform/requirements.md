@@ -59,7 +59,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 前端，I want 根据登录返回的 role 动态生成菜单与路由，SO THAT 用户只能看到有权限的模块。
 
 **Acceptance Criteria:**
-1. WHEN 用户登录成功，前端 SHALL 依据 `role` 通过 `addRoute()` 动态注册路由：`org_admin` 含仪表盘/资产/漏洞/告警/任务/内容安全/报告/团队管理/系统设置；`engineer` 含仪表盘/资产/漏洞/告警/任务/内容安全/报告；`viewer` 含仪表盘/资产/漏洞/告警/报告。
+1. WHEN 用户登录成功，前端 SHALL 依据 `role` 通过 `addRoute()` 动态注册路由：`org_admin` 含仪表盘/资产/安全事件中心/告警/漏洞/内容安全/暗链木马/Webshell钓鱼/可用性/安全情报/任务/策略模板/定时计划/报告/团队管理/系统设置；`engineer` 含仪表盘/资产/安全事件中心/告警/漏洞/内容安全/暗链木马/Webshell钓鱼/可用性/安全情报/任务/报告；`viewer` 含仪表盘/资产/安全事件中心/告警/漏洞/内容安全/暗链木马/Webshell钓鱼/可用性/安全情报/任务/报告（全部为只读，不渲染任何写入口）。
 2. WHEN 用户为 `super_admin`，前端 SHALL 展示"进入平台管理"与"选择组织"两个入口。
 3. WHEN 顶部导航栏加载，系统 SHALL 展示当前组织名 + 用户角色 Tag，并支持多组织用户点击切换组织。
 4. WHEN 用户切换组织，前端 SHALL 调用 `POST /api/v1/auth/select-org` 换取新 JWT 并刷新全部数据请求；SHALL 同时关闭旧组织 WebSocket 连接并携带新 JWT 重新建立 `/api/v1/ws/events` 连接（绑定新 org_id，防止收到旧组织事件）。
@@ -92,7 +92,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 平台，I want 引擎发现按统一规则分流到事件/漏洞/告警，SO THAT 三类台账职责清晰、不重复处置。
 
 **Acceptance Criteria:**
-1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染，子域名接管类进漏洞聚合）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
+1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（涉黄赌毒政/AI 分类）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染，子域名接管类进漏洞聚合）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
 2. 降噪规则 SHALL 在**事件生成时**生效（白名单 IP 目标不生成事件、忽略指定类型不生成、聚合时间窗合并同类、风暴抑制限流），命中规则的事件 SHALL 直接丢弃不落库；命中降噪规则的 finding SHALL 同时不生成告警、不触发通知推送（降噪在告警生成与推送之前拦截）；规则变更仅影响之后的事件生成，不回溯清理已生成事件。
 3. WHEN finding 属于漏洞类引擎（漏洞扫描/DNS 解析类等），系统 SHALL 按 `org_id + asset_id + 引擎 + 特征签名` 聚合：首次命中生成 `vulnerabilities` 记录，重复命中仅更新 `last_seen_at` 并刷新严重级别。
 4. WHEN finding 严重级别为 `high/critical` 或命中告警类型（可用性宕机、端口暴露、页面篡改、情报预警等），系统 SHALL 生成 `alerts` 记录（`resolved_at` 为空），并按通知路由（R5.13-6）推送。
@@ -197,7 +197,6 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 证据文件 SHALL 通过 MD5 去重，SHA-256 签名入库。
 3. WHEN 前端展示证据，后端 SHALL 强制校验文件 Hash，IF 校验不一致，UI SHALL 标红提示"证据已被破坏"。
 4. Worker→Master 证据传输 SHALL 走专用接口 `POST /api/v1/worker/evidence`：Worker 先将证据 gzip 分片上传（单片 ≤ 8MB，含片序号与总片数），Master 收齐后合并落盘并复算 SHA-256 与入库；传输中断 SHALL 支持断点续传（按已收分片跳过），全部完成后在结果回传中引用 evidence_id。小体积证据（<1MB）SHALL 允许随结果 JSON 内联回传，无需走分片。
-
 5. Worker 结果回传 SHALL 走 `POST /api/v1/worker/tasks/:id/result`，payload 含幂等键 `result_id`（重复回传返回 `{code:0, received:true}`）、任务状态（`completed/failed/cancelled`，超时置 `task_timeout=true`、用户 stop 置 `stopped_by_user=true`）、findings 数组（engine_name/type/severity/title/description/url/line_no/confidence/evidence_ids/extra，结构见 design「Worker 结果回传协议」）与扫描指标；引擎结果统一映射为该 findings 结构落库。
 
 #### R3.2b Worker 页面截图取证（无头浏览器组件）
@@ -329,7 +328,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 安全工程师，I want 独立查看与处置告警，SO THAT 聚焦需优先响应的高危发现。
 
 **Acceptance Criteria:**
-1. 系统 SHALL 提供独立告警列表接口 `GET /api/v1/alerts`（按级别/类型/状态/来源资产筛选与分页）。
+1. 系统 SHALL 提供独立告警列表接口 `GET /api/v1/alerts`（按级别/类型/状态/来源资产筛选与分页）与告警详情接口 `GET /api/v1/alerts/:id`（告警内容/来源资产/关联 finding/证据/处置时间线）。
 2. 系统 SHALL 提供告警处置接口 `PATCH /api/v1/alerts/:id`（确认/关闭/静默三种状态流转）。
 3. 系统 SHALL 提供批量告警处置接口 `POST /api/v1/alerts/batch`（批量确认/关闭/静默，请求体 `{ids, action}`）。
 4. 系统 SHALL 以独立 `alerts` 表存储告警（含 alert_type、severity、status、resolved_at），由发现记录触发生成。告警处置三态语义：确认（纳入处置跟踪）、关闭（写 `resolved_at`）、静默（抑制该资产同类新告警的通知推送与重新告警，记录保留可查，可再处置恢复为 open）；静默针对单资产维度的持续抑制，区别于 `noise_rules`（R2.1b-2）的全局/类型级过滤。
@@ -339,7 +338,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供漏洞列表（按等级/状态/引擎类型筛选），基于独立 `vulnerabilities` 表。
 2. 系统 SHALL 提供漏洞证据接口 `GET /api/v1/vulnerabilities/{id}/evidence`，聚合漏洞关联的 Req/Resp/HTML/截图证据链。
 3. 系统 SHALL 提供证据链抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图取证）。
-4. 系统 SHALL 支持闭环处置（生成工单/申请复测/忽略），单条走 `POST /api/v1/vulnerabilities/{id}/ticket`、`POST /api/v1/vulnerabilities/{id}/retest`、`POST /api/v1/vulnerabilities/{id}/ignore`，并提供批量接口 `POST /api/v1/vulnerabilities/batch-ticket`、`batch-retest`、`batch-ignore`。
+4. 系统 SHALL 支持闭环处置（生成工单/申请复测/忽略），单条走 `POST /api/v1/vulnerabilities/{id}/ticket`、`POST /api/v1/vulnerabilities/{id}/retest`、`POST /api/v1/vulnerabilities/{id}/ignore`，并提供批量接口 `POST /api/v1/vulnerabilities/batch-ticket`、`batch-retest`、`batch-ignore`。工单管理 SHALL 提供列表/创建 `GET/POST /api/v1/tickets`（列表按状态/指派/来源筛选分页，可来源事件或漏洞）、详情 `GET /api/v1/tickets/:id`（关联事件/漏洞/复测记录/时间线）与状态/派发 `PUT /api/v1/tickets/:id`（open→in_progress→verify→closed 流转）。
 5. 系统 SHALL 支持漏洞状态流转：申请复测 SHALL 将漏洞置为 `verifying` 并生成复测任务；复测通过 SHALL 自动置 `closed` 并记录 `closed_at`，复测失败 SHALL 回退 `open` 并追加复测记录；`ignored` 可取消忽略恢复 `open`。
 6. 系统 SHALL 提供漏洞行内快捷操作（生成工单/申请复测/忽略）与筛选持久化。
 
@@ -403,7 +402,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.13 系统设置（仅 org_admin）
 
-1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报，支持移除离线节点 `DELETE /api/v1/worker/nodes/:id`。节点状态 SHALL 为 `online/offline/offline_removed`：心跳间隔超 3 倍未上报自动置 `offline`，调度器仅向 online 节点分发任务；移除节点置 `offline_removed` 不计入配额。
+1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token）：节点列表 `GET /api/v1/worker/nodes`、Bootstrap Token 生成 `POST /api/v1/worker/nodes/:id/boot-token`、心跳通过 `POST /api/v1/worker/heartbeat` 上报、移除离线节点 `DELETE /api/v1/worker/nodes/:id`。节点状态 SHALL 为 `online/offline/offline_removed`：心跳间隔超 3 倍未上报自动置 `offline`，调度器仅向 online 节点分发任务；移除节点置 `offline_removed` 不计入配额。
 2. Worker 注册 SHALL 走握手流程：首次注册用一次性 Bootstrap Token 调用 `POST /api/v1/worker/register` 换取长期凭证（client_id + client_secret，服务端存 hash），后续心跳/拉取/回传 SHALL 用长期凭证鉴权；凭证支持撤销/重发，泄露可吊销。
 3. Bootstrap Token 与长期凭证 SHALL 加密/哈希存储（Bootstrap Token 存 SHA-256 且一次性领取即失效，client_secret 存 bcrypt），库中禁止明文；Token 仅在创建时一次性返回，刷新即作废旧值。
 4. 受邀成员 SHALL 首次登录激活：邀请状态 `invited`，首次登录后激活为 `active` 并强制设密码/改密；邀请链接默认 7 天过期。

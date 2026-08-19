@@ -86,6 +86,7 @@ Updated: 2026-08-19
 - [ ] 结果回传幂等键去重（result_id 唯一索引，重复回传不重复入库）
 - [ ] 任务失败自动重试上限（3 次，指数退避，超限置 failed + 告警事件）
 - [ ] Master 启动超时任务对账（30min 重置 processing→pending）
+- [ ] 任务级超时上限实现（scan_policies.timeout 默认 60min，Master TaskScheduler 对账超时未完成中止置 failed；Worker 侧执行超时终止并在结果标记 task_timeout=true，见 R4.3-8）
 - [ ] 断点续扫（local:crawled:{task_id}）
 - [ ] Master/Worker 优雅停机（SIGTERM 排空在途任务 + Outbox 落盘，超时 30s）
 
@@ -259,9 +260,10 @@ Updated: 2026-08-19
 - [ ] 部署验证：Docker 起服务 → 探活 /api/health → 建资产 → 下发任务全链路通过
 
 ### 3.4 报告中心全量
+- [ ] 策略模板完整 CRUD（GET/POST /api/v1/policies + PUT/DELETE /api/v1/policies/:id + 批量删除 POST /api/v1/policies/batch-delete；引擎开关/并发/超时/速率限制/递归扫描参数维护，engineer 读用于任务创建选模板）
 - [ ] 报告模板完整 CRUD（执行摘要/漏洞详情/内容安全/可用性统计/整改建议 + PUT/DELETE :id）
 - [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 时区 CINSIGHT_TIMEZONE 默认 Asia/Shanghai + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
-- [ ] Master CronScheduler 计划调度（按 cron_expr+计划时区定时生成 scan_tasks 入队分发；paused/组织禁用/到期跳过触发；组织启用后恢复触发）
+- [ ] Master CronScheduler 计划调度（按 cron_expr+计划时区定时生成 scan_tasks 入队分发；time_window 执行时间窗口窗口外跳过/顺延；paused/组织禁用/到期跳过触发；组织启用后恢复触发）
 - [ ] 策略模板复制（POST /api/v1/policies/:id/copy 深拷贝引擎开关）
 - [ ] 定时报告（模板 cron_expr+timezone 配置、Cron 生成周报/月报 + 时区 CINSIGHT_TIMEZONE + 异步生成进度条 + 完成通知）
 - [ ] 报告生成基于生成时刻数据快照（漏洞/发现/可用性时点固化，后续处置不影响已生成报告）
