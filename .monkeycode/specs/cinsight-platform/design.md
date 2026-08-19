@@ -760,7 +760,26 @@ src/
 │   └── dashboard.ts     # 仪表盘聚合数据
 ├── router/              # 静态路由 + 动态 addRoute()
 ├── layouts/             # 顶部导航/侧边菜单/组织切换
-├── views/               # 页面（按 RBAC 懒加载）
+├── views/               # 页面（按 RBAC 懒加载），与 R5.x 功能模块一一对应：
+│   ├── auth/            # 登录 / 组织选择 / 忘记密码 / 重置密码
+│   ├── dashboard/       # 仪表盘（统计卡片/趋势/Top10/引擎覆盖雷达）
+│   ├── asset/           # 资产列表/画像/变更追踪/公众号资产/批量导入导出
+│   ├── event/           # 安全事件中心（列表/详情/状态流转/降噪规则）
+│   ├── alert/           # 独立告警中心（列表/处置/静默）
+│   ├── vulnerability/   # 漏洞管理（列表/详情/证据链/批量处置）
+│   ├── content/         # 内容安全（敏感内容/信息泄漏/篡改/多端 UA 评估）
+│   ├── hidden-link/     # 暗链与木马（列表/双 UA 对比）
+│   ├── webshell/        # Webshell 与钓鱼检测
+│   ├── availability/    # 可用性与网络（点阵图/时序折线/端口/多端 UA）
+│   ├── intel/           # 安全情报（列表/详情/订阅配置）
+│   ├── task/            # 任务调度（任务列表/详情/队列监控）
+│   ├── policy/          # 策略模板（CRUD/复制/批量删除）
+│   ├── plan/            # Cron 定时计划（CRUD/启停/批量）
+│   ├── report/          # 报告中心（模板/生成/导出/定时报告）
+│   ├── team/            # 团队管理（成员列表/邀请/角色）
+│   ├── settings/        # 系统设置（Worker/通知渠道/通知路由/规则库/API Token/Webhook/审计）
+│   ├── platform/        # 平台管理（组织管理/平台统计/Worker 总览，仅 super_admin）
+│   └── error/           # 异常兜底页（404/403/500）
 ├── components/          # 复用组件（证据抽屉/图表/脱敏显示）
 ├── directives/          # v-permission 按钮级权限指令
 └── utils/               # 格式化/脱敏展示/时间/下载
@@ -924,6 +943,8 @@ src/
 | Worker 握手 | Bootstrap Token 一次性使用、长期凭证校验、凭证吊销、token 落库 hash 无明文 |
 | Bleve 索引 | 删除/级联清理同步删索引、index rebuild 全量重建对账 |
 | 审计日志 | IP/User-Agent 服务端捕获、筛选与分页 |
+| 通知路由 | severity/event_type 命中映射、未命中走默认渠道、渠道禁用跳过、风暴抑制在路由层生效 |
+| 组织配额 | 资产/成员/Worker 超限分别返回 4290/4292/4291、批量逐条 failed、到期组织写操作拒绝 |
 | 脱敏 | 身份证/手机号/邮箱/AccessKey 三时机脱敏 |
 
 ### 集成测试

@@ -40,7 +40,7 @@ Updated: 2026-08-19
 - [ ] 前端目录结构落地（src/api|stores|router|layouts|views|components|utils，见 design 前端架构）
 - [ ] axios 封装 + 模块化 API 层（Bearer + X-Org-Id + 401 跳转 + 模块拆分：http/auth/asset/task/event/finding/report/dashboard/intel/admin/ws）
 - [ ] Pinia store 划分（auth/menu/asset/event/dashboard）
-- [ ] 登录页 /login + 组织选择卡片页
+- [ ] 登录页 /login + 组织选择卡片页 + 忘记密码/重置密码页（forgot-password + reset-password 表单 + 验证码 5min 提示）
 - [ ] 基于 role 的动态 addRoute() 路由与菜单（含 super_admin 平台管理/选择组织双入口）
 - [ ] 按钮级权限指令 v-permission + 权限码表（src/config/permissions.ts），菜单/路由/按钮三级一致
 - [ ] 顶部导航（组织名 + 角色 Tag + 切换组织/退出）
@@ -155,6 +155,9 @@ Updated: 2026-08-19
 - [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence）对接前端抽屉
 - [ ] 漏洞批量接口（batch-ticket 批量生成工单 / batch-retest 批量复测 / batch-ignore 批量忽略）
 - [ ] 工单接口（GET/POST /api/v1/tickets 列表/创建 + PUT /api/v1/tickets/:id 状态/派发 + GET /api/v1/tickets/:id 详情）+ 工单闭环（确认→派发→修复→复测→归档）+ SOP 挂载
+- [ ] 独立告警中心前端页（列表/等级筛选/处置操作/静默 + 导航未读角标联动）
+- [ ] 漏洞管理前端页（等级/状态/引擎筛选 + 详情 + 证据链抽屉 + 批量生成工单/复测/忽略）
+- [ ] 工单前端页（列表/详情/状态流转/SOP 挂载/复测归档）
 - [ ] 告警风暴抑制（单资产每小时 5 条上限）
 
 ### 2.4 引擎相关前端模块
@@ -201,6 +204,8 @@ Updated: 2026-08-19
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
 - [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent）
 - [ ] API Token 管理（细粒度权限/有效期 + 撤销 DELETE + 停用/恢复 PATCH :id/status）
+- [ ] 团队管理前端页（成员列表/邀请/批量移除/禁用/改角色）
+- [ ] 系统设置前端页（Worker 节点管理/通知渠道 CRUD+测试/通知路由规则/规则库管理/API Token/Webhook/审计日志筛选）
 
 ### 3.2 平台管理
 - [ ] 组织列表/创建/详情/编辑/禁用/启用/删除（DELETE 需输入组织名二次确认 + 级联清理；enable 恢复 cron 与写操作）— 仅 super_admin
@@ -208,6 +213,7 @@ Updated: 2026-08-19
 - [ ] 组织到期/禁用行为（停止 cron 计划 + 拒绝新建任务与资产写操作 + 仅保留只读；到期前 7 天续费提示）
 - [ ] 平台统计（总组织/总资产/总扫描/总事件）
 - [ ] 平台 Worker 总览
+- [ ] 平台管理前端页（组织列表 CRUD + 配额/到期展示 + 平台统计 + Worker 总览，仅 super_admin 入口）
 
 ### 3.3 集成与部署
 - [ ] swaggo Swagger 文档全量注解
@@ -263,6 +269,7 @@ Updated: 2026-08-19
 - [ ] 平台管理/团队管理权限隔离正确【必执行】
 - [ ] 组织配额单元测试（资产超 max_assets → 4290 / 成员超 max_members → 4292 / Worker 超 max_workers → 4291 + 批量逐条 failed + 到期组织写操作拒绝）
 - [ ] 通知渠道密钥加密单元测试（AES-256-GCM 加解密 + 返回掩码脱敏 + 留空保持原值）
+- [ ] 通知路由单元测试（severity/event_type 命中映射 → 指定渠道 / 未命中 → 默认渠道 / 渠道禁用跳过 / 风暴抑制在路由层生效）
 - [ ] 审计日志筛选单元测试（operator/action/resource_type/时间范围过滤 + 分页）
 - [ ] 集成测试：Master + 单 Worker 全链路（任务下发→引擎执行→结果回传→证据入库→前端展示）【必执行】
 - [ ] 前后端 CRUD 与批量接口对齐验收（检查点 18：逐模块 Create/Read/Update/Delete/Batch 全覆盖，前端按钮与后端端点一一对应）【必执行】
