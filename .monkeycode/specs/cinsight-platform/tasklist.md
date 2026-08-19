@@ -108,7 +108,7 @@ Updated: 2026-08-19
 - [ ] ECharts 图表集成（雷达图/趋势图/折线图/可用性点阵图）
 - [ ] 结构化日志 + request_id 请求追踪中间件 + 敏感字段脱敏（密码/Token/身份证/手机号/Headers）
 - [ ] 报告导出（PDF 含水印 / Excel 漏洞清单）
-- [ ] 前端 vitest 组件测试：登录表单校验/路由守卫/权限菜单渲染
+- [ ] 前端 vitest 组件测试：登录表单校验/路由守卫/权限菜单渲染 + 证据抽屉 Hash 失败标红 + v-permission 按钮隐藏 + 证据 HTML XSS 净化（DOMPurify 注入 script/onerror/iframe 断言剥离）
 
 ### 1.8 阶段 1 单元测试【必执行】
 - [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作表驱动，按 design「RBAC 权限矩阵与权限码」逐模块断言，viewer 写操作 403）
