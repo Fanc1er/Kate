@@ -178,6 +178,7 @@ Updated: 2026-08-19
 - [ ] 漏洞管理前端页（等级/状态/引擎筛选 + 详情 + 证据链抽屉 + 批量生成工单/复测/忽略）
 - [ ] 工单前端页（列表/详情/状态流转/SOP 挂载/复测归档）
 - [ ] 告警风暴抑制（单资产每小时 5 条上限）
+- [ ] findings 查询接口（GET /api/v1/findings 列表：engine/type/severity/status/asset_id 筛选分页；GET /api/v1/findings/:id 详情：主记录 + 关联证据 + 命中明细，type=sensitive_info 返回 sensitive_info_hits、type=multi_ua 返回 extra.multi_ua，支撑 R5.5/R5.6/R5.7 列表页）
 
 ### 2.4 引擎相关前端模块
 - [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示）

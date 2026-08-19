@@ -445,6 +445,8 @@ type Finding struct {
 | 工单 | GET/POST | /api/v1/tickets | org_admin/engineer | 工单列表/创建 |
 | 工单 | GET | /api/v1/tickets/:id | 全部角色 | 工单详情 |
 | 工单 | PUT | /api/v1/tickets/:id | org_admin/engineer | 工单状态/派发 |
+| 发现 | GET | /api/v1/findings | 全部角色 | 发现列表（engine/type/severity/status/asset_id 筛选分页，支撑 R5.5 敏感内容/信息泄漏、R5.6 暗链木马、R5.7 Webshell/钓鱼列表） |
+| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告） |
 | 证据 | GET | /api/v1/evidence/:id | 全部角色 | 通用证据读取（Req/Resp/HTML/截图，Hash 校验） |
 | 证据 | GET | /api/v1/evidence/:id/download | 全部角色 | 下载 HTML/HAR |
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
@@ -1084,7 +1086,7 @@ src/
 │   ├── asset.ts         # 资产 CRUD/画像/历史/公众号
 │   ├── task.ts          # 任务/策略/计划/队列
 │   ├── event.ts         # 事件/告警/工单/降噪
-│   ├── finding.ts       # 漏洞/证据
+│   ├── finding.ts       # 漏洞/证据/发现（findings 列表/详情，含敏感信息与多端 UA 报告）
 │   ├── report.ts        # 报告
 │   ├── dashboard.ts     # 仪表盘（stats/trends/top-risks/engine-coverage）
 │   ├── intel.ts         # 安全情报（列表/详情/订阅配置）

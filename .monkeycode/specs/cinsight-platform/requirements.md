@@ -345,25 +345,25 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.5 内容安全监测
 
-1. 系统 SHALL 提供敏感内容列表（类型：涉黄/涉赌/涉毒/涉政，命中词句，AI 置信度）。
-2. 系统 SHALL 提供敏感信息泄漏列表（类型：身份证/手机号/邮箱/AccessKey 等，按规则组展示敏感数据与安全凭证，含命中原文、scope、来源 URL、递归深度，凭证类命中高亮并可按敏感级别筛选）。
+1. 系统 SHALL 提供敏感内容列表（类型：涉黄/涉赌/涉毒/涉政，命中词句，AI 置信度），数据源为 `GET /api/v1/findings`（`engine=content_security&type=content_violation`，AI 置信度存 `extra.confidence`）。
+2. 系统 SHALL 提供敏感信息泄漏列表（类型：身份证/手机号/邮箱/AccessKey 等，按规则组展示敏感数据与安全凭证，含命中原文、scope、来源 URL、递归深度，凭证类命中高亮并可按敏感级别筛选），列表经 `GET /api/v1/findings`（`engine=content_security&type=sensitive_info`），命中明细（原文/scope/来源 URL/递归深度）经 `GET /api/v1/findings/:id` 返回 `sensitive_info_hits` 明细。
 3. 系统 SHALL 提供页面篡改告警（篡改维度：标题/图片/正文，变更前后对比）与截图缩略图展示。
 4. 系统 SHALL 提供 AI 内容分类服务适配层：endpoint/model/api_key 经环境注入（`CINSIGHT_AI_ENDPOINT`/`CINSIGHT_AI_MODEL`/`CINSIGHT_AI_API_KEY`，由管理员配置），失败回退内置敏感词正则引擎，判定结果 SHALL 标记来源 `ai` 或 `regex`。
-5. 系统 SHALL 提供多端 UA 综合评估结果展示（R2.12）：展示四探针（PC / 标准移动 UA / 微信内置浏览器 UA / 移动视口模拟）的对比明细（各端状态码、重定向链路、响应时间、敏感词命中、DOM 指纹差异、独有外链）与三级评分（基础分/特征分/场景分）、综合分、结论分级及处置建议，标注端级异常定位；SPA 疑似页面 SHALL 展示 `spa_suspected` 待复核标记，DOM 相似度（SimHash）SHALL 数值化展示。
+5. 系统 SHALL 提供多端 UA 综合评估结果展示（R2.12）：展示四探针（PC / 标准移动 UA / 微信内置浏览器 UA / 移动视口模拟）的对比明细（各端状态码、重定向链路、响应时间、敏感词命中、DOM 指纹差异、独有外链）与三级评分（基础分/特征分/场景分）、综合分、结论分级及处置建议，标注端级异常定位；SPA 疑似页面 SHALL 展示 `spa_suspected` 待复核标记，DOM 相似度（SimHash）SHALL 数值化展示。评估报告经 `GET /api/v1/findings/:id` 读取 `extra.multi_ua`（engine=content_security 且 type=multi_ua 的 finding）。
 6. 系统 SHALL 提供敏感信息规则集管理视图：按规则组（Basic Information / Sensitive Information 凭证类等）查看/启用/禁用规则（group/name/scope/sensitive），支持 HaENet Rules.yml 格式 YAML 导入导出（走规则库接口 R5.13-9）。
 7. 系统 SHALL 提供资产发现结果展示（前端资源 JS/CSS/图片/音视频、子域名、接口路径，标注来源类型）与递归扫描进度实时展示（深度/已抓 URL 数/已发现资产数/命中数）。
 
 #### R5.6 暗链与木马监测
 
-1. 系统 SHALL 提供暗链列表（暗链 URL/类型：隐藏外链/友情链接/SEO 黑帽，标注检测维度来源：HTML 正则/DOM 结构/JS/CSS/隐藏手法专项/自定义规则/无头浏览器动态）。
+1. 系统 SHALL 提供暗链列表（暗链 URL/类型：隐藏外链/友情链接/SEO 黑帽，标注检测维度来源：HTML 正则/DOM 结构/JS/CSS/隐藏手法专项/自定义规则/无头浏览器动态），经 `GET /api/v1/findings`（`engine=hidden_link`，检测维度来源与命中细节存 finding 描述与 `extra`）。
 2. 系统 SHALL 提供木马列表（特征：iframe 嵌套/JS 混淆/Shellcode，沙箱分析报告，展示高危函数、混淆手法、信息熵、动态链接等检测明细）。
 3. 系统 SHALL 提供双 UA 对比功能（切换 UA 查看页面差异）。
 4. 系统 SHALL 提供双 UA 对比触发接口 `POST /api/v1/assets/:id/dual-ua`：后端安排 Worker 分别以正常 UA 与蜘蛛 UA 抓取目标页面，返回两次抓取的标题/外链/脚本/正文差异列表，供前端对比展示。
 
 #### R5.7 Webshell 与钓鱼检测
 
-1. 系统 SHALL 提供 Webshell 列表（检测路径/特征码/文件内容片段）。
-2. 系统 SHALL 提供钓鱼列表（仿冒目标/域名相似度/证书异常）。
+1. 系统 SHALL 提供 Webshell 列表（检测路径/特征码/文件内容片段），经 `GET /api/v1/findings`（`engine=webshell`）。
+2. 系统 SHALL 提供钓鱼列表（仿冒目标/域名相似度/证书异常），经 `GET /api/v1/findings`（`engine=phishing`）。
 
 #### R5.8 可用性与网络监测
 
