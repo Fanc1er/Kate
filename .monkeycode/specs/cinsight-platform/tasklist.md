@@ -16,7 +16,7 @@ Updated: 2026-08-19
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
 - [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
 - [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
-- [ ] 全量业务表结构迁移（assets/vulnerabilities/alerts/findings/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points/sensitive_info_hits/rule_definitions）
+- [ ] 全量业务表结构迁移（organizations/users/user_orgs/assets/vulnerabilities/alerts/findings/scan_tasks/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points/sensitive_info_hits/rule_definitions）
 
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
@@ -301,7 +301,7 @@ Updated: 2026-08-19
 - [ ] 通知路由单元测试（severity/event_type 命中映射 → 指定渠道 / 未命中 → 默认渠道 / 渠道禁用跳过 / 风暴抑制在路由层生效）
 - [ ] 审计日志筛选单元测试（operator/action/resource_type/时间范围过滤 + 分页）
 - [ ] 集成测试：Master + 单 Worker 全链路（任务下发→引擎执行→结果回传→证据入库→前端展示）【必执行】
-- [ ] 前后端 CRUD 与批量接口对齐验收（检查点 18：逐模块 Create/Read/Update/Delete/Batch 全覆盖，前端按钮与后端端点一一对应）【必执行】
+- [ ] 前后端 CRUD 与批量接口对齐验收（逐模块 Create/Read/Update/Delete/Batch 全覆盖，前端按钮与后端端点一一对应）【必执行】
 - [ ] 容灾演练：Worker 断网恢复（Outbox 回传）、Master 重启对账、熔断触发【必执行】
 - [ ] 部署验证：Docker/K8s/单二进制三种方式启动 + 探活 + 全链路通过【必执行】
 - [ ] go test ./... 全部通过 + 前端 vue-tsc + vite build 通过【必执行】
