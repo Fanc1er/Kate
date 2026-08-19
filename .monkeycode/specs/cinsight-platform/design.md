@@ -248,6 +248,8 @@ type Finding struct {
 | 认证 | POST | /api/v1/auth/change-password | 登录用户 | 登录态改密（校验旧密码，改后失效全部 refresh token） |
 | 认证 | POST | /api/v1/auth/select-org | 登录用户 | 组织选择，换发带 org_id 的 JWT，失效旧 token |
 | 认证 | POST | /api/v1/auth/logout | 登录用户 | 退出登录 |
+| 认证 | POST | /api/v1/auth/forgot-password | 公开 | 忘记密码（邮件验证码下发） |
+| 认证 | POST | /api/v1/auth/reset-password | 公开 | 重置密码（验证码校验 + 新密码，重置后失效旧 token） |
 | 认证 | GET | /api/v1/me/data-export | 登录用户 | 个人数据可携权导出（JSON/CSV，保留 72h，动作记审计） |
 | 认证 | GET | /api/v1/auth/me | 登录用户 | 当前用户信息 + 组织列表 |
 | 组织 | GET | /api/v1/orgs | super_admin | 组织列表 |
@@ -269,6 +271,7 @@ type Finding struct {
 | 资产 | GET | /api/v1/assets/:id/history | 全部角色 | 资产变更追踪 |
 | 资产 | GET | /api/v1/assets/:id/availability | 全部角色 | 可用性点阵图（engine=http/dns/ping + hours 参数） |
 | 资产 | GET | /api/v1/assets/:id/response-time | 全部角色 | 24h 响应时序折线 |
+| 资产 | POST | /api/v1/assets/:id/dual-ua | org_admin/engineer | 双 UA 对比（正常 UA + 蜘蛛 UA 抓取，返回差异列表） |
 | 资产 | GET | /api/v1/assets/:id/profile | 全部角色 | 资产画像（指纹/ICP/SSL/端口） |
 | 资产 | POST | /api/v1/assets/batch-scan | org_admin/engineer | 批量资产加入扫描（ids + policy_id） |
 | 资产 | POST | /api/v1/assets/batch-delete | org_admin | 批量删除资产 |
@@ -320,7 +323,7 @@ type Finding struct {
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
 | 报告 | GET/POST | /api/v1/reports | 全部角色(导出) | 报告列表/生成 |
 | 报告 | GET | /api/v1/reports/:id | 全部角色 | 报告详情（模板信息/内容摘要） |
-| 报告 | GET | /api/v1/reports/:id/download | 全部角色 | PDF/Excel 下载 |
+| 报告 | GET | /api/v1/reports/:id/download | 全部角色 | PDF/Excel 下载（format=pdf/excel/screenshots，screenshots 为按资产与时间范围的截图合集 ZIP） |
 | 报告 | DELETE | /api/v1/reports/:id | org_admin | 删除报告 |
 | 报告 | GET/POST | /api/v1/report-templates | org_admin | 报告模板 |
 | 报告 | PUT/DELETE | /api/v1/report-templates/:id | org_admin | 报告模板编辑/删除 |
@@ -345,6 +348,8 @@ type Finding struct {
 | 规则库 | GET/POST | /api/v1/rules/import | org_admin | 规则库导入（POC/敏感词/特征库） |
 | 规则库 | GET | /api/v1/rules/export | org_admin | 规则库导出 |
 | 情报 | GET/PUT | /api/v1/intel-subscriptions | org_admin | 情报订阅配置（数据源开关） |
+| 情报 | GET | /api/v1/intel | 全部角色 | 情报列表（来源/严重程度/关键字筛选分页） |
+| 情报 | GET | /api/v1/intel/:id | 全部角色 | 情报详情（含受影响资产列表） |
 | 白名单 | GET/PUT | /api/v1/scan-whitelist | org_admin | 扫描授权白名单（允许目标域名/IP/网段 + 内网段黑名单） |
 | 审计 | GET | /api/v1/audit-logs | org_admin | 审计日志（只读，筛选 operator/action/resource_type/start/end + 分页） |
 | Token | GET/POST | /api/v1/api-tokens | org_admin | API Token 管理 |
@@ -456,6 +461,7 @@ erDiagram
         string password "bcrypt"
         string email
         string phone
+        string avatar_url
         string status
         bool is_super_admin
         datetime last_login_at
@@ -698,6 +704,7 @@ src/
 │   ├── finding.ts       # 漏洞/证据
 │   ├── report.ts        # 报告
 │   ├── dashboard.ts     # 仪表盘（stats/trends/top-risks/engine-coverage）
+│   ├── intel.ts         # 安全情报（列表/详情/订阅配置）
 │   ├── admin.ts         # 团队/设置/平台/Token/Webhook
 │   └── ws.ts            # WebSocket 封装（订阅/重连）
 ├── stores/              # Pinia

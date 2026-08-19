@@ -68,7 +68,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 **Acceptance Criteria:**
 1. 系统 SHALL 维护 `organizations` 表（id, name, logo_path, plan, max_assets, max_workers, max_members, expire_at, status）。
-2. 系统 SHALL 维护 `users` 表（id, username, password(bcrypt), email, phone, status, last_login_at, is_super_admin）。
+2. 系统 SHALL 维护 `users` 表（id, username, password(bcrypt), email, phone, avatar_url, status, last_login_at, is_super_admin）。
 3. 系统 SHALL 维护 `user_orgs` 关联表（user_id, org_id, role, status, joined_at），并禁止 `super_admin` 加入 `user_orgs`。
 4. 所有业务查询 SHALL 强制附带 `org_id` 过滤条件，未携带则拒绝。
 5. 系统 SHALL 维护独立 `vulnerabilities` 表与 `alerts` 表：`vulnerabilities` 记录漏洞实体（cve_id/severity/status/evidence_id），`alerts` 记录告警实体（alert_type/severity/status/resolved_at），均由引擎发现记录触发生成。
@@ -315,6 +315,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供暗链列表（暗链 URL/类型：隐藏外链/友情链接/SEO 黑帽）。
 2. 系统 SHALL 提供木马列表（特征：iframe 嵌套/JS 混淆/Shellcode，沙箱分析报告）。
 3. 系统 SHALL 提供双 UA 对比功能（切换 UA 查看页面差异）。
+4. 系统 SHALL 提供双 UA 对比触发接口 `POST /api/v1/assets/:id/dual-ua`：后端安排 Worker 分别以正常 UA 与蜘蛛 UA 抓取目标页面，返回两次抓取的标题/外链/脚本/正文差异列表，供前端对比展示。
 
 #### R5.7 Webshell 与钓鱼检测
 
@@ -333,6 +334,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供情报列表（CVE/CNVD 编号/标题/严重程度/影响范围）。
 2. 系统 SHALL 自动关联本组织资产技术栈，标记"受影响资产数"。
 3. 系统 SHALL 提供情报订阅配置（数据源开关）。
+4. 系统 SHALL 提供情报查询接口 `GET /api/v1/intel`（列表，按来源/严重程度/关键字筛选分页）与 `GET /api/v1/intel/:id`（详情，含受影响资产列表），并标记"受影响资产数"由引擎自动关联本组织资产技术栈计算。
 
 #### R5.10 任务调度与策略
 

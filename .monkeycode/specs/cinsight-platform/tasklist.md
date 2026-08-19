@@ -154,11 +154,12 @@ Updated: 2026-08-19
 
 ### 2.4 引擎相关前端模块
 - [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图）
-- [ ] 暗链木马页（暗链列表/木马列表/双 UA 对比）
+- [ ] 暗链木马页（暗链列表/木马列表/双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
 - [ ] Webshell 与钓鱼页
 - [ ] 可用性网络页（12h 点阵图 + 24h 时序折线 + DNS/端口记录）
 - [ ] 时序查询后端接口（GET /api/v1/assets/:id/availability 点阵图 + /response-time 折线，读 availability_points 按 org_id 隔离）
 - [ ] 安全情报中心页（情报列表 + 受影响资产数 + 订阅配置 GET/PUT /api/v1/intel-subscriptions）
+- [ ] 情报后端接口（GET /api/v1/intel 列表筛选分页 + GET /:id 详情含受影响资产）
 - [ ] 任务队列监控页（排队/处理中/完成 + Worker 分配 + 断点续扫状态）
 
 ### 2.5 重组件集成
@@ -226,7 +227,7 @@ Updated: 2026-08-19
 - [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 时区 CINSIGHT_TIMEZONE 默认 Asia/Shanghai + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
 - [ ] 策略模板复制（POST /api/v1/policies/:id/copy 深拷贝引擎开关）
 - [ ] 定时报告（Cron 生成周报/月报 + 时区 CINSIGHT_TIMEZONE + 异步生成进度条 + 完成通知）
-- [ ] 报告截图合集导出（按资产/时间范围）
+- [ ] 报告截图合集导出（按资产/时间范围，format=screenshots 下载 ZIP）
 - [ ] 报告详情（GET /api/v1/reports/:id）+ 报告删除（DELETE /api/v1/reports/:id）
 
 ### 3.5 前端 UX 基座（15.x）
