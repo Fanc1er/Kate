@@ -416,7 +416,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.15 API 开放集成
 
 1. 系统 SHALL 全量开放 REST API（Swagger 文档）。
-2. 系统 SHALL 提供 API Token 认证（独立于 JWT，支持细粒度权限）。
+2. 系统 SHALL 提供 API Token 认证（独立于 JWT，支持细粒度权限）：scopes SHALL 取 RBAC 权限码子集（`asset:read`、`event:write`、`evidence:upload` 等，见 design API Token 表），请求校验时接口所需权限码 SHALL 为 token scopes 子集，无对应 scope SHALL 返回 2101 `SCOPE_DENIED`；scopes 创建后不可修改，变更 SHALL 撤销重建。
 3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。推送 SHALL 带 HMAC-SHA256 签名（请求头 `X-Webhook-Signature`，密钥经 R5.18 管理），推送失败 SHALL 自动重试 3 次（指数退避），重试仍失败 SHALL 记录推送状态落库并在 UI 标记送达失败。订阅事件 SHALL 支持枚举：`finding.critical/high/medium`、`vulnerability.new/closed`、`event.new/acknowledged/closed`、`alert.new/acknowledged/closed`、`task.completed/failed`、`intel.high`（`webhooks.events` 存事件名数组，按订阅过滤推送，未命中订阅不推送）。
 4. Swagger 文档（`/swagger/*`）SHALL 受开关控制：生产环境默认关闭，仅当 `CINSIGHT_SWAGGER_ENABLED=true` 时暴露，防止生产环境信息泄露。
 

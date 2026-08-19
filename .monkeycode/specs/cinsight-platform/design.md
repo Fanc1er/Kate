@@ -702,7 +702,7 @@ erDiagram
 
 **审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询支持 `username`（操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end）。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。审计覆盖范围：登录/登出、资产增删改与批量、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎回传不审计，批量操作逐条记录。
 
-**API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), expires_at, last_used_at`。
+**API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), expires_at, last_used_at`。scopes 取值为 RBAC 权限码（`src/config/permissions.ts` 清单，如 `asset:read`、`event:write`、`evidence:upload`）的子集，创建时勾选；请求校验时接口所需权限码必须是 token scopes 子集，token 无对应 scope 返回 2101 `SCOPE_DENIED`。scopes 随创建固定，修改需撤销重建。
 
 **通知渠道表（notify_channels）**：`id, org_id, type(dingtalk/wecom/feishu/smtp), config(JSON), enabled`。config 中密钥/令牌类字段（webhook_secret、smtp_password 等）入库前经 **AES-256-GCM 加密**（主密钥 `CINSIGHT_CHANNEL_KEY` 环境注入，独立于 JWT Secret），接口返回时掩码脱敏（如 `sk-****abcd`）；编辑时不回显明文，留空表示保持原值。
 

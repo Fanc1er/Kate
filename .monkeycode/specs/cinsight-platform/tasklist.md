@@ -222,7 +222,7 @@ Updated: 2026-08-19
 - [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
 - [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent + 覆盖范围见 design audit_logs 段，批量逐条记录，读操作与引擎回传不审计）
-- [ ] API Token 管理（GET/POST 列表/创建，细粒度权限/有效期 + 撤销 DELETE :id + 停用/恢复 PATCH :id/status）
+- [ ] API Token 管理（GET/POST 列表/创建，scopes 取 RBAC 权限码子集勾选 + 有效期 + 撤销 DELETE :id + 停用/恢复 PATCH :id/status，校验时接口所需权限码须为 token scopes 子集，无 scope 返回 2101 SCOPE_DENIED，scopes 不可改需撤销重建）
 - [ ] 团队管理前端页（成员列表/邀请/批量移除/禁用/改角色）
 - [ ] 系统设置前端页（Worker 节点管理/通知渠道 CRUD+测试/通知路由规则/规则库管理/API Token/Webhook/审计日志筛选）
 
