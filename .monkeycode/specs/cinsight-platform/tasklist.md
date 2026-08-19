@@ -43,7 +43,7 @@ Updated: 2026-08-19
 - [ ] Pinia store 划分（auth/menu/asset/event/dashboard）
 - [ ] 登录页 /login + 组织选择卡片页 + 忘记密码/重置密码页（forgot-password + reset-password 表单 + 验证码 5min 提示）
 - [ ] 基于 role 的动态 addRoute() 路由与菜单（含 super_admin 平台管理/选择组织双入口）
-- [ ] 按钮级权限指令 v-permission + 权限码表（src/config/permissions.ts），菜单/路由/按钮三级一致
+- [ ] 按钮级权限指令 v-permission + 权限码表（src/config/permissions.ts，按 design「RBAC 权限矩阵与权限码」清单落地），菜单/路由/按钮三级一致
 - [ ] 顶部导航（组织名 + 角色 Tag + 切换组织/退出）
 - [ ] 全局错误边界 + 骨架屏 + 请求失败 Toast（axios 拦截器 + 异常兜底页）
 - [ ] WebSocket 断线提示条 + 重连自动恢复清除
@@ -111,7 +111,7 @@ Updated: 2026-08-19
 - [ ] 前端 vitest 组件测试：登录表单校验/路由守卫/权限菜单渲染
 
 ### 1.8 阶段 1 单元测试【必执行】
-- [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作，表驱动）
+- [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作表驱动，按 design「RBAC 权限矩阵与权限码」逐模块断言，viewer 写操作 403）
 - [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/refresh token 换发/jti 黑名单/组织选择/登录锁定/禁用用户与禁用组织登录拦截）
 - [ ] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
 - [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫/任务级超时上限中止/stop 停止信号与 Worker cancelled 回传）

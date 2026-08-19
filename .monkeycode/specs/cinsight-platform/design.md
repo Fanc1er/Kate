@@ -279,6 +279,71 @@ type Finding struct {
   - **API Token 鉴权**（开放集成）：`Authorization: Bearer {api_token}` + `X-Org-Id: {org_id}`，scopes 细粒度控制，独立于 JWT。
   - **Worker 凭证鉴权**（Worker 内部）：首次用一次性 Bootstrap Token 调 `POST /api/v1/worker/register` 换长期凭证（client_id + client_secret），后续 `/api/v1/worker/*` 用 `X-Worker-ID` + `X-Worker-Secret`（或 Basic Auth），支持吊销与重发。
 
+### RBAC 权限矩阵与权限码
+
+角色缩写：**s**=super_admin，**a**=org_admin，**e**=engineer，**v**=viewer。`✓`=允许，`-`=禁止。所有写操作 API 必经 RBACMiddleware 校验，viewer 对全部写操作返回 403。
+
+| 模块 / 操作 | s | a | e | v |
+|-------------|---|---|---|---|
+| 仪表盘：读（stats/trends/top-risks/engine-coverage） | ✓ | ✓ | ✓ | ✓ |
+| 资产：读（列表/详情/画像/历史/时序/双UA触发） | ✓ | ✓ | ✓ | ✓ |
+| 资产：写（创建/编辑/删除/导入/批量扫描/批量分组/双UA） | - | ✓ | ✓ | ✗ |
+| 资产：批量删除 | - | ✓ | ✗ | ✗ |
+| 微信资产：读 | ✓ | ✓ | ✓ | ✓ |
+| 微信资产：写（创建/编辑/删除） | - | ✓ | ✓ | ✗ |
+| 策略模板：读 | ✓ | ✓ | ✓ | ✓ |
+| 策略模板：写（创建/编辑/删除/复制/批量删除） | - | ✓ | ✗ | ✗ |
+| 定时计划：读 | ✓ | ✓ | ✓ | ✓ |
+| 定时计划：写（创建/编辑/删除/启停/批量） | - | ✓ | ✗ | ✗ |
+| 任务：读（列表/详情/进度/队列） | ✓ | ✓ | ✓ | ✓ |
+| 任务：写（发起/停止/重跑/批量停止/批量重跑） | - | ✓ | ✓ | ✗ |
+| 任务：删除历史任务 | - | ✓ | ✗ | ✗ |
+| 事件：读 | ✓ | ✓ | ✓ | ✓ |
+| 事件：写（状态流转/批量流转） | - | ✓ | ✓ | ✗ |
+| 降噪规则：读 | ✓ | ✓ | ✓ | ✓ |
+| 降噪规则：写（CRUD） | - | ✓ | ✗ | ✗ |
+| 告警：读 | ✓ | ✓ | ✓ | ✓ |
+| 告警：写（处置/批量处置） | - | ✓ | ✓ | ✗ |
+| 漏洞：读（列表/详情/证据） | ✓ | ✓ | ✓ | ✓ |
+| 漏洞：写（生成工单/复测/忽略/批量） | - | ✓ | ✓ | ✗ |
+| 工单：读 | ✓ | ✓ | ✓ | ✓ |
+| 工单：写（创建/状态/派发） | - | ✓ | ✓ | ✗ |
+| 证据：读（读取/下载） | ✓ | ✓ | ✓ | ✓ |
+| 证据：上传（截图） | - | ✓ | ✓ | ✗ |
+| 报告：读（列表/详情/生成/下载/导出） | ✓ | ✓ | ✓ | ✓ |
+| 报告：删除 | - | ✓ | ✗ | ✗ |
+| 报告模板：读 | ✓ | ✓ | ✓ | ✓ |
+| 报告模板：写（CRUD） | - | ✓ | ✗ | ✗ |
+| 成员：读 | ✓ | ✓ | ✓ | ✓ |
+| 成员：写（邀请/批量/移除/角色/禁用/启用） | - | ✓ | ✗ | ✗ |
+| Worker 节点：读 | ✓ | ✓ | ✓ | ✓ |
+| Worker 节点：写（Bootstrap Token/移除节点） | - | ✓ | ✗ | ✗ |
+| 通知渠道：读 | ✓ | ✓ | ✓ | ✓ |
+| 通知渠道：写（CRUD/测试） | - | ✓ | ✗ | ✗ |
+| 通知路由：读 | ✓ | ✓ | ✓ | ✓ |
+| 通知路由：写（更新规则） | - | ✓ | ✗ | ✗ |
+| 规则库：读 | ✓ | ✓ | ✓ | ✓ |
+| 规则库：写（热更新/规则项CRUD/导入/导出） | - | ✓ | ✗ | ✗ |
+| 情报订阅：读 | ✓ | ✓ | ✓ | ✓ |
+| 情报订阅：写（数据源开关） | - | ✓ | ✗ | ✗ |
+| 情报：读（列表/详情） | ✓ | ✓ | ✓ | ✓ |
+| 扫描白名单：读 | ✓ | ✓ | ✓ | ✓ |
+| 扫描白名单：写（更新规则） | - | ✓ | ✗ | ✗ |
+| 审计日志：读 | ✓ | ✓ | ✓ | ✓ |
+| 审计日志：写 | - | - | - | -（仅 insert/select） |
+| API Token：读 | ✓ | ✓ | ✓ | ✓ |
+| API Token：写（创建/撤销/停用恢复） | - | ✓ | ✗ | ✗ |
+| Webhook：读 | ✓ | ✓ | ✓ | ✓ |
+| Webhook：写（CRUD/测试/密钥重生成） | - | ✓ | ✗ | ✗ |
+| 组织管理：读/写（CRUD/禁用/启用） | ✓ | - | - | - |
+| 平台统计/Worker 总览：读 | ✓ | - | - | - |
+| 认证：login/forgot-password/reset-password | 公开 | 公开 | 公开 | 公开 |
+| 认证：refresh/change-password/select-org/logout/me/data-export | 登录用户（依赖 JWT，无需角色判断） | | | |
+| WebSocket /ws/events | 登录用户（JWT + org 绑定，禁止跨组织订阅） | | | |
+| Worker 内部 /worker/*（register/tasks/evidence/heartbeat） | Worker 凭证鉴权（Bootstrap 一次性 / client_id+secret），不经 RBAC | | | |
+
+**权限码清单**（`src/config/permissions.ts`，与上表一致，菜单/路由/按钮三级共用同一数据源）：`asset:read/export`、`asset:write`、`asset:batch-delete`、`wechat:write`、`policy:write`、`plan:write`、`task:write`、`task:delete`、`event:write`、`noise:write`、`alert:write`、`vuln:write`、`ticket:write`、`evidence:upload`、`report:delete`、`report-template:write`、`member:write`、`worker:write`、`channel:write`、`route:write`、`rules:write`、`intel-sub:write`、`whitelist:write`、`token:write`、`webhook:write`、`org:write`（仅 s）、`platform:read`（仅 s）。`viewer` 无任何 `*:write` 权限码，写按钮直接不渲染。
+
 ### REST 端点清单
 
 | 模块 | 方法 | 路径 | 权限 | 说明 |
