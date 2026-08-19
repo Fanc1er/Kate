@@ -452,9 +452,9 @@ type Finding struct {
 | 通知 | GET/PUT | /api/v1/notify-routes | org_admin | 通知路由规则（severity/event_type → 渠道映射 + 默认渠道） |
 | 规则库 | GET | /api/v1/rules | org_admin | 规则库版本/内容 |
 | 规则库 | PUT | /api/v1/rules | org_admin | 规则热更新 |
-| 规则库 | GET/POST | /api/v1/rules/items | org_admin | 规则项列表/新建（POC/敏感词/特征库单项） |
+| 规则库 | GET/POST | /api/v1/rules/items | org_admin | 规则项列表/新建（POC/敏感词/特征库/敏感信息规则集单项） |
 | 规则库 | PUT/DELETE | /api/v1/rules/items/:id | org_admin | 规则项编辑/删除 |
-| 规则库 | GET/POST | /api/v1/rules/import | org_admin | 规则库导入（POC/敏感词/特征库） |
+| 规则库 | GET/POST | /api/v1/rules/import | org_admin | 规则库导入（POC/敏感词/特征库，敏感信息规则集支持 HaENet Rules.yml YAML） |
 | 规则库 | GET | /api/v1/rules/export | org_admin | 规则库导出 |
 | 情报 | GET/PUT | /api/v1/intel-subscriptions | org_admin | 情报订阅配置（数据源开关） |
 | 情报 | GET | /api/v1/intel | 全部角色 | 情报列表（来源/严重程度/关键字筛选分页） |
@@ -545,6 +545,7 @@ erDiagram
     scan_policies ||--o{ scan_tasks : schedules
     assets ||--o{ scan_tasks : scanned
     scan_tasks ||--o{ findings : produces
+    scan_tasks ||--o{ sensitive_info_hits : produces
     findings ||--o{ events : raises
     findings ||--o{ vulnerabilities : escalates
     assets ||--o{ vulnerabilities : exposes
@@ -626,6 +627,10 @@ erDiagram
         int concurrency
         int timeout "任务级超时上限(分钟)，默认 60"
         int rate_limit
+        int scan_depth "递归扫描深度 1-5，默认 2"
+        int concurrency_limit "单站点并发上限 2-32，默认 4"
+        bool allow_static "是否抓取静态文件"
+        bool same_origin "是否仅同域/同子域递归"
     }
     scan_tasks {
         int id PK
@@ -653,6 +658,34 @@ erDiagram
         string evidence_id FK
         string status
         string extra "JSON 扩展数据，如 MultiUA 报告 Extra['multi_ua']（probes/scores/total_score/conclusion/abnormal_ends）"
+    }
+    sensitive_info_hits {
+        int id PK
+        int org_id FK
+        int task_id FK
+        int rule_id FK
+        string group "规则组"
+        string name "规则名"
+        string matched_text "命中原文"
+        string scope "request line/request header/response header/response body"
+        string url "来源页面/接口"
+        int depth "递归深度"
+        datetime created_at
+    }
+    rule_definitions {
+        int id PK
+        int org_id FK
+        string kind "sensitive/poc/keyword/trojan"
+        string group "Fingerprint/Maybe Vulnerability/Basic Information/Sensitive Information"
+        string name
+        bool loaded
+        string f_regex "主正则"
+        string s_regex "过滤正则，可空"
+        string format "模板占位"
+        string color "前端展示"
+        string scope "any header/request/request line/response header/response body/response"
+        string engine "dfa/nfa（Go 统一 regexp 实现）"
+        bool sensitive "是否为敏感信息/凭证"
     }
     vulnerabilities {
         int id PK
@@ -910,6 +943,12 @@ erDiagram
 
 **findings 扩展字段（extra）**：`extra` 为 JSON TEXT，承载引擎扩展结果——MultiUA 报告写入 `Extra["multi_ua"]`（probes 三端明细 / scores 四维得分 / total_score 0~100 / conclusion 分级 / abnormal_ends 端级异常列表）；前端多端对比页读取该字段渲染，缺失时该 finding 不做多端展示。其余引擎的扩展结构同规则追加，不新增列。
 
+**敏感信息规则表（rule_definitions）**：`id, org_id, kind(sensitive/poc/keyword/trojan), group, name, loaded, f_regex, s_regex, format, color, scope(any header/request/request line/response header/response body/response), engine(dfa/nfa，Go 统一 regexp 实现), sensitive`。敏感信息规则集支持 HaENet Rules.yml 结构 YAML 导入（走规则库 `GET/POST /api/v1/rules/import`），前端按规则组分组展示并支持启用/禁用。
+
+**敏感信息命中表（sensitive_info_hits）**：`id, org_id, task_id, rule_id, group, name, matched_text, scope, url, depth, created_at`。由内容安全引擎在敏感信息监测时按 scope 分层提取写入，findings 记录主命中（`engine_name=content_security, type=sensitive_info`），本表存命中明细（原文/scope/来源 URL/递归深度）供列表与详情展示，同步入 Bleve 索引。
+
+**策略递归扫描字段（scan_policies）**：`scan_depth(1-5，默认 2)`、`concurrency_limit(单站点并发上限 2-32，默认 4)`、`allow_static(是否抓取静态文件)`、`same_origin(是否仅同域/同子域递归)`。内容安全引擎执行敏感信息监测时按策略递归抓取：URL 归一化去重、静态文件/无效链接（404/死链）过滤；已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）写入 `assets` 表（`url` 归一化 + 来源类型标注）；递归进度经 `GET /api/v1/tasks/:id/progress` 实时上报。
+
 ### 字段类型与约束规范
 
 | 类型 | 说明 |
@@ -977,7 +1016,7 @@ db.DB().SetMaxIdleConns(1)
 
 ### Bleve 索引设计
 
-索引对象：`findings`（标题/描述/URL）、`events`（内容）、`assets`（URL/名称/技术栈）。BatchIndexer 后台协程每 5 秒或凑齐 50 条批量提交，写入失败重试 3 次后降级为直接提交。
+索引对象：`findings`（标题/描述/URL）、`events`（内容）、`assets`（URL/名称/技术栈）、`sensitive_info_hits`（group/name/matched_text/scope/url/depth）。BatchIndexer 后台协程每 5 秒或凑齐 50 条批量提交，写入失败重试 3 次后降级为直接提交。
 
 **删除同步**：任何删除/级联清理 SQLite 数据时 SHALL 同步删除对应索引文档（`batch.Index(id, nil)` 即按 id 删除），由删除业务在同一事务/命令中触发，确保全文索引与 DB 一致；DB→索引批量重建脚本（`index rebuild`）用于故障后全量对账修复。
 
@@ -1353,7 +1392,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 
 ### 可观测性（Metrics / 探针 / 追踪 / SLO）
 
-- **指标端点**：`GET /metrics`（Prometheus 格式），采集 RED 指标（请求速率/错误/延迟）+ USE 指标（CPU/内存/磁盘/连接池）+ 业务指标（任务队列深度、事件数、Outbox 存量、Worker 心跳）。
+- **指标端点**：`GET /metrics`（Prometheus 格式），采集 RED 指标（请求速率/错误/延迟）+ USE 指标（CPU/内存/磁盘/连接池）+ 业务指标（任务队列深度、事件数、Outbox 存量、Worker 心跳）+ 敏感信息监测指标（`sensitive_info_hits_total{group,scope}` 命中计数、`assets_discovered_total{type}` 资产发现计数、`recursive_depth_max` 递归深度）。
 - **健康探针**：`GET /healthz`（存活：进程在线）、`GET /readyz`（就绪：SQLite/Badger/证据目录可写、Litestream 复制正常）。K8s 分别挂 livenessProbe / readinessProbe。
 - **分布式追踪**：引入 OpenTelemetry，`request_id` 升级为 `trace_id`，贯穿 Master→Worker→外部调用；采样率默认 10%（错误路径全采样）。
 - **SLO 目标**：API 可用性 ≥ 99.9%；API p99 延迟 < 500ms；任务处理成功率 ≥ 99%；证据读取成功 ≥ 99.5%。

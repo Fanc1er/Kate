@@ -107,9 +107,10 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R2.3 内容安全引擎
 
 1. WHEN 检测页面内容，引擎 SHALL 通过 AI 文本分类 + 关键词正则双判定识别涉黄/涉赌/涉毒/涉政内容。
-2. WHEN 检测敏感信息，引擎 SHALL 识别身份证号、手机号、邮箱、AccessKey 泄漏并记录命中位置。
+2. WHEN 检测敏感信息，引擎 SHALL 基于可配置规则集（HaENet Rules.yml 风格）按 scope 分层提取并识别敏感信息：每条规则含 `group/name/f_regex/s_regex/scope/engine/sensitive` 字段，scope SHALL 支持 request line / request header / response header / response body 分层匹配；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证（AccessKey 等）等敏感数据与安全凭证，命中结果 SHALL 记录命中原文、scope、来源 URL 与递归深度（落 `sensitive_info_hits` 明细表，findings 记录主命中）。
 3. WHEN 监控页面篡改，引擎 SHALL 以标题、图片 Hash、正文 DOM 结构三维度建立基线，WHEN 偏离阈值超过设定值，系统 SHALL 生成篡改告警。
 4. WHEN 执行内容安全监测，引擎 SHALL 调用多端 UA 综合评估器（R2.12）：以随机 PC UA、随机移动端 UA、无头浏览器移动视口模拟（移动 UA + 手机宽度视口）三探针抓取比对，WHEN 任一探针命中敏感词/敏感信息或与基线偏差超阈，系统 SHALL 将对应维度计入综合评分并输出端级结论（哪一端异常、异常类型）。
+5. WHEN 执行敏感信息监测，引擎 SHALL 支持深度递归扫描与资产发现：以种子 URL 递归抓取并解析页面链接与静态资源（JS/CSS/图片/音视频），`max_depth` 范围 1-5（默认 2）、单站点并发上限 2-32（默认 4，可配置），自动过滤静态文件与无效链接（404/死链），URL 归一化去重（同任务内去重）；递归进度 SHALL 经任务进度接口（R5.10-4）实时上报（已抓 URL 数/已发现资产数/命中数），已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）SHALL 写入 `assets` 表并标注来源类型。
 
 #### R2.4 暗链挂马引擎
 
@@ -338,10 +339,12 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.5 内容安全监测
 
 1. 系统 SHALL 提供敏感内容列表（类型：涉黄/涉赌/涉毒/涉政，命中词句，AI 置信度）。
-2. 系统 SHALL 提供敏感信息泄漏列表（类型：身份证/手机号/邮箱/AccessKey，命中位置）。
+2. 系统 SHALL 提供敏感信息泄漏列表（类型：身份证/手机号/邮箱/AccessKey 等，按规则组展示敏感数据与安全凭证，含命中原文、scope、来源 URL、递归深度，凭证类命中高亮并可按敏感级别筛选）。
 3. 系统 SHALL 提供页面篡改告警（篡改维度：标题/图片/正文，变更前后对比）与截图缩略图展示。
 4. 系统 SHALL 提供 AI 内容分类服务适配层：endpoint/model/api_key 经环境注入（`CINSIGHT_AI_ENDPOINT`/`CINSIGHT_AI_MODEL`/`CINSIGHT_AI_API_KEY`，由管理员配置），失败回退内置敏感词正则引擎，判定结果 SHALL 标记来源 `ai` 或 `regex`。
 5. 系统 SHALL 提供多端 UA 综合评估结果展示（R2.12）：展示 PC/移动/移动视口模拟三探针的对比明细（各端状态码、响应时间、敏感词命中、DOM 指纹差异、独有外链）与综合评分及结论分级，并标注端级异常定位。
+6. 系统 SHALL 提供敏感信息规则集管理视图：按规则组（Basic Information / Sensitive Information 凭证类等）查看/启用/禁用规则（group/name/scope/sensitive），支持 HaENet Rules.yml 格式 YAML 导入导出（走规则库接口 R5.13-9）。
+7. 系统 SHALL 提供资产发现结果展示（前端资源 JS/CSS/图片/音视频、子域名、接口路径，标注来源类型）与递归扫描进度实时展示（深度/已抓 URL 数/已发现资产数/命中数）。
 
 #### R5.6 暗链与木马监测
 
@@ -401,7 +404,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 6. 系统 SHALL 提供通知路由规则配置 `GET/PUT /api/v1/notify-routes`：按事件类型与严重级别（如 critical/high 走钉钉 + 邮件、medium 走企微、低危静默）映射到具体渠道，未命中路由的告警 SHALL 按默认渠道发送；渠道启用开关与风暴抑制（R4.2-4）在路由层生效。
 7. 通知渠道的密钥/令牌类字段（Webhook Secret、SMTP 密码等）SHALL 加密存储（AES-256-GCM，主密钥经环境变量注入），接口返回时 SHALL 脱敏（仅掩码显示），编辑回显 SHALL 提供"留空则保持原值"。
 8. Worker 注册 SHALL 受组织 Worker 配额约束：已注册 Worker 数达到该组织 `max_workers` 时，注册握手 SHALL 返回 4291 `WORKER_QUOTA_EXCEEDED` 拒绝注册；移除节点释放配额。
-9. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
+9. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/敏感信息规则集/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）；敏感信息规则集 SHALL 支持 HaENet Rules.yml 结构（group/name/f_regex/s_regex/scope/engine/sensitive）YAML 导入。
 10. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
 11. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 记录客户端 IP 与 User-Agent（服务端请求中间件捕获，不依赖前端上报），并禁止修改与删除。审计 SHALL 覆盖：登录/登出、资产增删改与批量操作、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎内部回传不审计，批量操作逐条记录。
 12. 系统 SHALL 提供 API Token 管理（`GET/POST /api/v1/api-tokens` 列表/创建，细粒度权限/有效期），支持撤销 `DELETE /api/v1/api-tokens/{id}` 与临时停用/恢复 `PATCH /api/v1/api-tokens/{id}/status`。

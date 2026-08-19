@@ -16,7 +16,7 @@ Updated: 2026-08-19
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
 - [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
 - [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
-- [ ] 全量业务表结构迁移（assets/vulnerabilities/alerts/findings/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points）
+- [ ] 全量业务表结构迁移（assets/vulnerabilities/alerts/findings/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points/sensitive_info_hits/rule_definitions）
 
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
@@ -139,7 +139,9 @@ Updated: 2026-08-19
 
 ### 2.2 引擎实现
 - [ ] 漏洞扫描引擎（POC + Fuzzing + 参数注入，context 30s 超时 + ants 并发）
-- [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息识别 + 篡改基线）
+- [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息规则集提取 + 篡改基线）
+- [ ] 敏感信息规则集提取（rule_definitions 规则按 scope 分层匹配 request line/header/body，s_regex 过滤 + f_regex 提取，命中写 sensitive_info_hits + Bleve + findings 主命中；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证）
+- [ ] 递归扫描与资产发现（max_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin）
 - [ ] 多端 UA 综合评估器（MultiUAAssessor：PC 随机 UA + 移动 UA + 无头浏览器移动视口模拟三探针 + 可用性/内容/篡改/条件性四维加权评分 + 结论分级 + probe_failed 降权 + 各端快照证据链）
 - [ ] 内容安全引擎接入 MultiUAAssessor（端级敏感词/敏感信息命中计入评分）
 - [ ] AI 内容分类适配层（AIAdapter：endpoint/model/key 环境注入 + 超时/429 失败回退正则 + 结果缓存 + gobreaker 熔断）
@@ -177,7 +179,7 @@ Updated: 2026-08-19
 - [ ] 告警风暴抑制（单资产每小时 5 条上限）
 
 ### 2.4 引擎相关前端模块
-- [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位）
+- [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示）
 - [ ] 暗链木马页（暗链列表/木马列表/双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
 - [ ] Webshell 与钓鱼页
 - [ ] 可用性网络页（12h 点阵图 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示）
@@ -196,6 +198,7 @@ Updated: 2026-08-19
 
 ### 2.6 阶段 2 单元测试【必执行】
 - [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
+- [ ] 敏感信息规则提取单测（scope 分层命中/凭证规则/递归去重/静态文件过滤/深度上限）
 - [ ] 发现处理链路单元测试（回传幂等 → 降噪过滤命中丢弃 → 事件生成 → 漏洞聚合首建/更新 last_seen_at → 告警生成按 severity 阈值与通知路由 → WS 广播）
 - [ ] AI 适配层单元测试（AI 可用→ai 来源 / AI 超时/429→regex 回退 / 熔断切换）
 - [ ] MultiUA 评估器单元测试（三探针抓取对比 / 四维加权评分 / 端差异化宕机 / 单端命中敏感词 / probe_failed 降权 / 结论分级）
@@ -219,7 +222,7 @@ Updated: 2026-08-19
 - [ ] 通知渠道密钥加密（AES-256-GCM 主密钥 CINSIGHT_CHANNEL_KEY + 接口掩码脱敏 + 编辑留空保持原值）
 - [ ] 通知路由规则（GET/PUT /api/v1/notify-routes：rule JSON 匹配 severity/event_type 优先 event_type 后 severity，* 通配 + default_channel_id 兜底 + 渠道启用开关 + 风暴抑制在路由层生效）
 - [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4291 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
-- [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
+- [ ] 规则库管理（POC/敏感词/木马特征库/敏感信息规则集 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import（敏感信息规则集支持 HaENet Rules.yml YAML）+ 导出 /api/v1/rules/export）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
 - [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent + action 统一 resource.verb 枚举见 design audit_logs 段 + 覆盖范围见 design audit_logs 段，批量逐条记录，读操作与引擎回传不审计）
 - [ ] API Token 管理（GET/POST 列表/创建，scopes 取 RBAC 权限码子集勾选 + 有效期 + 撤销 DELETE :id + 停用/恢复 PATCH :id/status，校验时接口所需权限码须为 token scopes 子集，无 scope 返回 2101 SCOPE_DENIED，scopes 不可改需撤销重建）
@@ -304,7 +307,7 @@ Updated: 2026-08-19
 ## 阶段 4 — 企业级工程化与合规达标【必执行】
 
 ### 4.1 可观测性
-- [ ] Prometheus 指标端点（GET /metrics，RED + USE + 业务指标）
+- [ ] Prometheus 指标端点（GET /metrics，RED + USE + 业务指标 + 敏感信息/资产发现指标）
 - [ ] 健康探针（GET /healthz 存活 + GET /readyz 就绪：SQLite/Badger/证据目录/Litestream）
 - [ ] OpenTelemetry 分布式追踪（trace_id 贯穿 Master→Worker→外部调用，采样 10%）
 - [ ] SLO 监控面板（API 可用性 ≥ 99.9%、p99 < 500ms、任务成功率 ≥ 99%）
