@@ -184,7 +184,7 @@ sequenceDiagram
 ### 证据文件传输协议（Worker→Master）
 
 - **内联小文件**：单证据 < 1MB 时随结果 JSON 内联回传（Base64 + sha256），Master 直接落盘，无额外请求。
-- **分片上传**：≥ 1MB 走 `POST /api/v1/worker/evidence`（multipart/form-data：`upload_id + chunk_index + total_chunks + data + sha256`），单片 ≤ 8MB，顺序上传；Master 收齐合并至 `/data/evidence/{date}/` 后复算 SHA-256 校验，入库返回 `evidence_id`。
+- **分片上传**：≥ 1MB 走 `POST /api/v1/worker/evidence`（multipart/form-data：`upload_id + part_index + part_total + data + sha256`，对应 evidence_files 表 upload_id/part_index/part_total 字段），单片 ≤ 8MB，顺序上传；Master 收齐合并至 `/data/evidence/{date}/` 后复算 SHA-256 校验，入库返回 `evidence_id`。
 - **断点续传**：`upload_id` 对应 Master 临时目录，重传时携带 `resume=true` 返回已收分片列表，Worker 仅补传缺失分片；传输超时（30min）后由 Master 清理临时分片并允许 Worker 重新发起。
 - **结果关联**：结果回传 `POST /api/v1/worker/tasks/:id/result` 以 `evidence_ids` 数组引用证据，证据与 finding/event 关联，避免重复回传。
 
