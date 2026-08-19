@@ -21,6 +21,7 @@ Updated: 2026-08-19
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
 - [ ] 登录接口（bcrypt 校验 + JWT 签发，不含 org_id）
+- [ ] 禁用用户/禁用组织登录拦截（users.status / user_orgs.status / org.status 校验，403 USER_DISABLED/ORG_DISABLED + 后续 API 校验失效）
 - [ ] refresh token 机制（POST /api/v1/auth/refresh，access 15min + refresh 7d，jti 黑名单）
 - [ ] 登出/换组织/改密/重置后 token 失效（黑名单生效）
 - [ ] 组织选择接口 POST /api/v1/auth/select-org（换取带 org_id 的 JWT）
@@ -83,7 +84,9 @@ Updated: 2026-08-19
 - [ ] 证据读取时 Hash 强制校验（不一致返回 EVIDENCE_TAMPERED）
 - [ ] 通用证据读取接口（GET /api/v1/evidence/:id，返回 Req/Resp/HTML/截图元数据 + 文件流）
 - [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence，聚合漏洞关联证据链）
-- [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号）+ 结果回传链路
+- [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号/confidence 置信度）+ 结果回传链路
+- [ ] Worker HAR 文件生成（HAR 1.2 组装：entries 请求/响应头、Body、时间戳、大小、MIME + Body 超限截断标记 + gzip 落盘入库）
+- [ ] 证据下载接口支持 format=har（HAR 文件导出，可导入 DevTools/Fiddler）
 - [ ] Worker 页面渲染截图采集（截图取证）
 - [ ] Worker 无头浏览器截图组件（chromedp/chromium：viewport 渲染 + DOMContentLoaded+2s + PNG 输出，超时降级 screenshot:skipped，同 URL 缓存，并发受池约束）
 - [ ] 截图上传接口（POST /api/v1/evidence/screenshots，Base64 或文件流，鉴权 + SHA-256 校验）
@@ -102,7 +105,7 @@ Updated: 2026-08-19
 
 ### 1.8 阶段 1 单元测试【必执行】
 - [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作，表驱动）
-- [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/refresh token 换发/jti 黑名单/组织选择/登录锁定）
+- [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/refresh token 换发/jti 黑名单/组织选择/登录锁定/禁用用户与禁用组织登录拦截）
 - [ ] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
 - [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫）
 
@@ -179,13 +182,17 @@ Updated: 2026-08-19
 - [ ] 受邀成员首次登录激活（invited → active，强制设密码/改密，邀请链接 7 天过期）
 - [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 移除离线节点 DELETE /api/v1/worker/nodes/:id）
 - [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP 多渠道 + 按 id 测试 POST :id/test）
+- [ ] 通知渠道密钥加密（AES-256-GCM 主密钥 CINSIGHT_CHANNEL_KEY + 接口掩码脱敏 + 编辑留空保持原值）
+- [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4290 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
 - [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
-- [ ] 审计日志（禁止修改删除）
+- [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页）
 - [ ] API Token 管理（细粒度权限/有效期 + 撤销 DELETE + 停用/恢复 PATCH :id/status）
 
 ### 3.2 平台管理
 - [ ] 组织列表/创建/详情/编辑/禁用/删除（DELETE 需输入组织名二次确认 + 级联清理）— 仅 super_admin
+- [ ] 组织配额/套餐限制校验（创建资产超 max_assets → 4290 ASSET_QUOTA_EXCEEDED；成员/Worker 配额逐条校验；org 详情返回 used_assets/used_workers）
+- [ ] 组织到期/禁用行为（停止 cron 计划 + 拒绝新建任务与资产写操作 + 仅保留只读；到期前 7 天续费提示）
 - [ ] 平台统计（总组织/总资产/总扫描/总事件）
 - [ ] 平台 Worker 总览
 
@@ -241,6 +248,9 @@ Updated: 2026-08-19
 ### 阶段 3 验收
 - [ ] 全部 15 个功能模块上线【必执行】
 - [ ] 平台管理/团队管理权限隔离正确【必执行】
+- [ ] 组织配额单元测试（资产/成员/Worker 超限返回 4290 + 批量逐条 failed + 到期组织写操作拒绝）
+- [ ] 通知渠道密钥加密单元测试（AES-256-GCM 加解密 + 返回掩码脱敏 + 留空保持原值）
+- [ ] 审计日志筛选单元测试（operator/action/resource_type/时间范围过滤 + 分页）
 - [ ] 集成测试：Master + 单 Worker 全链路（任务下发→引擎执行→结果回传→证据入库→前端展示）【必执行】
 - [ ] 前后端 CRUD 与批量接口对齐验收（检查点 18：逐模块 Create/Read/Update/Delete/Batch 全覆盖，前端按钮与后端端点一一对应）【必执行】
 - [ ] 容灾演练：Worker 断网恢复（Outbox 回传）、Master 重启对账、熔断触发【必执行】

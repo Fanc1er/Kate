@@ -170,6 +170,12 @@ sequenceDiagram
 - 资源控制：截图并发受 `ants` 池约束，浏览器进程内存上限（如 512MB），Worker 低资源环境可禁用截图（策略开关）。
 - 截图复用：同一 URL 同一任务内截图结果缓存（BadgerDB key `local:screenshot:{url}:{hash}`），避免重复渲染。
 
+### HAR 文件生成
+
+- Worker 在采集 Req/Resp 证据时按 HAR 1.2 规范组装 HAR 文件（`{"log": {"version": "1.2", "creator": {...}, "entries": [...]}}`），每个 entry 含请求/响应头、URL、HTTP 版本、方法、状态码、Body（text 与 encoding）、时间戳（startedDateTime/time）、大小（headersSize/bodySize）、MIME 类型。
+- HAR 文件随证据链 gzip 落盘（`/data/evidence/{date}/`）并经 SHA-256 入库；前端证据抽屉提供下载按钮 `GET /api/v1/evidence/:id/download?format=har`，可导入浏览器开发者工具（Chrome/DevTools/Fiddler）复现分析。
+- Body 超限截断策略：HAR 中响应体默认截断至 1MB（configurable `CINSIGHT_HAR_MAX_BODY`），截断标记 `_truncated: true`；完整响应体仍在 HTML/Resp 快照证据中保留。
+
 ### AI 内容分类服务适配层
 
 - 内容安全引擎的 AI 文本分类走 `AIAdapter`，支持可配置 `endpoint / model / api_key`（环境变量 `CINSIGHT_AI_ENDPOINT`、`CINSIGHT_AI_MODEL`、`CINSIGHT_AI_API_KEY` 注入），api_key 由管理员自行配置（K8s Secret），禁止硬编码。
@@ -191,6 +197,8 @@ type Finding struct {
     Severity    string   // critical/high/medium/low/info
     Title       string
     Description string
+    LineNo      int      // 触发点行号，无代码定位时为 0
+    Confidence  float64  // 0~1 引擎判定可信度
     Evidence    *Evidence
     Extra       map[string]any
 }
@@ -316,7 +324,7 @@ type Finding struct {
 | 规则库 | GET/POST | /api/v1/rules/import | org_admin | 规则库导入（POC/敏感词/特征库） |
 | 规则库 | GET | /api/v1/rules/export | org_admin | 规则库导出 |
 | 情报 | GET/PUT | /api/v1/intel-subscriptions | org_admin | 情报订阅配置（数据源开关） |
-| 审计 | GET | /api/v1/audit-logs | org_admin | 审计日志（只读） |
+| 审计 | GET | /api/v1/audit-logs | org_admin | 审计日志（只读，筛选 operator/action/resource_type/start/end + 分页） |
 | Token | GET/POST | /api/v1/api-tokens | org_admin | API Token 管理 |
 | Token | DELETE | /api/v1/api-tokens/:id | org_admin | 撤销 Token |
 | Token | PATCH | /api/v1/api-tokens/:id/status | org_admin | 临时停用/恢复 Token |
@@ -477,6 +485,8 @@ erDiagram
         string severity
         string title
         string description
+        int line_no "触发点行号，无代码定位为空"
+        float confidence "0~1 引擎判定可信度"
         string evidence_id FK
         string status
     }
@@ -544,11 +554,11 @@ erDiagram
 
 **user_orgs 约束**：`user_orgs` 表不允许 `is_super_admin` 用户插入；平台超管通过全局 `org_id=0` 查询平台数据。
 
-**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, created_at`。禁止 update/delete，仅可 insert/select。
+**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, created_at`。禁止 update/delete，仅可 insert/select。筛选查询支持 `username`（操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end）。
 
 **API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), expires_at, last_used_at`。
 
-**通知渠道表（notify_channels）**：`id, org_id, type(dingtalk/wecom/feishu/smtp), config(JSON), enabled`。
+**通知渠道表（notify_channels）**：`id, org_id, type(dingtalk/wecom/feishu/smtp), config(JSON), enabled`。config 中密钥/令牌类字段（webhook_secret、smtp_password 等）入库前经 **AES-256-GCM 加密**（主密钥 `CINSIGHT_CHANNEL_KEY` 环境注入，独立于 JWT Secret），接口返回时掩码脱敏（如 `sk-****abcd`）；编辑时不回显明文，留空表示保持原值。
 
 **降噪规则表（noise_rules）**：`id, org_id, type(whitelist_ip/ignore_type/agg_window/storm_limit), config(JSON), enabled`。
 
@@ -591,7 +601,7 @@ erDiagram
 | trend_points | `idx_trend_org_metric_date` | 趋势聚合 |
 | api_tokens | `idx_token_org` | Token 查询 |
 | worker_nodes | `idx_worker_org` | 节点管理 |
-| audit_logs | `idx_audit_org_created` | 审计查询 |
+| audit_logs | `idx_audit_org_created`, `idx_audit_org_user`, `idx_audit_org_action`（org_id, username/action, created_at） | 审计筛选/查询 |
 
 ### 迁移策略
 
@@ -711,8 +721,10 @@ src/
 | 场景 | 错误码 | 处理策略 |
 |------|--------|---------|
 | JWT 缺失/过期/无效 | 401 | 返回 `AUTH_FAILED`，前端清理 token 跳登录 |
+| 禁用用户/禁用组织访问 | 401/403 | 返回 `USER_DISABLED`/`ORG_DISABLED`，AuthMiddleware 每次请求校验 users.status/user_orgs.status/org.status |
 | 角色无权限写操作 | 403 | 返回 `FORBIDDEN`，前端隐藏入口 + Toast |
 | 缺少 X-Org-Id | 400 | 返回 `ORG_REQUIRED` |
+| 资产/成员/Worker 超配额 | 429 | 返回 `ASSET_QUOTA_EXCEEDED`(4290)/`MEMBER_QUOTA_EXCEEDED`(4292)/`WORKER_QUOTA_EXCEEDED`(4291)，前端提示升级套餐 |
 | 证据 Hash 校验失败 | 422 | 返回 `EVIDENCE_TAMPERED`，前端证据抽屉标红 |
 | 引擎超时 | 408 | 单 POC `context.WithTimeout(30s)` 中止，记录 finding=timeout |
 | 目标连续失败 5 次 | 502 | gobreaker 熔断目标，后续任务跳过并记录 |
@@ -735,10 +747,11 @@ src/
 |------|------|
 | 0 | 成功 |
 | 1000-1099 | 参数校验（`VALIDATION_FAILED` 1000、`ORG_REQUIRED` 1001、`INVALID_FORMAT` 1002） |
-| 2000-2099 | 认证（`AUTH_FAILED` 2000、`TOKEN_EXPIRED` 2001、`ACCOUNT_LOCKED` 2002） |
+| 2000-2099 | 认证（`AUTH_FAILED` 2000、`TOKEN_EXPIRED` 2001、`ACCOUNT_LOCKED` 2002、`USER_DISABLED` 2003、`ORG_DISABLED` 2004） |
 | 2100-2199 | 授权（`FORBIDDEN` 2100、`SCOPE_DENIED` 2101） |
 | 3000-3099 | 业务冲突（`DUPLICATE_URL` 3000、`TASK_STATE_CONFLICT` 3001、`ORG_LIMIT_EXCEEDED` 3002） |
 | 4000-4099 | 资源（`NOT_FOUND` 4000、`EVIDENCE_TAMPERED` 4001、`RULE_VERSION_MISMATCH` 4002） |
+| 4290-4299 | 配额（`ASSET_QUOTA_EXCEEDED` 4290、`WORKER_QUOTA_EXCEEDED` 4291、`MEMBER_QUOTA_EXCEEDED` 4292） |
 | 5000-5099 | 引擎/任务（`ENGINE_TIMEOUT` 5000、`TARGET_BREAKER_OPEN` 5001、`WORKER_UNAUTHORIZED` 5002） |
 | 6000-6099 | 外部依赖（`NOTIFY_FAILED` 6000、`INTEL_SOURCE_OFFLINE` 6001） |
 
@@ -767,6 +780,8 @@ src/
 | `CINSIGHT_SCREENSHOT_ENABLED` | true | Worker 无头浏览器截图开关 |
 | `CINSIGHT_SCREENSHOT_CONCURRENCY` | 2 | 截图并发上限 |
 | `CINSIGHT_WORKER_HEARTBEAT_MS` | 5000 | Worker 心跳间隔（离线判定 >5min） |
+| `CINSIGHT_CHANNEL_KEY` | 空 | 通知渠道密钥加密主密钥（AES-256-GCM，32 字节，缺失则渠道密钥类字段禁用） |
+| `CINSIGHT_HAR_MAX_BODY` | 1MB | HAR 文件响应体截断上限 |
 
 ### 日志与请求追踪
 
@@ -891,7 +906,19 @@ src/
 - **MFA**：预留 TOTP 二次认证开关（阶段 4 实现）。
 - **Secrets 管理**：JWT_SECRET、Webhook secret、Bootstrap Token 一律经环境/K8s Secret 注入，禁止写入代码与日志；支持定期轮换。
 - **依赖与镜像安全**：`govulncheck` 依赖漏洞扫描、Trivy 容器镜像扫描纳入 CI 门禁；镜像使用 `distroless` 最小化。
-- **静态加密**：证据目录/SQLite 部署在加密卷；SQLite 敏感列（password 已 bcrypt，token 已 hash）不落明文。
+- **静态加密**：证据目录/SQLite 部署在加密卷；SQLite 敏感列（password 已 bcrypt，token 已 hash）不落明文；通知渠道密钥/令牌类字段经 AES-256-GCM 加密存储（主密钥 `CINSIGHT_CHANNEL_KEY`），接口返回掩码脱敏。
+- **禁用用户/组织拦截**：AuthMiddleware 在每次请求校验用户 `users.status` 与当前 `user_orgs.status`/组织状态，任一为 `disabled` 立即返回 401 `USER_DISABLED` / `ORG_DISABLED`；登录时同样拦截（403），已签发 JWT 在下次校验时失效。
+
+### 组织配额与套餐限制（核心商业逻辑）
+
+- **配额字段**：`organizations.plan`（如 free/pro/enterprise）+ `max_assets` + `max_workers` + `expire_at`，由 super_admin 在创建/编辑组织时配置；套餐变更即改配额字段，实时生效。
+- **校验时机（写入即校验，乐观计数）**：
+  - 创建资产：已用资产数 ≥ `max_assets` → 4290 `ASSET_QUOTA_EXCEEDED`。
+  - 邀请成员 / 批量邀请：本组织 `active` 成员数达到套餐上限时拒绝（如 enterprise 默认 200 人）。
+  - Worker 注册握手：已注册 Worker 数 ≥ `max_workers` → 4290 `WORKER_QUOTA_EXCEEDED`；删除节点释放配额。
+  - 批量操作逐条校验，超限条目计入 `failed` 并携带原因 `quota_exceeded`，不中断整批。
+- **到期/禁用行为**：组织 `expire_at` 过期或 `status=disabled` 时，Master 停止其 cron 计划、拒绝新建任务与资产写操作，仅保留只读查询、证据下载与报表导出；到期前 7 天开始每日提示续费（通知渠道 + 站内横幅）。
+- **配额统计口径**：资产数以 `assets.status != 'deleted'` 计数；Worker 数以 `worker_nodes.status != 'offline_removed'` 计数；统计在组织详情接口 `GET /api/v1/orgs/:id` 返回 `used_assets / used_workers`。
 
 ### CI/CD 流水线（DevOps）
 

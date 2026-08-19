@@ -36,6 +36,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 4. WHEN 用户请求受保护 API，系统 SHALL 校验请求头 `Authorization: Bearer {jwt}` 与 `X-Org-Id: {org_id}`，任一项缺失或无效时返回 401。
 5. IF 密码连续校验失败达到锁定阈值，系统 SHALL 临时锁定该账户并返回友好提示。
 6. WHEN 用户退出登录，前端 SHALL 清除本地 JWT 并跳转登录页。
+7. WHEN 用户 `status` 为 `disabled`（禁用用户）提交登录，系统 SHALL 拒绝登录返回 403 `USER_DISABLED`，不签发 JWT；WHEN 用户所在组织被禁用，系统 SHALL 同样拒绝登录并返回 403 `ORG_DISABLED`。
+8. WHEN 用户持有已签发 JWT 后账户被禁用或所在组织被禁用，系统 SHALL 在后续受保护 API 校验时拒绝（401/403）并使该 JWT 失效。
 
 #### R1.2 四层角色与权限矩阵
 
@@ -149,6 +151,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **Acceptance Criteria:**
 1. 每个漏洞/告警 SHALL 关联证据链，包含请求信息（HTTP 方法、URL、Headers、Body）、响应信息（状态码、Headers、Body）、HTML 源码快照、代码位置片段（精确到行号）与截图取证。
 2. 引擎 SHALL 输出漏洞触发点的关键代码片段与行号（如 `<script>alert(1)</script>` 在第 152 行）。
+3. 每条 finding SHALL 携带置信度字段 `confidence`（0~1，引擎判定可信度）与代码行号 `line_no`（触发点行号，无代码定位时为空）。
+4. Worker SHALL 在采集 Req/Resp 证据时按 HAR 1.2 规范组装生成 HAR 文件（entries 含请求/响应头、Body、时间戳、大小、MIME 类型），随证据链 gzip 落盘并入库，供前端下载与工具导入。
 
 #### R3.2 证据存储与校验
 
@@ -345,16 +349,20 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. Worker 注册 SHALL 走握手流程：首次注册用一次性 Bootstrap Token 调用 `POST /api/v1/worker/register` 换取长期凭证（client_id + client_secret，服务端存 hash），后续心跳/拉取/回传 SHALL 用长期凭证鉴权；凭证支持撤销/重发，泄露可吊销。
 3. 受邀成员 SHALL 首次登录激活：邀请状态 `invited`，首次登录后激活为 `active` 并强制设密码/改密；邀请链接默认 7 天过期。
 4. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP 多渠道），并按 id 测试发送 `POST /api/v1/notify-channels/:id/test`。
-5. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
-6. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
-7. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），审计日志 SHALL 禁止修改与删除。
-8. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
+5. 通知渠道的密钥/令牌类字段（Webhook Secret、SMTP 密码等）SHALL 加密存储（AES-256-GCM，主密钥经环境变量注入），接口返回时 SHALL 脱敏（仅掩码显示），编辑回显 SHALL 提供"留空则保持原值"。
+6. Worker 注册 SHALL 受组织 Worker 配额约束：已注册 Worker 数达到该组织 `max_workers` 时，注册握手 SHALL 返回 4290 `WORKER_QUOTA_EXCEEDED` 拒绝注册；移除节点释放配额。
+7. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
+8. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
+9. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 禁止修改与删除。
+10. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
 
 #### R5.14 平台管理（仅 super_admin）
 
 1. 系统 SHALL 提供组织列表（名称/套餐/资产数/Worker 数/到期时间/状态）。
 2. 系统 SHALL 支持创建/编辑/禁用组织，提供组织详情 `GET /api/v1/orgs/:id` 与删除组织 `DELETE /api/v1/orgs/:id`（删除需输入组织名二次确认并级联清理数据）。
 3. 系统 SHALL 提供平台统计（总组织/总资产/总扫描次数/总事件数）与平台 Worker 总览。
+4. 系统 SHALL 按组织套餐执行配额校验（核心商业逻辑）：创建资产时已用资产数达到 `max_assets` 返回 4290 `ASSET_QUOTA_EXCEEDED`；邀请成员、注册 Worker 同样校验对应套餐上限；批量操作逐条校验不中断，超限条目计入 failed 并返回原因。
+5. WHEN 组织到期（`expire_at` 已过）或组织被禁用，系统 SHALL 停止该组织的定时计划、拒绝新建任务与资产变更，仅保留只读查询与证据下载。
 
 #### R5.15 API 开放集成
 
@@ -376,7 +384,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 1. 系统 SHALL 提供路由守卫：`beforeEach` 校验 token 有效性、组织选择态与 role 权限。
 2. 系统 SHALL 提供按钮级权限指令 `v-permission`，菜单/路由/按钮三级权限 SHALL 一致（同一 RBAC 权限表驱动，禁止某级绕过）。
-2. 系统 SHALL 提供全局错误处理：axios 拦截器统一错误提示 + 异常兜底页 + 全局错误边界组件。
+3. 系统 SHALL 提供全局错误处理：axios 拦截器统一错误提示 + 异常兜底页 + 全局错误边界组件。
 3. 系统 SHALL 在页面加载提供骨架屏占位，请求失败 SHALL 显示 Toast 提示并支持重试。
 4. 系统 SHALL 在 WebSocket 断线时显示断线提示条，重连成功 SHALL 自动恢复并清除提示。
 5. 系统 SHALL 预留 i18n（中/英）与可访问性支持，路由懒加载 + 组件分包保证首屏 < 3s。
