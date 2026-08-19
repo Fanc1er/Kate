@@ -156,6 +156,13 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 证据文件 SHALL 通过 MD5 去重，SHA-256 签名入库。
 3. WHEN 前端展示证据，后端 SHALL 强制校验文件 Hash，IF 校验不一致，UI SHALL 标红提示"证据已被破坏"。
 
+#### R3.2b Worker 页面截图取证（无头浏览器组件）
+
+1. Worker SHALL 内嵌无头浏览器截图组件（chromedp 或独立 chromium 进程），负责页面渲染截图取证。
+2. 引擎产出 finding 需截图时 SHALL 调用无头浏览器渲染（viewport 1440x900，DOMContentLoaded + 2s 等待）并输出 PNG，随证据链 gzip 落盘 + SHA-256 入库。
+3. 浏览器不可用或渲染超时（>30s）时 SHALL 降级为不截图，仅保留 Req/Resp/HTML 证据并标记 `screenshot: skipped`，不阻断任务。
+4. 同一 URL 同一任务内截图结果 SHALL 缓存（BadgerDB），避免重复渲染；截图并发受池约束，Worker 低资源环境可禁用截图（策略开关）。
+
 #### R3.3 前端证据展示
 
 1. 系统 SHALL 提供通用证据读取接口 `GET /api/v1/evidence/{id}`，返回证据元数据（Req/Resp/HTML/截图）并经 Hash 校验。
@@ -222,7 +229,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R4.6 安全加固（企业级）
 
 1. 系统 SHALL 经网关终结 TLS，响应头含 CSP / X-Frame-Options / X-Content-Type-Options / HSTS。
-2. 系统 SHALL 提供 API 通用限流（每用户/IP 100 req/min）与登录接口独立限流（5 次/min/IP，连续失败 5 次 SHALL 锁定账户 15 分钟，防暴力破解）。
+2. 系统 SHALL 提供 API 通用限流（每用户/IP 100 req/min，超限返回 HTTP 429 + `Retry-After` 头）与登录接口独立限流（5 次/min/IP，连续失败 5 次 SHALL 锁定账户 15 分钟，防暴力破解）。
 3. 系统 SHALL 执行密码策略：≥ 12 位含大小写/数字/特殊字符，90 天轮换，禁止复用最近 5 次，首次登录强制改密。
 4. 系统 SHALL 提供密码重置流程：`POST /api/v1/auth/forgot-password`（邮件验证码）+ `POST /api/v1/auth/reset-password`，重置后 SHALL 失效旧 token 并强制重新登录。
 5. 系统 SHALL 预留 MFA（TOTP）二次认证开关。
@@ -230,6 +237,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 7. 系统 SHALL 将依赖漏洞扫描（govulncheck）与容器镜像扫描（Trivy）纳入 CI 门禁。
 8. WebSocket 握手 SHALL 校验 JWT 与 org_id，订阅通道 SHALL 绑定连接所属 org，禁止越权订阅/接收他组织事件。
 9. 数据写入 SHALL 支持乐观锁：核心表（assets/scan_policies/alerts/tickets）SHALL 含 `version` 字段，更新时携带 `If-Match` 或请求体 version，版本不匹配 SHALL 返回 409。
+10. 系统 SHALL 采用 access token（15min）+ refresh token（7d）双 token 机制，提供 `POST /api/v1/auth/refresh`；登出、改密、换组织、密码重置后 SHALL 立即失效全部 refresh token（服务端 jti 黑名单）。
 
 #### R4.7 数据治理与合规（企业级）
 
@@ -288,6 +296,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供敏感内容列表（类型：涉黄/涉赌/涉毒/涉政，命中词句，AI 置信度）。
 2. 系统 SHALL 提供敏感信息泄漏列表（类型：身份证/手机号/邮箱/AccessKey，命中位置）。
 3. 系统 SHALL 提供页面篡改告警（篡改维度：标题/图片/正文，变更前后对比）与截图缩略图展示。
+4. 系统 SHALL 提供 AI 内容分类服务适配层：endpoint/model/api_key 经环境注入（`CINSIGHT_AI_ENDPOINT`/`CINSIGHT_AI_MODEL`/`CINSIGHT_AI_API_KEY`，由管理员配置），失败回退内置敏感词正则引擎，判定结果 SHALL 标记来源 `ai` 或 `regex`。
 
 #### R5.6 暗链与木马监测
 
@@ -333,11 +342,13 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.13 系统设置（仅 org_admin）
 
 1. 系统 SHALL 提供 Worker 节点管理（心跳/负载/版本/Bootstrap Token），心跳通过 `POST /api/v1/worker/heartbeat` 上报，支持移除离线节点 `DELETE /api/v1/worker/nodes/:id`。
-2. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP 多渠道），并按 id 测试发送 `POST /api/v1/notify-channels/:id/test`。
-3. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
-4. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
-5. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），审计日志 SHALL 禁止修改与删除。
-6. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
+2. Worker 注册 SHALL 走握手流程：首次注册用一次性 Bootstrap Token 调用 `POST /api/v1/worker/register` 换取长期凭证（client_id + client_secret，服务端存 hash），后续心跳/拉取/回传 SHALL 用长期凭证鉴权；凭证支持撤销/重发，泄露可吊销。
+3. 受邀成员 SHALL 首次登录激活：邀请状态 `invited`，首次登录后激活为 `active` 并强制设密码/改密；邀请链接默认 7 天过期。
+4. 系统 SHALL 提供通知渠道配置完整 CRUD（`GET/POST /api/v1/notify-channels`、`PUT/DELETE /api/v1/notify-channels/:id`，钉钉/企微/飞书 Webhook + 邮件 SMTP 多渠道），并按 id 测试发送 `POST /api/v1/notify-channels/:id/test`。
+5. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
+6. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
+7. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），审计日志 SHALL 禁止修改与删除。
+8. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
 
 #### R5.14 平台管理（仅 super_admin）
 
@@ -364,6 +375,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.17 前端工程化与体验
 
 1. 系统 SHALL 提供路由守卫：`beforeEach` 校验 token 有效性、组织选择态与 role 权限。
+2. 系统 SHALL 提供按钮级权限指令 `v-permission`，菜单/路由/按钮三级权限 SHALL 一致（同一 RBAC 权限表驱动，禁止某级绕过）。
 2. 系统 SHALL 提供全局错误处理：axios 拦截器统一错误提示 + 异常兜底页 + 全局错误边界组件。
 3. 系统 SHALL 在页面加载提供骨架屏占位，请求失败 SHALL 显示 Toast 提示并支持重试。
 4. 系统 SHALL 在 WebSocket 断线时显示断线提示条，重连成功 SHALL 自动恢复并清除提示。

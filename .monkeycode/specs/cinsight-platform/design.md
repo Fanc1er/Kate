@@ -151,6 +151,31 @@ sequenceDiagram
 | Reporter | HTTP POST 回传结果 + Outbox 缓存 | `ReportResult()`, `ReplayOutbox()` |
 | Engine | 统一引擎接口 | `Run(ctx, target, policy) ([]Finding, error)` |
 | localStore | BadgerDB 本地状态（已爬取 URL/Outbox） | `Set`, `Get`, `Scan` |
+| HeadlessBrowser | 无头浏览器截图取证组件 | `Screenshot(ctx, url) ([]byte, error)` |
+| AIAdapter | AI 内容分类服务适配层（endpoint/model/key 可注入，失败回退正则） | `Classify(ctx, text) (Category, Confidence, error)` |
+| WorkerAuth | Bootstrap Token 注册握手，换取长期凭证 | `Register(token) (clientID, clientSecret)`, `Heartbeat()` |
+
+### Worker 注册握手与凭证生命周期
+
+- **首次注册**：Worker 启动携带安装时下发的 Bootstrap Token 调用 `POST /api/v1/worker/register`，Master 校验 Token 有效（未过期/未使用）后签发长期凭证 `worker_client_id + worker_client_secret`（服务端存 hash），Token 一次性使用即作废。
+- **后续鉴权**：Worker 心跳/拉取/回传均用长期凭证（`X-Worker-ID` + `X-Worker-Secret` 或 Basic Auth），不再依赖 Bootstrap Token。
+- **凭证轮换**：Master 可撤销/重发凭证，泄露时可吊销；Worker 离线超期（>5min 无心跳）标记离线，可被删除（DELETE /api/v1/worker/nodes/:id）。
+- **受邀成员首次登录激活**：邀请发出后成员状态 `invited`，首次登录（验证码/初始密码）后自动激活为 `active`，同时强制设密码/改密；邀请链接过期时间（默认 7 天）。
+
+### 页面截图取证（无头浏览器组件）
+
+- Worker 内嵌无头浏览器截图组件（Go 侧集成 `chromedp` 或独立浏览器进程，Docker 镜像含 chromium），负责页面渲染截图。
+- 调用链：引擎产出 finding → 需截图时调用 `HeadlessBrowser.Screenshot(ctx, url)` → 渲染页面（viewport 1440x900，等待 DOMContentLoaded + 2s）→ 输出 PNG → 与 Req/Resp/HTML 一并经证据链路 gzip 落盘 + SHA-256 入库。
+- 失败降级：浏览器不可用/渲染超时（>30s）时降级为不截图，仅保留 Req/Resp/HTML 证据并标记 `screenshot: skipped`，不阻断任务。
+- 资源控制：截图并发受 `ants` 池约束，浏览器进程内存上限（如 512MB），Worker 低资源环境可禁用截图（策略开关）。
+- 截图复用：同一 URL 同一任务内截图结果缓存（BadgerDB key `local:screenshot:{url}:{hash}`），避免重复渲染。
+
+### AI 内容分类服务适配层
+
+- 内容安全引擎的 AI 文本分类走 `AIAdapter`，支持可配置 `endpoint / model / api_key`（环境变量 `CINSIGHT_AI_ENDPOINT`、`CINSIGHT_AI_MODEL`、`CINSIGHT_AI_API_KEY` 注入），api_key 由管理员自行配置（K8s Secret），禁止硬编码。
+- 适配层接口统一：`Classify(ctx, text) (category, confidence, error)`，支持 OpenAI 兼容协议。
+- **失败回退**：AI 服务不可用/超时（>5s）/429 限流时自动回退到内置敏感词正则引擎判定，判定结果标记 `source: regex`；AI 正常时标记 `source: ai`，双结果可并展示。
+- 结果缓存：同一文本片段结果缓存（BadgerDB，TTL 24h），降低 AI 调用量；调用并发受池约束，失败熔断（gobreaker，连续 5 次熔断 30s 后自动切正则）。
 
 ### 10 大引擎接口契约
 
@@ -188,22 +213,23 @@ type Finding struct {
 
 ### 统一约定
 
-- 基础前缀 `/api/v1`；Worker 内部接口前缀 `/api/v1/worker`（仅 Bootstrap Token 认证）。
+- 基础前缀 `/api/v1`；Worker 内部接口前缀 `/api/v1/worker`（仅 Worker 凭证鉴权）。
 - 统一响应格式 `{ "code": 0, "message": "ok", "data": {} }`，错误时 `code` 非 0 业务码。
 - 列表接口统一分页：`page`（从 1 起）、`page_size`（默认 20，上限 200），响应 `data.list` + `data.total`。
 - 排序参数 `sort=field,-field`（`-` 表示倒序）；筛选参数 `filter[字段]=值`。
 - 时间戳统一 RFC3339（`2006-01-02T15:04:05Z07:00`）；大体积文件统一 gzip。
 - 鉴权分层：
-  - **JWT 用户鉴权**（前端会话）：`Authorization: Bearer {jwt}` + `X-Org-Id: {org_id}`，经 AuthMiddleware + RBACMiddleware。
+  - **JWT 用户鉴权**（前端会话）：`Authorization: Bearer {access_token}` + `X-Org-Id: {org_id}`，经 AuthMiddleware + RBACMiddleware；短时效 access token（15min），refresh token（7d）经 `POST /api/v1/auth/refresh` 换发，登出/改密/换组织/重置后 jti 黑名单立即失效。
   - **API Token 鉴权**（开放集成）：`Authorization: Bearer {api_token}` + `X-Org-Id: {org_id}`，scopes 细粒度控制，独立于 JWT。
-  - **Worker Bootstrap Token**（Worker 内部）：`Authorization: Bearer {boot_token}`，仅限 `/api/v1/worker/*`。
+  - **Worker 凭证鉴权**（Worker 内部）：首次用一次性 Bootstrap Token 调 `POST /api/v1/worker/register` 换长期凭证（client_id + client_secret），后续 `/api/v1/worker/*` 用 `X-Worker-ID` + `X-Worker-Secret`（或 Basic Auth），支持吊销与重发。
 
 ### REST 端点清单
 
 | 模块 | 方法 | 路径 | 权限 | 说明 |
 |------|------|------|------|------|
-| 认证 | POST | /api/v1/auth/login | 公开 | 登录，bcrypt 校验 + JWT |
-| 认证 | POST | /api/v1/auth/select-org | 登录用户 | 组织选择，换发带 org_id 的 JWT |
+| 认证 | POST | /api/v1/auth/login | 公开 | 登录，bcrypt 校验 + JWT（access+refresh） |
+| 认证 | POST | /api/v1/auth/refresh | 登录用户 | 用 refresh token 换发 access token |
+| 认证 | POST | /api/v1/auth/select-org | 登录用户 | 组织选择，换发带 org_id 的 JWT，失效旧 token |
 | 认证 | POST | /api/v1/auth/logout | 登录用户 | 退出登录 |
 | 认证 | GET | /api/v1/auth/me | 登录用户 | 当前用户信息 + 组织列表 |
 | 组织 | GET | /api/v1/orgs | super_admin | 组织列表 |
@@ -279,6 +305,7 @@ type Finding struct {
 | Worker | GET | /api/v1/worker/nodes | org_admin | Worker 节点管理 |
 | Worker | GET/POST | /api/v1/worker/nodes/:id/boot-token | org_admin | Bootstrap Token |
 | Worker | DELETE | /api/v1/worker/nodes/:id | org_admin | 移除离线 Worker 节点 |
+| Worker | POST | /api/v1/worker/register | Worker Token | Bootstrap Token 换长期凭证（一次性） |
 | 通知 | GET/POST | /api/v1/notify-channels | org_admin | 通知渠道（钉钉/企微/飞书/SMTP 多渠道） |
 | 通知 | PUT/DELETE | /api/v1/notify-channels/:id | org_admin | 通知渠道编辑/删除 |
 | 通知 | POST | /api/v1/notify-channels/:id/test | org_admin | 按 id 测试发送 |
@@ -627,8 +654,15 @@ src/
 ├── layouts/             # 顶部导航/侧边菜单/组织切换
 ├── views/               # 页面（按 RBAC 懒加载）
 ├── components/          # 复用组件（证据抽屉/图表/脱敏显示）
+├── directives/          # v-permission 按钮级权限指令
 └── utils/               # 格式化/脱敏展示/时间/下载
 ```
+
+### 按钮级权限（v-permission）
+
+- 注册全局指令 `v-permission`，值支持角色数组或权限码（`v-permission="['org_admin','engineer']"` / `v-permission="'asset:delete'"`）。
+- 指令实现：从 Pinia `auth.role` 与 RBAC 权限表判断，无权限时移除按钮 DOM（或 v-if 等价处理）。
+- 三级一致：菜单（`menu.ts` 动态生成）→ 路由（`addRoute` 懒加载）→ 按钮（`v-permission`）均读取同一权限定义源（`src/config/permissions.ts` 权限码表），保证不出现"菜单可见但按钮缺失"或"路由可达但按钮多余"的不一致。
 
 ### 状态管理（Pinia store 划分）
 
@@ -716,7 +750,8 @@ src/
 | `CINSIGHT_DB_PATH` | ./data/cinsight.db | SQLite 路径 |
 | `CINSIGHT_DATA_DIR` | /data | 证据/规则/日志根目录（`/data/evidence`、`/data/rules`、`/data/logs`） |
 | `CINSIGHT_JWT_SECRET` | 必填 | JWT 签名密钥（64 字符随机） |
-| `CINSIGHT_JWT_TTL` | 24h | 登录 JWT 有效期 |
+| `CINSIGHT_JWT_TTL` | 15m | 登录 access token 有效期 |
+| `CINSIGHT_REFRESH_TTL` | 7d | refresh token 有效期 |
 | `CINSIGHT_SUPER_ADMIN_USER` | admin | 初始超管用户名 |
 | `CINSIGHT_RULES_DIR` | /data/rules | fsnotify 监听规则目录 |
 | `CINSIGHT_LITESTREAM_URI` | 空 | Litestream 备份目标（S3/文件） |
@@ -725,6 +760,13 @@ src/
 | `CINSIGHT_ANT_CONCURRENCY` | 20 | Worker ants 协程池大小 |
 | `CINSIGHT_PROXY_URL` | 空 | 反封禁 Proxy（HTTP/SOCKS5） |
 | `CINSIGHT_STORM_LIMIT_PER_HOUR` | 5 | 单资产每小时告警上限 |
+| `CINSIGHT_AI_ENDPOINT` | 空 | AI 内容分类服务地址（OpenAI 兼容，管理员配置） |
+| `CINSIGHT_AI_MODEL` | 空 | AI 内容分类模型名 |
+| `CINSIGHT_AI_API_KEY` | 空 | AI 服务密钥（K8s Secret 注入，禁止硬编码） |
+| `CINSIGHT_AI_TIMEOUT` | 5s | AI 调用超时，超时回退正则引擎 |
+| `CINSIGHT_SCREENSHOT_ENABLED` | true | Worker 无头浏览器截图开关 |
+| `CINSIGHT_SCREENSHOT_CONCURRENCY` | 2 | 截图并发上限 |
+| `CINSIGHT_WORKER_HEARTBEAT_MS` | 5000 | Worker 心跳间隔（离线判定 >5min） |
 
 ### 日志与请求追踪
 
@@ -749,17 +791,27 @@ src/
 | 模块 | 覆盖点 |
 |------|--------|
 | RBAC 中间件 | 四角色 × 读写操作矩阵（表驱动） |
-| 认证服务 | bcrypt 校验、JWT 签发、组织选择、锁定阈值 |
+| 认证服务 | bcrypt 校验、JWT 签发、refresh 换发、jti 黑名单、组织选择、锁定阈值 |
 | 证据服务 | gzip 落盘、SHA-256 校验、MD5 去重、篡改检测 |
 | 任务调度 | 状态机流转、超时对账、断点续扫 |
 | 引擎契约 | 各引擎 mock 输入 → finding 输出 |
+| AI 适配层 | AI 可用→ai 来源 / 超时或 429→regex 回退 / 熔断切换 |
+| Worker 握手 | Bootstrap Token 一次性使用、长期凭证校验、凭证吊销 |
 | 脱敏 | 身份证/手机号/邮箱/AccessKey 三时机脱敏 |
 
 ### 集成测试
 
 - Master + 单 Worker 本地联调：任务下发 → 引擎执行 → 结果回传 → 证据入库 → 前端展示全链路。
+- 认证→建资产→下发任务→Worker 结果回传→事件生成→前端数据闭环全链路。
 - SQLite 内存模式 + BadgerDB 临时目录跑通 Repository 层租户隔离查询。
 - WebSocket 推送：事件产生后订阅者收到实时通知，断线重连（指数退避）成功。
+- Worker 注册握手：Bootstrap Token 换长期凭证 → 心跳/拉取/回传全链路鉴权通过。
+- 无头浏览器截图：真实 URL 渲染出 PNG，超时降级 `screenshot: skipped` 不阻断任务。
+- 限流：超阈值请求返回 429 + `Retry-After`，登录锁定 15min。
+- 截图上传（MIME 校验/大小上限/路径穿越拒绝）。
+- 结果回传幂等键去重（同 result_id 重复回传不重复入库）。
+- 乐观锁冲突（并发更新同 version 返回 409）。
+- WebSocket 越权订阅拒绝（org A 连接订阅 org B 事件被拒）。
 
 ### 前端测试（vitest）
 
@@ -769,14 +821,7 @@ src/
 - 登录表单校验（字段格式/密码策略/错误提示）。
 - 路由守卫（无 token 跳登录、无 org 弹组织选择、越权角色 403）。
 - 权限菜单渲染（按 RBAC 权限表过滤）。
-
-### 集成测试（go test integration）
-
-- 认证→建资产→下发任务→Worker 结果回传→事件生成→前端数据闭环全链路。
-- 截图上传（MIME 校验/大小上限/路径穿越拒绝）。
-- 结果回传幂等键去重（同 result_id 重复回传不重复入库）。
-- 乐观锁冲突（并发更新同 version 返回 409）。
-- WebSocket 越权订阅拒绝（org A 连接订阅 org B 事件被拒）。
+- v-permission 按钮级权限（无权限角色按钮隐藏）。
 
 ### 性能基准
 
@@ -838,9 +883,10 @@ src/
 ### 安全加固（纵深防御）
 
 - **传输安全**：前置网关终结 TLS（HTTPS），内部 Master↔Worker 使用 mTLS 或内网隔离 + Bootstrap Token；HSTS 响应头。
-- **安全响应头**：CSP、`X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy` 全局中间件。
+- **安全响应头**：CSP、`X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy`、HSTS 全局中间件。
 - **CSRF 防护**：前端不依赖 Cookie 鉴权（Bearer 头 + X-Org-Id），配合 `SameSite` Cookie 策略，无 CSRF Token 盲区。
-- **API 通用限流**：网关层每用户/IP 速率限制（如 100 req/min），登录接口单独限流（5 次/min/IP）+ 账户锁定（已有）。
+- **API 通用限流**：网关层每用户/IP 速率限制（如 100 req/min），超限返回 HTTP 429 + `Retry-After` 头（秒）；登录接口单独限流（5 次/min/IP）+ 账户锁定（已有）。
+- **refresh token 机制**：登录签发短时效 access token（15min）+ 长时效 refresh token（7d）；`POST /api/v1/auth/refresh` 换发新 access token；登出、改密、换组织、密码重置后 SHALL 立即失效全部 refresh token（服务端黑名单，JWT jti 拉黑）。
 - **密码策略**：密码 ≥ 12 位含大小写/数字/特殊字符，90 天强制轮换，禁止复用最近 5 次，首次登录强制改密。
 - **MFA**：预留 TOTP 二次认证开关（阶段 4 实现）。
 - **Secrets 管理**：JWT_SECRET、Webhook secret、Bootstrap Token 一律经环境/K8s Secret 注入，禁止写入代码与日志；支持定期轮换。

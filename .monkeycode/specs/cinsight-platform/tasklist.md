@@ -21,6 +21,8 @@ Updated: 2026-08-19
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
 - [ ] 登录接口（bcrypt 校验 + JWT 签发，不含 org_id）
+- [ ] refresh token 机制（POST /api/v1/auth/refresh，access 15min + refresh 7d，jti 黑名单）
+- [ ] 登出/换组织/改密/重置后 token 失效（黑名单生效）
 - [ ] 组织选择接口 POST /api/v1/auth/select-org（换取带 org_id 的 JWT）
 - [ ] JWT 中间件 + X-Org-Id 校验 + RBAC 中间件（RequireRoles/RequireWrite）
 - [ ] super_admin 全局 org_id=0 平台查询通道
@@ -37,6 +39,7 @@ Updated: 2026-08-19
 - [ ] Pinia store 划分（auth/menu/asset/event/dashboard）
 - [ ] 登录页 /login + 组织选择卡片页
 - [ ] 基于 role 的动态 addRoute() 路由与菜单（含 super_admin 平台管理/选择组织双入口）
+- [ ] 按钮级权限指令 v-permission + 权限码表（src/config/permissions.ts），菜单/路由/按钮三级一致
 - [ ] 顶部导航（组织名 + 角色 Tag + 切换组织/退出）
 - [ ] 全局错误边界 + 骨架屏 + 请求失败 Toast（axios 拦截器 + 异常兜底页）
 - [ ] WebSocket 断线提示条 + 重连自动恢复清除
@@ -66,6 +69,7 @@ Updated: 2026-08-19
 - [ ] 任务停止/删除/批量停止/失败重跑（POST :id/stop、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
+- [ ] Worker 注册握手（POST /api/v1/worker/register：Bootstrap Token 一次性换长期凭证 client_id+client_secret，后续心跳/拉取/回传用长期凭证，支持吊销/重发）
 - [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定）
 - [ ] Worker Outbox 本地缓存与断网回传
 - [ ] 结果回传幂等键去重（result_id 唯一索引，重复回传不重复入库）
@@ -81,6 +85,7 @@ Updated: 2026-08-19
 - [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence，聚合漏洞关联证据链）
 - [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号）+ 结果回传链路
 - [ ] Worker 页面渲染截图采集（截图取证）
+- [ ] Worker 无头浏览器截图组件（chromedp/chromium：viewport 渲染 + DOMContentLoaded+2s + PNG 输出，超时降级 screenshot:skipped，同 URL 缓存，并发受池约束）
 - [ ] 截图上传接口（POST /api/v1/evidence/screenshots，Base64 或文件流，鉴权 + SHA-256 校验）
 - [ ] 截图上传安全校验（MIME 仅 png/jpeg/webp + 大小 ≤10MB + 文件名防路径穿越/UUID 落盘）
 - [ ] 证据文件保留期清理与空间回收（expires_at 365 天 + 孤儿文件扫描）
@@ -97,7 +102,7 @@ Updated: 2026-08-19
 
 ### 1.8 阶段 1 单元测试【必执行】
 - [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作，表驱动）
-- [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/组织选择/登录锁定）
+- [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/refresh token 换发/jti 黑名单/组织选择/登录锁定）
 - [ ] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
 - [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫）
 
@@ -118,6 +123,7 @@ Updated: 2026-08-19
 ### 2.2 引擎实现
 - [ ] 漏洞扫描引擎（POC + Fuzzing + 参数注入，context 30s 超时 + ants 并发）
 - [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息识别 + 篡改基线）
+- [ ] AI 内容分类适配层（AIAdapter：endpoint/model/key 环境注入 + 超时/429 失败回退正则 + 结果缓存 + gobreaker 熔断）
 - [ ] 暗链挂马引擎（隐藏外链/木马特征/双 UA 对比）
 - [ ] Webshell 检测引擎（路径枚举 + 特征码 + 流量特征）
 - [ ] 钓鱼检测引擎（模板比对 + Levenshtein + 证书异常）
@@ -155,6 +161,7 @@ Updated: 2026-08-19
 
 ### 2.6 阶段 2 单元测试【必执行】
 - [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
+- [ ] AI 适配层单元测试（AI 可用→ai 来源 / AI 超时/429→regex 回退 / 熔断切换）
 - [ ] 脱敏单元测试（身份证/手机号/邮箱/AccessKey 三时机脱敏）
 
 ### 阶段 2 验收
@@ -169,6 +176,7 @@ Updated: 2026-08-19
 
 ### 3.1 团队与系统设置
 - [ ] 成员管理（邀请/批量邀请 batch-invite/移除 DELETE/批量移除 batch-remove/禁用/启用/改角色）— 仅 org_admin
+- [ ] 受邀成员首次登录激活（invited → active，强制设密码/改密，邀请链接 7 天过期）
 - [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 移除离线节点 DELETE /api/v1/worker/nodes/:id）
 - [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP 多渠道 + 按 id 测试 POST :id/test）
 - [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
@@ -196,7 +204,7 @@ Updated: 2026-08-19
 
 ### 任务 15 — Litestream 热备与部署【必执行】
 - [ ] Litestream SQLite 实时流式热备（配置 + 复制验证）
-- [ ] Docker 编排（Master + Worker + SQLite 卷 + 数据目录挂载）
+- [ ] Docker 编排（Master + Worker + SQLite 卷 + 数据目录挂载 + Worker 镜像含 chromium 无头浏览器依赖）
 - [ ] K8s 编排（Master 水平扩展读写分离 + Worker 弹性伸缩 HPA）
 - [ ] 私有化单二进制一键安装打包（零外部依赖）
 - [ ] 部署验证：Docker 起服务 → 探活 /api/health → 建资产 → 下发任务全链路通过
@@ -251,7 +259,7 @@ Updated: 2026-08-19
 
 ### 4.2 安全加固
 - [ ] TLS 终结（网关）+ HSTS + 安全响应头中间件（CSP/X-Frame-Options/nosniff/Referrer-Policy）
-- [ ] API 通用限流（每用户/IP 100 req/min）+ 登录接口独立限流（5 次/min/IP，连续失败 5 次锁 15 分钟）
+- [ ] API 通用限流（每用户/IP 100 req/min，超限 HTTP 429 + Retry-After 头）+ 登录接口独立限流（5 次/min/IP，连续失败 5 次锁 15 分钟）
 - [ ] 密码策略（≥12 位复杂度/90 天轮换/禁复用 5 次/首登强制改密）
 - [ ] WebSocket 越权订阅防护（握手校验 JWT + org_id，通道绑定 org，禁止跨组织订阅）
 - [ ] 乐观锁并发控制（assets/scan_policies/alerts/tickets 含 version，不匹配返回 409）
