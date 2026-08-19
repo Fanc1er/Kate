@@ -75,6 +75,7 @@ Updated: 2026-08-19
 - [ ] 任务分发 Pull 模型（Worker 轮询拉取 + 原子置 processing 防双拉 + 按心跳 load 最低优先分配 + 任务不拆分）
 - [ ] 任务去重（同 org+asset+policy 存在 pending/processing 时返回 3001 TASK_STATE_CONFLICT）
 - [ ] 任务详情接口（GET /api/v1/tasks/:id，状态/进度/执行日志/结果统计/Worker 分配）
+- [ ] 任务队列监控与断点续扫状态（GET /api/v1/tasks/queue 排队/处理中/已完成 + Worker 分配 + GET /api/v1/tasks/:id/progress）
 - [ ] 任务停止/删除/批量停止/失败重跑（POST :id/stop 置 failed 标记 stopped_by_user + Worker stop_check 感知中止回传 cancelled、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
@@ -98,6 +99,7 @@ Updated: 2026-08-19
 - [ ] 证据传输协议（POST /api/v1/worker/evidence：<1MB 内联 / ≥1MB 分片 ≤8MB / upload_id 断点续传 / 收齐合并 SHA-256 校验）
 - [ ] Worker HAR 文件生成（HAR 1.2 组装：entries 请求/响应头、Body、时间戳、大小、MIME + Body 超限截断标记 + gzip 落盘入库）
 - [ ] 证据下载接口支持 format=har（HAR 文件导出，可导入 DevTools/Fiddler）
+- [ ] 证据下载端点（GET /api/v1/evidence/:id/download 按证据类型返回文件流，下载前 Hash 校验）
 - [ ] Worker 页面渲染截图采集（截图取证）
 - [ ] Worker 无头浏览器截图组件（chromedp/chromium：viewport 渲染 + DOMContentLoaded+2s + PNG 输出，超时降级 screenshot:skipped，同 URL 缓存，并发受池约束）
 - [ ] 截图上传接口（POST /api/v1/evidence/screenshots，Base64 或文件流，鉴权 + SHA-256 校验）
@@ -156,6 +158,7 @@ Updated: 2026-08-19
 - [ ] 发现处理链路（回传幂等→落 findings→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
 - [ ] 降噪在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，命中同时抑制告警与推送，规则变更不回溯）
 - [ ] 事件批量状态流转（POST /api/v1/events/batch）
+- [ ] 单事件状态流转（POST /api/v1/events/:id/status）
 - [ ] 事件类型筛选（12 类）+ 降噪规则完整 CRUD（GET/POST /api/v1/noise-rules，PUT/DELETE /api/v1/noise-rules/:id）
 - [ ] 独立告警接口（GET /api/v1/alerts 列表 + GET /:id 详情 + PATCH /api/v1/alerts/:id 处置 + POST /api/v1/alerts/batch 批量处置）
 - [ ] 漏洞表与告警表迁移（vulnerabilities/alerts 独立表，见 design ER 图）
@@ -208,7 +211,7 @@ Updated: 2026-08-19
 ## 阶段 3 — 全量功能 + 平台化
 
 ### 3.1 团队与系统设置
-- [ ] 成员管理（邀请/批量邀请 batch-invite/移除 DELETE/批量移除 batch-remove/禁用/启用/改角色）— 仅 org_admin
+- [ ] 成员管理（GET /api/v1/members 列表 + POST 单条邀请/批量邀请 batch-invite + 移除 DELETE :id/批量移除 batch-remove + 禁用/启用 :id/disable + 修改角色 PUT :id）— 仅 org_admin
 - [ ] 受邀成员首次登录激活（invited → active，强制设密码/改密，邀请链接 7 天过期）
 - [ ] Worker 节点管理（心跳/负载/版本/Bootstrap Token + 移除离线节点 DELETE /api/v1/worker/nodes/:id）
 - [ ] 通知渠道配置完整 CRUD（GET/POST + PUT/DELETE :id，钉钉/企微/飞书 Webhook + SMTP 多渠道 + 按 id 测试 POST :id/test）
@@ -218,12 +221,12 @@ Updated: 2026-08-19
 - [ ] 规则库管理（POC/敏感词/木马特征库 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import + 导出 /api/v1/rules/export）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
 - [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent + 覆盖范围见 design audit_logs 段，批量逐条记录，读操作与引擎回传不审计）
-- [ ] API Token 管理（细粒度权限/有效期 + 撤销 DELETE + 停用/恢复 PATCH :id/status）
+- [ ] API Token 管理（GET/POST 列表/创建，细粒度权限/有效期 + 撤销 DELETE :id + 停用/恢复 PATCH :id/status）
 - [ ] 团队管理前端页（成员列表/邀请/批量移除/禁用/改角色）
 - [ ] 系统设置前端页（Worker 节点管理/通知渠道 CRUD+测试/通知路由规则/规则库管理/API Token/Webhook/审计日志筛选）
 
 ### 3.2 平台管理
-- [ ] 组织列表/创建/详情/编辑/禁用/启用/删除（DELETE 需输入组织名二次确认 + 级联清理；enable 恢复 cron 与写操作）— 仅 super_admin
+- [ ] 组织列表/创建/详情/编辑/禁用/启用/删除（GET/POST /api/v1/orgs + GET/PUT/DELETE /api/v1/orgs/:id + POST :id/disable + :id/enable，DELETE 需输入组织名二次确认 + 级联清理；enable 恢复 cron 与写操作）— 仅 super_admin
 - [ ] 组织配额/套餐限制校验（创建资产超 max_assets → 4290 ASSET_QUOTA_EXCEEDED；成员超 max_members → 4292 MEMBER_QUOTA_EXCEEDED；Worker 超 max_workers → 4291 WORKER_QUOTA_EXCEEDED；org 详情返回 used_assets/used_workers/used_members）
 - [ ] 组织到期/禁用行为（停止 cron 计划 + 拒绝新建任务与资产写操作 + 仅保留只读；到期前 7 天续费提示）
 - [ ] 平台统计（总组织/总资产/总扫描/总事件）
