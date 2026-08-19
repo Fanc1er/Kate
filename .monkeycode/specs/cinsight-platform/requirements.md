@@ -30,7 +30,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 任意用户，I want 使用用户名密码登录并获得 JWT，SO THAT 平台能识别我的身份与角色。
 
 **Acceptance Criteria:**
-1. WHEN 用户在统一登录页提交用户名与密码，系统 SHALL 用 bcrypt 校验密码并在校验通过后签发 JWT，JWT 包含 `user_id` 且不含 `org_id`。
+1. WHEN 用户在统一登录页提交用户名与密码，系统 SHALL 经 `POST /api/v1/auth/login` 用 bcrypt 校验密码并在校验通过后签发 JWT，JWT 包含 `user_id` 且不含 `org_id`。
 2. WHEN JWT 签发完成，系统 SHALL 查询 `user_orgs` 关联表：单组织用户直接返回 `org_id` 与 `role`；多组织用户返回组织列表由前端展示选择卡片。
 3. WHEN 多组织用户通过 `POST /api/v1/auth/select-org` 提交目标组织，系统 SHALL 校验该用户在此组织的有效成员关系并签发携带 `org_id` 的新 JWT。
 4. WHEN 用户请求受保护 API，系统 SHALL 校验请求头 `Authorization: Bearer {jwt}` 与 `X-Org-Id: {org_id}`，任一项缺失或无效时返回 401。
@@ -204,7 +204,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供通用证据读取接口 `GET /api/v1/evidence/{id}`，返回证据元数据（Req/Resp/HTML/截图）并经 Hash 校验。
 2. 前端 SHALL 提供全屏抽屉，上方左右分屏展示 HTTP Req/Resp。
 3. 下方 SHALL 展示 HTML 源码（代码高亮 + 行号标红定位）。
-4. 前端 SHALL 提供截图取证标签页展示渲染截图，并提供下载完整 HTML 快照 / HAR 文件按钮。
+4. 前端 SHALL 提供截图取证标签页展示渲染截图，并提供下载完整 HTML 快照 / HAR 文件按钮（`GET /api/v1/evidence/{id}/download`，按证据类型返回对应文件流，下载前同样校验 Hash）。
 5. HTML 源码属不可信外部内容，前端 SHALL 禁止直接 `v-html` 注入；渲染前 SHALL 经 DOMPurify 白名单净化（剥离 script/style/iframe/on* 事件属性等），净化后高亮展示，防止存储型 XSS 经证据链回放。
 
 #### R3.4 截图上传接口
@@ -310,10 +310,10 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.3 安全事件中心
 
-1. 系统 SHALL 提供事件列表（级别/来源资产/引擎类型/内容/状态流转：待处理→处理中→已关闭→已归档）。
+1. 系统 SHALL 提供事件列表 `GET /api/v1/events`（级别/来源资产/引擎类型/内容/状态流转：待处理→处理中→已关闭→已归档）与事件详情 `GET /api/v1/events/{id}`（关联证据/工单/时间线）。
 2. 系统 SHALL 支持事件类型筛选：漏洞/内容违规/暗链挂马/木马/Webshell/钓鱼/篡改/可用性异常/端口暴露/敏感信息泄漏/信誉异常/情报预警。
 3. 系统 SHALL 提供降噪规则配置完整 CRUD（`GET/POST /api/v1/noise-rules`、`PUT/DELETE /api/v1/noise-rules/:id`），规则类型包含白名单 IP/忽略特定类型/聚合时间窗/风暴抑制。
-4. 系统 SHALL 提供批量状态流转接口 `POST /api/v1/events/batch`（批量确认/关闭/归档）。
+4. 系统 SHALL 提供单事件状态流转 `POST /api/v1/events/{id}/status`（待处理→处理中→已关闭→已归档）与批量状态流转接口 `POST /api/v1/events/batch`（批量确认/关闭/归档）。
 5. 系统 SHALL 支持闭环处置流程：事件确认→工单派发→修复跟踪→复测验证→归档，并自动挂载应急响应 SOP。SOP SHALL 来自内置模板库（按事件类型默认挂载对应处置步骤，如 WebShell 事件挂"隔离+溯源+加固"步骤），org_admin 可在系统设置维护自定义 SOP。
 
 #### R5.3b 独立告警中心
@@ -331,7 +331,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供漏洞列表（按等级/状态/引擎类型筛选），基于独立 `vulnerabilities` 表。
 2. 系统 SHALL 提供漏洞证据接口 `GET /api/v1/vulnerabilities/{id}/evidence`，聚合漏洞关联的 Req/Resp/HTML/截图证据链。
 3. 系统 SHALL 提供证据链抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图取证）。
-4. 系统 SHALL 支持闭环处置（生成工单/申请复测/忽略），并提供批量接口 `POST /api/v1/vulnerabilities/batch-ticket`、`batch-retest`、`batch-ignore`。
+4. 系统 SHALL 支持闭环处置（生成工单/申请复测/忽略），单条走 `POST /api/v1/vulnerabilities/{id}/ticket`、`POST /api/v1/vulnerabilities/{id}/retest`、`POST /api/v1/vulnerabilities/{id}/ignore`，并提供批量接口 `POST /api/v1/vulnerabilities/batch-ticket`、`batch-retest`、`batch-ignore`。
 5. 系统 SHALL 支持漏洞状态流转：申请复测 SHALL 将漏洞置为 `verifying` 并生成复测任务；复测通过 SHALL 自动置 `closed` 并记录 `closed_at`，复测失败 SHALL 回退 `open` 并追加复测记录；`ignored` 可取消忽略恢复 `open`。
 6. 系统 SHALL 提供漏洞行内快捷操作（生成工单/申请复测/忽略）与筛选持久化。
 
@@ -375,7 +375,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供策略模板（10 大引擎开关/扫描并发/超时/速率限制），完整 CRUD（`GET/POST /api/v1/policies`、`PUT/DELETE /api/v1/policies/:id`）、复制模板 `POST /api/v1/policies/:id/copy` 与批量删除 `POST /api/v1/policies/batch-delete`。
 2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口），完整 CRUD（`GET/POST /api/v1/scan-plans`、`PUT/DELETE /api/v1/scan-plans/:id`）、启停开关 `PATCH /api/v1/scan-plans/:id/status` 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。Cron 表达式 SHALL 绑定明确时区（默认 `Asia/Shanghai`，可经 `CINSIGHT_TIMEZONE` 覆盖），服务端按该时区计算执行时间，前端创建/编辑时展示所选时区。
 3. 系统 SHALL 提供任务列表、任务详情 `GET /api/v1/tasks/:id`（状态/进度/执行日志/结果统计/Worker 分配）、停止 `POST /api/v1/tasks/:id/stop`、失败重跑 `POST /api/v1/tasks/:id/rerun`、删除历史任务 `DELETE /api/v1/tasks/:id`、批量停止 `POST /api/v1/tasks/batch-stop` 与批量失败重跑 `POST /api/v1/tasks/batch-rerun`。
-4. 系统 SHALL 提供任务队列监控（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示。
+4. 系统 SHALL 提供任务队列监控 `GET /api/v1/tasks/queue`（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示 `GET /api/v1/tasks/{id}/progress`。
 5. 任务分发 SHALL 采用 Worker 拉取（Pull）模型，以任务为单位整体分配给单个 Worker 执行，不在任务内分片；同一任务同一时刻仅一个 Worker 执行（`processing` 状态锁定）；调度器 SHALL 按心跳上报的负载（`load`）优先分发给负载最低的在线 Worker。
 6. 系统 SHALL 对同一资产执行任务去重：同一资产 + 相同策略存在 `pending`/`processing` 任务时，重复下发 SHALL 返回冲突错误（3001 `TASK_STATE_CONFLICT`），避免同一目标被并发重复扫描。
 
@@ -387,8 +387,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.12 团队管理（仅 org_admin）
 
-1. 系统 SHALL 提供成员列表（头像/角色 Tag/状态/最后登录时间）。
-2. 系统 SHALL 支持邀请成员（邮箱/手机号 + 角色选择）、批量邀请 `POST /api/v1/members/batch-invite`、批量移除 `POST /api/v1/members/batch-remove`、修改角色、禁用/启用成员、移除成员 `DELETE /api/v1/members/:id`（移除二次确认）。
+1. 系统 SHALL 提供成员列表 `GET /api/v1/members`（头像/角色 Tag/状态/最后登录时间）。
+2. 系统 SHALL 支持邀请成员（`POST /api/v1/members` 单条：邮箱/手机号 + 角色选择；批量 `POST /api/v1/members/batch-invite`）、批量移除 `POST /api/v1/members/batch-remove`、修改角色 `PUT /api/v1/members/{id}`、禁用/启用成员（`POST /api/v1/members/{id}/disable`、`POST /api/v1/members/{id}/enable`）、移除成员 `DELETE /api/v1/members/{id}`（移除二次确认）。
 
 #### R5.13 系统设置（仅 org_admin）
 
@@ -403,12 +403,12 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 9. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）。
 10. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
 11. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 记录客户端 IP 与 User-Agent（服务端请求中间件捕获，不依赖前端上报），并禁止修改与删除。审计 SHALL 覆盖：登录/登出、资产增删改与批量操作、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎内部回传不审计，批量操作逐条记录。
-12. 系统 SHALL 提供 API Token 管理（细粒度权限/有效期），支持撤销与临时停用/恢复 `PATCH /api/v1/api-tokens/:id/status`。
+12. 系统 SHALL 提供 API Token 管理（`GET/POST /api/v1/api-tokens` 列表/创建，细粒度权限/有效期），支持撤销 `DELETE /api/v1/api-tokens/{id}` 与临时停用/恢复 `PATCH /api/v1/api-tokens/{id}/status`。
 
 #### R5.14 平台管理（仅 super_admin）
 
-1. 系统 SHALL 提供组织列表（名称/套餐/资产数/Worker 数/到期时间/状态）。
-2. 系统 SHALL 支持创建/编辑/禁用/启用组织（`POST /api/v1/orgs/:id/disable` 与 `POST /api/v1/orgs/:id/enable`），提供组织详情 `GET /api/v1/orgs/:id` 与删除组织 `DELETE /api/v1/orgs/:id`（删除需输入组织名二次确认并级联清理数据）；启用后 SHALL 恢复该组织 cron 计划与写操作。
+1. 系统 SHALL 提供组织列表 `GET /api/v1/orgs`（名称/套餐/资产数/Worker 数/到期时间/状态）。
+2. 系统 SHALL 支持创建组织 `POST /api/v1/orgs`、编辑 `PUT /api/v1/orgs/{id}`、禁用/启用（`POST /api/v1/orgs/{id}/disable` 与 `POST /api/v1/orgs/{id}/enable`），提供组织详情 `GET /api/v1/orgs/{id}` 与删除组织 `DELETE /api/v1/orgs/{id}`（删除需输入组织名二次确认并级联清理数据）；启用后 SHALL 恢复该组织 cron 计划与写操作。
 3. 系统 SHALL 提供平台统计（总组织/总资产/总扫描次数/总事件数）与平台 Worker 总览。
 4. 系统 SHALL 按组织套餐执行配额校验（核心商业逻辑）：创建资产时已用资产数达到 `max_assets` 返回 4290 `ASSET_QUOTA_EXCEEDED`；邀请成员达到 `max_members` 返回 4292 `MEMBER_QUOTA_EXCEEDED`、注册 Worker 达到 `max_workers` 返回 4291 `WORKER_QUOTA_EXCEEDED`；批量操作逐条校验不中断，超限条目计入 failed 并返回原因。
 5. WHEN 组织到期（`expire_at` 已过）或组织被禁用，系统 SHALL 停止该组织的定时计划、拒绝新建任务与资产变更，仅保留只读查询与证据下载。
