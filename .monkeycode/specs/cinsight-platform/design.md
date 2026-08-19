@@ -998,7 +998,7 @@ erDiagram
 
 **敏感信息命中表（sensitive_info_hits）**：`id, org_id, task_id, rule_id, group, name, matched_text, scope, url, depth, created_at`。由内容安全引擎在敏感信息监测时按 scope 分层提取写入，findings 记录主命中（`engine_name=content_security, type=sensitive_info`），本表存命中明细（原文/scope/来源 URL/递归深度）供列表与详情展示，同步入 Bleve 索引。
 
-**策略递归扫描字段（scan_policies）**：`scan_depth(1-5，默认 2)`、`concurrency_limit(单站点并发上限 2-32，默认 4)`、`allow_static(是否抓取静态文件)`、`same_origin(是否仅同域/同子域递归)`。内容安全引擎执行敏感信息监测时按策略递归抓取：URL 归一化去重、静态文件/无效链接（404/死链）过滤；已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）写入 `assets` 表（`url` 归一化 + `source_type` 来源类型标注，`source_type ∈ manual/js/css/image/video/subdomain/api_path`，手动创建的资产为 `manual`）；递归进度经 `GET /api/v1/tasks/:id/progress` 实时上报。
+**策略递归扫描字段（scan_policies）**：`scan_depth(1-5，默认 2)`、`concurrency_limit(单站点并发上限 2-32，默认 4)`、`allow_static(是否抓取静态文件)`、`same_origin(是否仅同域/同子域递归)`。内容安全引擎执行敏感信息监测时按策略递归抓取：URL 归一化去重、静态文件/无效链接（404/死链）过滤；已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）写入 `assets` 表（`url` 归一化 + `source_type` 来源类型标注，`source_type ∈ manual/js/css/image/video/subdomain/api_path`，手动创建的资产为 `manual`）；递归进度经 `GET /api/v1/tasks/:id/progress` 实时上报。**低速隐蔽模式（反封禁，R4.4-3）**：策略可启用 `stealth`（engine_switches JSON 内 `stealth.enabled`，或全局 `CINSIGHT_STEALTH_MODE=true`），启用后单目标并发强制 =1、请求伪造随机 UA 与 Referer 头，配合 `CINSIGHT_PROXY_URL`（HTTP/SOCKS5）代理出站，降低目标风控封禁概率。
 
 ### 字段类型与约束规范
 
@@ -1321,6 +1321,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 | `CINSIGHT_WORKER_POLL_MS` | 3000 | Worker 任务轮询间隔 |
 | `CINSIGHT_ANT_CONCURRENCY` | 20 | Worker ants 协程池大小 |
 | `CINSIGHT_PROXY_URL` | 空 | 反封禁 Proxy（HTTP/SOCKS5） |
+| `CINSIGHT_STEALTH_MODE` | false | 低速隐蔽模式开关（反封禁，对齐 R4.4-3）：并发=1、伪造 UA/Referer |
 | `CINSIGHT_STORM_LIMIT_PER_HOUR` | 5 | 单资产每小时告警上限 |
 | `CINSIGHT_AI_ENDPOINT` | 空 | AI 内容分类服务地址（OpenAI 兼容，管理员配置） |
 | `CINSIGHT_AI_MODEL` | 空 | AI 内容分类模型名 |
