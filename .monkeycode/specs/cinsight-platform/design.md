@@ -138,6 +138,7 @@ sequenceDiagram
 | Service | 业务逻辑层（脱敏/风暴抑制/证据校验） | `assetsService`, `evidenceService`... |
 | Repository | GORM/SQLite + BadgerDB 数据访问 | `assetRepo`, `taskRepo`, `eventRepo`, `kvRepo` |
 | TaskScheduler | 任务分发、超时对账、断点续扫状态 | `PullTask()`, `MarkProcessing()`, `AckResult()` |
+| CronScheduler | 按 scan_plans.cron_expr 定时生成 scan_tasks（计划绑定时区计算；paused/组织禁用/到期跳过触发，启用后恢复） | `GenerateTasks()`, `Tick()` |
 | WebSocketHub | 实时事件推送、指数退避重连 | `Broadcast(event)` |
 | BatchIndexer | Bleve 批量索引（5s/50 条） | `Enqueue(doc)`, `Flush()` |
 | RuleWatcher | fsnotify 规则热加载 | `WatchRules()`, `GetRuleHash()` |
@@ -1136,6 +1137,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 ### 任务调度交互
 
 - **Pull 模型**：Worker 定时轮询 `GET /api/v1/worker/tasks/pull` 拉取 `pending` 任务，Master 返回后原子置 `processing`（单事务，避免两个 Worker 拉到同一任务）；任务以任务为单位整体执行，不拆分。
+- **计划调度**：Master 常驻 `CronScheduler` 按 `scan_plans.cron_expr` 在计划 `timezone`（默认 `CINSIGHT_TIMEZONE`）对应时刻，为计划绑定资产组（`asset_group_name` 精确匹配）的资产批量生成 `scan_tasks`（`pending`）并入队分发；计划 `paused`、所属组织 `disabled` 或到期（`expire_at` 已过）时不触发，组织启用后按 cron 继续触发。
 - **负载分配**：Worker 心跳上报 `load`，调度器出队时优先分配 `load` 最低的在线 Worker；无在线 Worker 时任务保持 `pending` 等待。
 - **任务去重**：创建任务时按 `org_id + asset_id + policy_id` 检查是否存在 `pending`/`processing` 任务，存在返回 3001 `TASK_STATE_CONFLICT`，防止同目标并发重复扫描。
 - **停止信号**：`POST /tasks/:id/stop` 置 `cancelled(stopped_by_user=true)`，Worker 在心跳/拉取间隙经 `stop_check` 感知后中止当前引擎，回传 `cancelled`（Master 已置 cancelled，重复回传幂等忽略），不再拉取新任务。

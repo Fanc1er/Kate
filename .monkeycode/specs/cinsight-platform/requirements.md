@@ -378,6 +378,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 4. 系统 SHALL 提供任务队列监控 `GET /api/v1/tasks/queue`（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示 `GET /api/v1/tasks/{id}/progress`。
 5. 任务分发 SHALL 采用 Worker 拉取（Pull）模型，以任务为单位整体分配给单个 Worker 执行，不在任务内分片；同一任务同一时刻仅一个 Worker 执行（`processing` 状态锁定）；调度器 SHALL 按心跳上报的负载（`load`）优先分发给负载最低的在线 Worker。
 6. 系统 SHALL 对同一资产执行任务去重：同一资产 + 相同策略存在 `pending`/`processing` 任务时，重复下发 SHALL 返回冲突错误（3001 `TASK_STATE_CONFLICT`），避免同一目标被并发重复扫描。
+7. 系统 SHALL 由 Master 常驻计划调度器按 `scan_plans.cron_expr` 在计划绑定时区对应时刻自动生成扫描任务（进入分发队列执行）：计划处于 `paused`、所属组织被禁用或到期（`expire_at` 已过）时不触发；组织启用后 SHALL 恢复按 cron 继续触发。
 
 #### R5.11 报告中心
 

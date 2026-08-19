@@ -121,7 +121,7 @@ Updated: 2026-08-19
 - [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作表驱动，按 design「RBAC 权限矩阵与权限码」逐模块断言，viewer 写操作 403）
 - [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/refresh token 换发/jti 黑名单/组织选择/登录锁定/禁用用户与禁用组织登录拦截）
 - [ ] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
-- [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫/任务级超时上限中止/stop 停止信号与 Worker cancelled 回传）
+- [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫/任务级超时上限中止/stop 停止信号与 Worker cancelled 回传/CronScheduler 按时区定时触发与暂停/禁用跳过）
 
 ### 阶段 1 验收
 - [ ] go vet ./... && go build . 通过【必执行】
@@ -258,6 +258,7 @@ Updated: 2026-08-19
 ### 3.4 报告中心全量
 - [ ] 报告模板完整 CRUD（执行摘要/漏洞详情/内容安全/可用性统计/整改建议 + PUT/DELETE :id）
 - [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 时区 CINSIGHT_TIMEZONE 默认 Asia/Shanghai + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
+- [ ] Master CronScheduler 计划调度（按 cron_expr+计划时区定时生成 scan_tasks 入队分发；paused/组织禁用/到期跳过触发；组织启用后恢复触发）
 - [ ] 策略模板复制（POST /api/v1/policies/:id/copy 深拷贝引擎开关）
 - [ ] 定时报告（Cron 生成周报/月报 + 时区 CINSIGHT_TIMEZONE + 异步生成进度条 + 完成通知）
 - [ ] 报告生成基于生成时刻数据快照（漏洞/发现/可用性时点固化，后续处置不影响已生成报告）
