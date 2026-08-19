@@ -741,6 +741,7 @@ erDiagram
         int id PK
         int org_id FK
         int asset_id FK
+        string finding_ids "来源 finding ID 数组（JSON，聚合窗口命中合并时为多条，可空）"
         string engine_name
         string event_type
         string severity
@@ -1182,7 +1183,7 @@ Worker 结果回传后 Master 的处理顺序：
 1. **幂等去重**：按 `result_id` 唯一索引，重复回传直接 ack 不处理。
 2. **落库 finding**：写入 findings（含 engine/severity/line_no/confidence/evidence_ids/extra）。
 3. **降噪过滤**：按 `noise_rules` 在事件生成前过滤（白名单 IP 目标 / 忽略类型 / 聚合窗口 / 风暴抑制），命中则丢弃该条不再生成事件，**同时不生成告警、不触发推送**（降噪在告警生成与推送之前拦截）；规则变更只影响后续生成。
-4. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并），事件 `evidence_ids` 继承 finding 的证据关联（多条 finding 合并时取并集）。
+4. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并），事件 `finding_ids` 记录来源 finding（合并时为多条，取并集），`evidence_ids` 继承 finding 的证据关联（多条 finding 合并时取并集）。
 
 | 引擎 | 事件类型（R5.3-2） | 说明 |
 |------|------|------|
