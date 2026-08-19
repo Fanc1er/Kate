@@ -76,7 +76,7 @@ Updated: 2026-08-19
 - [ ] 任务去重（同 org+asset+policy 存在 pending/processing 时返回 3001 TASK_STATE_CONFLICT）
 - [ ] 任务详情接口（GET /api/v1/tasks/:id，状态/进度/执行日志/结果统计/Worker 分配）
 - [ ] 任务队列监控与断点续扫状态（GET /api/v1/tasks/queue 排队/处理中/已完成 + Worker 分配 + GET /api/v1/tasks/:id/progress）
-- [ ] 任务停止/删除/批量停止/失败重跑（POST :id/stop 置 failed 标记 stopped_by_user + Worker stop_check 感知中止回传 cancelled、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
+- [ ] 任务停止/删除/批量停止/失败重跑（POST :id/stop 置 cancelled 标记 stopped_by_user + Worker stop_check 感知中止回传 cancelled、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
 - [ ] Worker 注册握手（POST /api/v1/worker/register：Bootstrap Token 一次性换长期凭证 client_id+client_secret，后续心跳/拉取/回传用长期凭证，支持吊销/重发）

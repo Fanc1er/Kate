@@ -630,12 +630,12 @@ erDiagram
         int id PK
         int org_id FK
         int policy_id FK
-        int asset_group_id FK
-        string status "pending/processing/completed/failed"
-        string cron_expr
+        int plan_id FK "来源 Cron 计划，可空=手动下发"
+        int asset_id FK
+        string status "pending/processing/completed/failed/cancelled"
         int progress
         string outbox_state
-        bool stopped_by_user "stop 置 failed 标记"
+        bool stopped_by_user "stop 置 cancelled 标记"
     }
     findings {
         int id PK
@@ -1138,7 +1138,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 - **Pull 模型**：Worker 定时轮询 `GET /api/v1/worker/tasks/pull` 拉取 `pending` 任务，Master 返回后原子置 `processing`（单事务，避免两个 Worker 拉到同一任务）；任务以任务为单位整体执行，不拆分。
 - **负载分配**：Worker 心跳上报 `load`，调度器出队时优先分配 `load` 最低的在线 Worker；无在线 Worker 时任务保持 `pending` 等待。
 - **任务去重**：创建任务时按 `org_id + asset_id + policy_id` 检查是否存在 `pending`/`processing` 任务，存在返回 3001 `TASK_STATE_CONFLICT`，防止同目标并发重复扫描。
-- **停止信号**：`POST /tasks/:id/stop` 置 `failed(stopped_by_user)`，Worker 在心跳/拉取间隙经 `stop_check` 感知后中止当前引擎，回传 `cancelled`，不再拉取新任务。
+- **停止信号**：`POST /tasks/:id/stop` 置 `cancelled(stopped_by_user=true)`，Worker 在心跳/拉取间隙经 `stop_check` 感知后中止当前引擎，回传 `cancelled`（Master 已置 cancelled，重复回传幂等忽略），不再拉取新任务。
 - **复测任务**：漏洞复测经 retest 创建专用任务（policy 使用默认复测策略），结果回传驱动 `verifying → closed/open` 流转。
 
 ### 关键不变量
@@ -1146,7 +1146,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 1. **写操作权限不变量**：任何 write API 必经 RBAC 中间件，`viewer` 角色一律 403；该约束由中间件全局注册保障，controller 无法绕过。
 2. **租户隔离不变量**：所有 Repository 查询强制携带 `org_id`，查询构造器在缺省 `org_id` 时返回错误而非空结果。
 3. **证据完整性**：证据文件 gzip 落盘时计算 SHA-256 并入库；读取展示前强制复算校验，不一致返回 `EVIDENCE_TAMPERED` 错误，前端标红。
-4. **任务状态机**：`pending → processing → completed/failed`；`POST /api/v1/tasks/:id/stop` 将任务置 `failed`（标记 `stopped_by_user=true`）并向执行中的 Worker 下发停止信号：Worker 在结果轮询/心跳间隙携带 `stop_check` 查询，发现任务已停止即中止当前引擎并回传 `cancelled` 状态，不再继续拉取；Master 启动将超时 30min 的 processing 重置为 pending；Worker 断点续扫保证不重复执行已爬取 URL。任务级超时（`scan_policies.timeout`，默认 60min）由 TaskScheduler 对账：超时未完成中止并置 `failed`，Worker 侧执行超时同样终止并在结果标记 `task_timeout`。
+4. **任务状态机**：`pending → processing → completed/failed/cancelled`；`POST /api/v1/tasks/:id/stop` 将任务置 `cancelled`（标记 `stopped_by_user=true`）并向执行中的 Worker 下发停止信号：Worker 在结果轮询/心跳间隙携带 `stop_check` 查询，发现任务已停止即中止当前引擎并回传 `cancelled` 状态（Master 已置 cancelled，重复回传幂等忽略），不再继续拉取；`cancelled` 表示用户/外部主动中止，不参与失败重试。Master 启动将超时 30min 的 processing 重置为 pending；Worker 断点续扫保证不重复执行已爬取 URL。任务级超时（`scan_policies.timeout`，默认 60min）由 TaskScheduler 对账：超时未完成中止并置 `failed`，Worker 侧执行超时同样终止并在结果标记 `task_timeout`。
 5. **告警风暴抑制**：单资产每小时通知上限 5 条，超出静默入库并追加高频提示标记。
 6. **熔断保护**：gobreaker 连续失败 5 次熔断目标；扫描授权违规 3 次自动熔断 Worker。
 7. **审计不可变**：audit_logs 表仅允许 insert/select，禁止 update/delete。
