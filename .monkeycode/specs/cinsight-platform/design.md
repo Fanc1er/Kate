@@ -717,11 +717,76 @@ src/
 - 部署（任务 15）：Docker/K8s 编排（Master 水平扩展读写分离 + Worker 弹性伸缩 HPA）、私有化单二进制一键安装。
 - 部署验证：三种部署方式启动 → /api/health 探活 → 建资产 → 下发任务全链路验收。
 
+### 阶段 4（企业级工程化与合规达标）
+
+- 可观测性：/metrics、/healthz、/readyz、OpenTelemetry 追踪、SLO 面板。
+- 安全加固：TLS、安全响应头、API/登录限流、密码策略、MFA 预留、Secrets 管理、依赖/镜像扫描。
+- CI/CD：lint→test→build→scan→蓝绿/金丝雀部署、质量门禁、SemVer+CHANGELOG。
+- 高可用与数据治理：RPO/RTO 指标、Master 只读副本、冷归档、季度恢复演练。
+- 测试完备：Playwright E2E、k6 压测、故障注入演练。
+- 前端工程化与合规：路由守卫、全局错误处理、i18n/a11y、首屏优化、PIPL/GDPR 注销、等保 2.0。
+
 ### 必执行验证（各阶段验收统一要求）
 
 - 单元测试：阶段 1/2 单测（RBAC/认证/证据/调度/引擎/脱敏）与 `go test ./...` 全部通过。
 - 前端构建验证：`vue-tsc + vite build` 全部阶段通过。
 - 部署验证：Docker/K8s/单二进制三种方式启动 + 探活 + 全链路通过（任务 15）。
+
+## 企业级工程化与验收标准（大厂标准）
+
+本系统对照大厂企业级交付红线，补充以下工程化要求。以下各项全部列为必执行（阶段 4）。
+
+### 可观测性（Metrics / 探针 / 追踪 / SLO）
+
+- **指标端点**：`GET /metrics`（Prometheus 格式），采集 RED 指标（请求速率/错误/延迟）+ USE 指标（CPU/内存/磁盘/连接池）+ 业务指标（任务队列深度、事件数、Outbox 存量、Worker 心跳）。
+- **健康探针**：`GET /healthz`（存活：进程在线）、`GET /readyz`（就绪：SQLite/Badger/证据目录可写、Litestream 复制正常）。K8s 分别挂 livenessProbe / readinessProbe。
+- **分布式追踪**：引入 OpenTelemetry，`request_id` 升级为 `trace_id`，贯穿 Master→Worker→外部调用；采样率默认 10%（错误路径全采样）。
+- **SLO 目标**：API 可用性 ≥ 99.9%；API p99 延迟 < 500ms；任务处理成功率 ≥ 99%；证据读取成功 ≥ 99.5%。
+
+### 安全加固（纵深防御）
+
+- **传输安全**：前置网关终结 TLS（HTTPS），内部 Master↔Worker 使用 mTLS 或内网隔离 + Bootstrap Token；HSTS 响应头。
+- **安全响应头**：CSP、`X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy` 全局中间件。
+- **CSRF 防护**：前端不依赖 Cookie 鉴权（Bearer 头 + X-Org-Id），配合 `SameSite` Cookie 策略，无 CSRF Token 盲区。
+- **API 通用限流**：网关层每用户/IP 速率限制（如 100 req/min），登录接口单独限流（5 次/min/IP）+ 账户锁定（已有）。
+- **密码策略**：密码 ≥ 12 位含大小写/数字/特殊字符，90 天强制轮换，禁止复用最近 5 次，首次登录强制改密。
+- **MFA**：预留 TOTP 二次认证开关（阶段 4 实现）。
+- **Secrets 管理**：JWT_SECRET、Webhook secret、Bootstrap Token 一律经环境/K8s Secret 注入，禁止写入代码与日志；支持定期轮换。
+- **依赖与镜像安全**：`govulncheck` 依赖漏洞扫描、Trivy 容器镜像扫描纳入 CI 门禁；镜像使用 `distroless` 最小化。
+- **静态加密**：证据目录/SQLite 部署在加密卷；SQLite 敏感列（password 已 bcrypt，token 已 hash）不落明文。
+
+### CI/CD 流水线（DevOps）
+
+- **流水线阶段**：lint（golangci-lint + go vet）→ 单测（go test -race -cover）→ 构建单二进制 → 前端 typecheck+build → 镜像构建（多阶段）→ 镜像安全扫描 → 部署 dev/staging/prod（蓝绿/金丝雀）。
+- **质量门禁**：核心包行覆盖率 ≥ 80%，golangci-lint 零错误，依赖漏洞零 high/critical，否则阻断发布。
+- **版本管理**：SemVer（vX.Y.Z）+ CHANGELOG 自动生成；git flow（main/release/hotfix）分支策略。
+- **多环境**：dev/staging/prod 配置分离（`.env.example` 模板），数据库迁移按版本顺序执行。
+
+### 高可用与数据治理
+
+- **RPO/RTO 指标**：Litestream 备份 RPO ≤ 5s；故障恢复 RTO ≤ 30min；备份保留 30 天；每季度执行恢复演练并出具报告。
+- **Master 读写分离（水平扩展）**：Master 单写 SQLite，只读副本通过 Litestream 流式复制，查询路由到副本；写入收敛单协程通道，容量规划单 Master 支撑 10 万资产 / 100 Worker / 峰值 1000 任务并发。
+- **数据保留与归档**：事件/漏洞/告警热数据 180 天后冷归档（gzip + 独立卷）；审计日志保留 ≥ 365 天；提供清理任务与归档策略配置。
+- **容量与压测验证**：k6 压测脚本（登录并发/资产列表/事件写入/证据读取），验证 SLO 指标后放行发布。
+
+### 测试完备性
+
+- **E2E 测试**：Playwright 覆盖登录→组织切换→建资产→下发任务→证据抽屉→报告导出关键路径。
+- **故障注入/混沌演练**：阶段 4 定期演练 Worker 断网恢复、Master 重启对账、磁盘写满、网络延迟抖动、Litestream 复制中断，验证降级路径。
+- **覆盖率门禁**：core 包（auth/rbac/evidence/scheduler/engine）行覆盖率 ≥ 80%。
+
+### 前端工程化
+
+- **路由守卫**：`beforeEach` 校验 token 有效性、org 选择态、role 权限，非法跳转登录/403。
+- **全局错误边界**：axios 拦截器统一错误处理 + 全局 Toast/异常页 + 500 兜底。
+- **i18n/a11y**：预留 vue-i18n（中文/英文）；关键交互满足键盘可达与 ARIA 标注。
+- **性能**：路由懒加载 + 组件分包，首屏 < 3s；大列表虚拟滚动（已有）。
+
+### 合规（PIPL/GDPR/等保 2.0）
+
+- **数据生命周期**：账户注销支持删除/匿名化；个人信息（手机/邮箱/身份证）满足留存期限要求并三时机脱敏（已有）。
+- **审计合规**：审计日志 365 天留存、不可篡改（已有），覆盖登录/操作/权限变更。
+- **等保 2.0 对齐**：身份鉴别、访问控制、安全审计、入侵防范、数据完整性与保密性、集中管控。
 
 ## References
 

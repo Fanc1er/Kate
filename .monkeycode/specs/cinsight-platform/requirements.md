@@ -192,7 +192,8 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. Worker 断网时 SHALL 将结果缓存至本地 Outbox，网络恢复后批量回传。
 2. Worker SHALL 以 `local:crawled:{task_id}` 记录已爬取 URL，重启后跳过已扫页面实现断点续扫。
 3. Master 启动时 SHALL 将超时（30min）未回传的 `processing` 任务重置为 `pending`。
-4. Master SQLite SHALL 通过 Litestream 实时流式备份。
+4. Master SQLite SHALL 通过 Litestream 实时流式备份，RPO ≤ 5s，备份保留 30 天。
+5. Master SHALL 支持只读副本水平扩展（查询路由到副本，写入收敛单写通道），单 Master 支撑 10 万资产 / 100 Worker。
 
 #### R4.4 深度安全对抗
 
@@ -202,6 +203,28 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 4. 目标请求 SHALL 经 `gobreaker` 熔断，IF 连续失败 5 次，系统 SHALL 熔断该目标。
 5. 身份证、手机号等敏感数据 SHALL 在入库前、API 返回前、报告生成时三时机自动脱敏。
 6. Master SHALL 通过 `fsnotify` 监听规则文件热加载，Worker SHALL 定期拉取 Hash 同步规则库。
+
+#### R4.5 可观测性（企业级）
+
+1. 系统 SHALL 暴露 `GET /metrics`（Prometheus 格式），采集 RED + USE + 业务指标（任务队列/事件数/Outbox 存量/Worker 心跳）。
+2. 系统 SHALL 提供 `GET /healthz`（存活）与 `GET /readyz`（就绪：SQLite/Badger/证据目录/Litestream），供 K8s 探针使用。
+3. 系统 SHALL 以 OpenTelemetry 输出 `trace_id` 贯穿 Master→Worker→外部调用，采样率 10%（错误路径全采样）。
+4. 系统 SHALL 满足 SLO：API 可用性 ≥ 99.9%，p99 延迟 < 500ms，任务成功率 ≥ 99%。
+
+#### R4.6 安全加固（企业级）
+
+1. 系统 SHALL 经网关终结 TLS，响应头含 CSP / X-Frame-Options / X-Content-Type-Options / HSTS。
+2. 系统 SHALL 提供 API 通用限流（每用户/IP 100 req/min）与登录接口独立限流（5 次/min/IP）。
+3. 系统 SHALL 执行密码策略：≥ 12 位含大小写/数字/特殊字符，90 天轮换，禁止复用最近 5 次，首次登录强制改密。
+4. 系统 SHALL 预留 MFA（TOTP）二次认证开关。
+5. 系统 SHALL 将 Secrets（JWT_SECRET/Webhook secret/Bootstrap Token）经环境/K8s Secret 注入，支持轮换，严禁写入代码与日志。
+6. 系统 SHALL 将依赖漏洞扫描（govulncheck）与容器镜像扫描（Trivy）纳入 CI 门禁。
+
+#### R4.7 数据治理与合规（企业级）
+
+1. 系统 SHALL 提供数据保留与归档：事件/漏洞/告警热数据 180 天后冷归档，审计日志保留 ≥ 365 天。
+2. 系统 SHALL 支持账户注销与个人信息删除/匿名化，满足 PIPL/GDPR 数据生命周期要求。
+3. 系统 SHALL 按等保 2.0 对齐身份鉴别、访问控制、安全审计、数据完整性与保密性要求。
 
 ### 5. 功能模块需求
 
@@ -309,8 +332,17 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. 系统 SHALL 提供 API Token 认证（独立于 JWT，支持细粒度权限）。
 3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。
 
-#### R5.16 部署模式
+#### R5.16 部署模式与 CI/CD
 
 1. 系统 SHALL 支持私有化部署（单二进制一键安装，零外部依赖）。
 2. 系统 SHALL 支持 SaaS 化部署（Docker/K8s 编排，Master 水平扩展读写分离，Worker 弹性伸缩）。
 3. 系统 SHALL 提供部署验证流程：Docker/K8s/单二进制三种方式启动后执行 `/api/health` 探活，并通过建资产→下发任务→证据展示全链路验收。
+4. 系统 SHALL 提供 CI/CD 流水线：lint（golangci-lint + go vet）→ 单测（go test -race -cover）→ 构建 → 镜像安全扫描 → 部署 dev/staging/prod。
+5. 系统 SHALL 采用 SemVer 版本管理与 CHANGELOG，核心包行覆盖率 ≥ 80% 作为质量门禁。
+6. 系统 SHALL 提供 E2E 测试（Playwright 覆盖登录→资产→任务→证据→报告关键路径）与 k6 压测验证 SLO。
+
+#### R5.17 前端工程化
+
+1. 系统 SHALL 提供路由守卫：`beforeEach` 校验 token 有效性、组织选择态与 role 权限。
+2. 系统 SHALL 提供全局错误处理：axios 拦截器统一错误提示 + 异常兜底页。
+3. 系统 SHALL 预留 i18n（中/英）与可访问性支持，路由懒加载 + 组件分包保证首屏 < 3s。

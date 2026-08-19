@@ -194,3 +194,53 @@ Updated: 2026-08-19
 - [ ] 容灾演练：Worker 断网恢复（Outbox 回传）、Master 重启对账、熔断触发【必执行】
 - [ ] 部署验证：Docker/K8s/单二进制三种方式启动 + 探活 + 全链路通过【必执行】
 - [ ] go test ./... 全部通过 + 前端 vue-tsc + vite build 通过【必执行】
+
+---
+
+## 阶段 4 — 企业级工程化与合规达标【必执行】
+
+### 4.1 可观测性
+- [ ] Prometheus 指标端点（GET /metrics，RED + USE + 业务指标）
+- [ ] 健康探针（GET /healthz 存活 + GET /readyz 就绪：SQLite/Badger/证据目录/Litestream）
+- [ ] OpenTelemetry 分布式追踪（trace_id 贯穿 Master→Worker→外部调用，采样 10%）
+- [ ] SLO 监控面板（API 可用性 ≥ 99.9%、p99 < 500ms、任务成功率 ≥ 99%）
+
+### 4.2 安全加固
+- [ ] TLS 终结（网关）+ HSTS + 安全响应头中间件（CSP/X-Frame-Options/nosniff/Referrer-Policy）
+- [ ] API 通用限流（每用户/IP 100 req/min）+ 登录接口独立限流（5 次/min/IP）
+- [ ] 密码策略（≥12 位复杂度/90 天轮换/禁复用 5 次/首登强制改密）
+- [ ] MFA 预留（TOTP 二次认证开关）
+- [ ] Secrets 管理（环境/K8s Secret 注入 + 轮换，禁止入日志）
+- [ ] 依赖漏洞扫描（govulncheck）+ 容器镜像扫描（Trivy）+ distroless 最小化镜像
+
+### 4.3 CI/CD 流水线
+- [ ] CI：golangci-lint + go vet → go test -race -cover → 单二进制构建 → 前端 typecheck+build
+- [ ] CD：多阶段镜像构建 → 安全扫描 → 蓝绿/金丝雀部署 dev/staging/prod
+- [ ] 质量门禁：核心包行覆盖 ≥ 80%，lint 零错误，依赖漏洞零 high/critical
+- [ ] SemVer 版本管理 + CHANGELOG 自动生成 + git flow 分支策略
+- [ ] 多环境配置分离（dev/staging/prod + .env.example）
+
+### 4.4 高可用与数据治理
+- [ ] RPO/RTO 指标（Litestream RPO ≤ 5s、RTO ≤ 30min、备份保留 30 天）
+- [ ] Master 只读副本水平扩展（查询路由副本 + 单写通道）
+- [ ] 数据保留与冷归档（事件/漏洞/告警 180 天热数据 + 审计日志 365 天）
+- [ ] 季度恢复演练 + 容量规划验证（10 万资产/100 Worker/1000 任务并发）
+
+### 4.5 测试完备性
+- [ ] E2E 测试（Playwright：登录→组织切换→建资产→任务→证据抽屉→报告导出）
+- [ ] k6 压测脚本（登录并发/资产列表/事件写入/证据读取）验证 SLO
+- [ ] 故障注入演练（磁盘写满/网络延迟抖动/Litestream 中断/Worker 断网）
+
+### 4.6 前端工程化与合规
+- [ ] 路由守卫（beforeEach：token/org/role 校验）
+- [ ] 全局错误处理（axios 拦截器 + 异常兜底页）
+- [ ] i18n（vue-i18n 中/英）+ 可访问性（键盘可达/ARIA）
+- [ ] 路由懒加载 + 组件分包，首屏 < 3s
+- [ ] 账户注销 + 个人信息删除/匿名化（PIPL/GDPR）
+- [ ] 等保 2.0 对齐（身份鉴别/访问控制/安全审计/数据完整保密）
+
+### 阶段 4 验收
+- [ ] /metrics + /healthz + /readyz 探活通过【必执行】
+- [ ] CI/CD 流水线全绿（lint→test→build→scan→deploy）【必执行】
+- [ ] E2E 关键路径 + k6 压测满足 SLO【必执行】
+- [ ] 恢复演练 + 故障注入演练报告【必执行】
