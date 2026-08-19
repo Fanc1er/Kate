@@ -11,8 +11,10 @@ Updated: 2026-08-19
 ### 1.1 技术底座
 - [ ] 初始化 Go 模块与 Gin 脚手架（cmd/master、cmd/worker）
 - [ ] 引入依赖：Gin、GORM、SQLite 驱动（WAL 模式）、BadgerDB、Bleve、ants、gobreaker、fsnotify、swaggo/swag、gorilla/websocket
-- [ ] 统一响应中间件（code/message/data 格式）与错误码定义
+- [ ] 统一响应中间件（code/message/data 格式）与错误码定义（见 design 错误码枚举）
+- [ ] 统一约定落地：分页/排序/筛选参数、RFC3339 时间、鉴权分层（JWT / API Token / Worker Bootstrap）
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
+- [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
 - [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，阶段 3 全量注解）【必执行】
 - [ ] 全量业务表结构迁移（assets/findings/events/tickets/evidence/audit_logs/api_tokens/notify_channels/noise_rules/worker_nodes/scan_plans/availability_points/trend_points）
 
@@ -27,11 +29,13 @@ Updated: 2026-08-19
 - [ ] 登录锁定阈值控制
 
 ### 1.3 前端基础框架
-- [ ] 引入 TinyVue (@opentiny/vue) + Pinia + Vue Router 4 + ReconnectingWebSocket
+- [ ] 引入 TinyVue (@opentiny/vue) + Pinia + Vue Router 4 + ReconnectingWebSocket + ECharts
+- [ ] 前端目录结构落地（src/api|stores|router|layouts|views|components|utils，见 design 前端架构）
+- [ ] axios 封装 + 模块化 API 层（Bearer + X-Org-Id + 401 跳转 + 模块拆分）
+- [ ] Pinia store 划分（auth/menu/asset/event/dashboard）
 - [ ] 登录页 /login + 组织选择卡片页
 - [ ] 基于 role 的动态 addRoute() 路由与菜单（含 super_admin 平台管理/选择组织双入口）
 - [ ] 顶部导航（组织名 + 角色 Tag + 切换组织/退出）
-- [ ] axios 封装（Bearer + X-Org-Id + 401 跳转）
 
 ### 1.4 资产模块
 - [ ] 资产 CRUD（表单：URL 归一化/名称/分组/重要程度/备注）
@@ -43,6 +47,10 @@ Updated: 2026-08-19
 
 ### 1.5 任务调度与可用性引擎
 - [ ] 任务表与策略模板表迁移
+- [ ] SQLite 连接与 WAL 配置（journal_mode/busy_timeout/synchronous/foreign_keys，单写连接池）
+- [ ] GORM 迁移策略落地（AutoMigrate + schema_migrations + 种子数据）
+- [ ] 核心表索引落地（org_id/状态/时间索引，见 design 索引设计）
+- [ ] BadgerDB-SQLite 缓存一致性（写入先 Badger 后异步 SQLite + 每小时对账）
 - [ ] Master 任务创建/下发/拉取接口（pending→processing→completed）
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
 - [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定）
@@ -61,7 +69,9 @@ Updated: 2026-08-19
 ### 1.7 仪表盘与报告
 - [ ] 统计卡片 + 7 天趋势 + 风险 Top10
 - [ ] 引擎覆盖率雷达图（10 大引擎检测覆盖率）
-- [ ] WebSocket 实时事件滚动 + 指数退避重连
+- [ ] WebSocket 实时事件滚动 + 指数退避重连（/api/v1/ws/events 订阅协议）
+- [ ] ECharts 图表集成（雷达图/趋势图/折线图/可用性点阵图）
+- [ ] 结构化日志 + request_id 请求追踪中间件
 - [ ] 报告导出（PDF 含水印 / Excel 漏洞清单）
 
 ### 1.8 阶段 1 单元测试【必执行】
@@ -146,7 +156,8 @@ Updated: 2026-08-19
 
 ### 3.3 集成与部署
 - [ ] swaggo Swagger 文档全量注解
-- [ ] Webhook 事件推送
+- [ ] API Token 认证中间件（独立于 JWT，scopes 细粒度 + 有效期）
+- [ ] Webhook 事件推送（HMAC-SHA256 签名 + 重试 3 次 + 落库）
 - [ ] 规则热更新（fsnotify）+ Worker 规则 Hash 同步
 - [ ] 扫描授权拦截（白名单校验 + 内网 IP 禁止）
 - [ ] gobreaker 目标熔断（连续失败 5 次）+ 授权违规熔断 Worker
