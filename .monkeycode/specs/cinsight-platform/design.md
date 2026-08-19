@@ -154,7 +154,7 @@ sequenceDiagram
 | localStore | BadgerDB 本地状态（已爬取 URL/Outbox） | `Set`, `Get`, `Scan` |
 | HeadlessBrowser | 无头浏览器截图取证组件 | `Screenshot(ctx, url) ([]byte, error)` |
 | AIAdapter | AI 内容分类服务适配层（endpoint/model/key 可注入，失败回退正则） | `Classify(ctx, text) (Category, Confidence, error)` |
-| MultiUAAssessor | 多端 UA 综合评估器（PC 随机 UA + 移动 UA + 无头浏览器移动视口模拟三探针，四维加权评分出结论） | `Assess(ctx, target) (*MultiUAReport, error)` |
+| MultiUAAssessor | 多端 UA 综合评估器（PC/标准移动 UA/微信 UA/移动视口模拟四探针，基础+特征+场景三级加权评分出结论，SimHash 相似度/SPA 容错） | `Assess(ctx, target) (*MultiUAReport, error)` |
 | WorkerAuth | Bootstrap Token 注册握手，换取长期凭证 | `Register(token) (clientID, clientSecret)`, `Heartbeat()` |
 
 ### Worker 注册握手与凭证生命周期
@@ -196,41 +196,44 @@ sequenceDiagram
 
 ### 多端 UA 综合评估器（MultiUAAssessor）
 
-- **定位**：Worker 侧共享组件，供内容安全引擎与可用性监测引擎复用。同一目标以多端视角抓取比对，输出四维加权评分与结论，识别单端隐藏敏感内容、端差异化宕机/拦截、条件性篡改与 UA 条件加载暗链。
-- **三探针组**（并发受限，默认 2）：
+- **定位**：Worker 侧共享组件，供内容安全引擎与可用性监测引擎复用。同一目标以多端视角抓取比对，输出三级加权评分与结论，识别单端隐藏敏感内容、"只对手机/微信内展示"的定向投毒（UA 投毒/差异化响应）、端差异化宕机/拦截、条件性篡改与 UA 条件加载暗链。
+- **四探针组**（并发受限，默认 2）：
   - PC 探针：随机 PC 端 UA（Chrome/Edge/Firefox 桌面 UA 池随机），视口 1440x900，普通 HTTP 抓取。
-  - 移动 UA 探针：随机移动端 UA（iOS/Android Safari/Chrome UA 池随机），移动视口，普通 HTTP 抓取。
+  - 移动 UA 探针：随机标准移动 UA（iOS/Android Safari/Chrome UA 池随机），移动视口，普通 HTTP 抓取。
+  - 微信 UA 探针：微信内置浏览器 UA（含 `MicroMessenger` 标识），移动视口，普通 HTTP 抓取——覆盖"仅微信内置浏览器放行"的黑产投毒。
   - 移动模拟探针：无头浏览器（chromedp）以移动 UA + 手机宽度视口（默认 375x812，configurable `CINSIGHT_MULTIUA_VIEWPORT`）+ touch 模拟执行 JS 渲染抓取。
-  - 每探针独立记录：status_code、latency_ms、title、图片 Hash 集、正文 DOM 结构指纹、外链集合、敏感词命中列表、页面大小。
-- **四维加权评分**（各维度 0-100，权重默认：可用性一致性 30% / 内容命中 30% / 篡改偏差 25% / 条件性内容 15%，可经策略覆盖）：
+  - 每探针独立记录：status_code、重定向链路、latency_ms、title、图片 Hash 集、正文 DOM 结构指纹、外链集合、敏感词命中列表、页面大小。
+- **三级加权评分**（总分 0-100，权重默认：基础 20% / 特征 50% / 场景 30%，可经策略模板覆盖）：
 
-  | 维度 | 判定依据 | 权重 |
-  |------|---------|------|
-  | 可用性一致性 | 各端状态码差异（如 PC 200 而移动端 403/5xx/302 拦截）、延迟偏差、任一端连续失败判定端差异化宕机 | 30% |
-  | 内容命中 | 任一探针命中敏感词/敏感信息/AI 判定（来源 `ai` 或 `regex`），按命中数累加 | 30% |
-  | 篡改偏差 | 与基线（标题/图片 Hash/正文 DOM）对比，端间偏差超阈 | 25% |
-  | 条件性内容 | 某端独有外链/脚本/iframe（UA 条件加载，暗链/挂马常见） | 15% |
+  | 级 | 维度与判定依据 | 默认权重 |
+  |----|--------------|---------|
+  | 基础分（请求阶段） | 状态码分类（200 低分 / 404 中分 / 403 反爬拦截 / 5xx 高分）、重定向链路差异（PC 跳首页而移动端跳非法页）、延迟/超时偏差 | 20% |
+  | 特征分（内容检测阶段） | 对 PC 与移动端分别独立计分取最高：敏感词库命中（数量与权重，涉政/涉黄/涉赌/暴恐加权）、隐蔽链特征（`display:none`/hidden/极小字体/前景背景同色）、JS 混淆与恶意跳转（高度混淆代码、`location.href` 强制跳转）、隐藏 iframe 嵌套 | 50% |
+  | 场景分（差异化对比与容错阶段） | DOM 结构差异（SimHash 相似度 >90% 的细微差异如时间戳/随机数不加分，主体内容变化才加分）、敏感词分布差异（PC 无命中而移动端命中 → 移动端定向投毒）、内容长度突变（一端代码量远超另一端）；容错：SPA 空壳识别（`<div id="root">`/`<router-view>` 等单页应用特征）标记 `spa_suspected` 待人工复核而非覆盖，仅当移动端具备完整页面特征（Doctype + 标准 Head/Body 闭合 + 长度 >1000）才执行覆盖逻辑 | 30% |
 
-- **综合分与结论分级**：`total = Σ(维度分 × 权重)`，0-100；结论：0-30 正常 / 30-60 可疑（建议复核）/ 60-85 高危 / 85-100 严重。端级明细记录"哪一端异常、异常类型、对应维度得分"。
+- **综合分与结论分级**：`total = 基础分×0.2 + 特征分×0.5 + 场景分×0.3`，0-100；结论与处置：0-30 正常（仅记录）/ 30-60 可疑（待人工复核）/ 60-85 高危（生成告警并推送）/ 85-100 严重（生成告警 + 创建处置工单，紧急推送）。端级明细记录"哪一端异常、异常类型、对应级得分"。
 - **输出与回传**：报告结构写入 finding `Extra["multi_ua"]`：
 
   ```json
   {
     "probes": [
-      {"group":"pc","status":200,"latency_ms":120,"hit_sensitive":false,"title":"..."},
-      {"group":"mobile_ua","status":200,"latency_ms":180,"hit_sensitive":true,"sensitive_hits":["x"]},
+      {"group":"pc","status":200,"redirects":[],"latency_ms":120,"hit_sensitive":false,"title":"..."},
+      {"group":"mobile_ua","status":200,"redirects":[],"latency_ms":180,"hit_sensitive":true,"sensitive_hits":["x"]},
+      {"group":"mobile_wechat","status":200,"redirects":["/wx/landing"],"latency_ms":160,"hit_sensitive":true,"sensitive_hits":["y"]},
       {"group":"mobile_viewport","status":403,"hit_sensitive":false,"probe_failed":false}
     ],
-    "scores": {"availability":100,"content":60,"tamper":20,"conditional":40},
-    "total_score": 62,
-    "conclusion": "high",
-    "abnormal_ends": ["mobile_viewport"]
+    "scores": {"base":20,"feature":70,"scene":40},
+    "total_score": 56,
+    "conclusion": "suspicious",
+    "abnormal_ends": ["mobile_viewport"],
+    "dom_similarity": 0.45,
+    "spa_suspected": false
   }
   ```
 
   任一探针失败/超时（>30s）标记 `probe_failed: true`，不计入权重，其余探针正常评估。
 - **证据链**：各探针 HTML 快照与移动模拟截图随证据链 gzip 落盘 + SHA-256 入库，前端多端对比标签页展示并可下载。
-- **资源降级**：策略开关可仅启用 PC + 移动 UA 两探针（跳过无头浏览器模拟），供 Worker 低资源环境使用；评估器受 ants 池并发与策略超时约束。
+- **资源降级**：策略开关可仅启用 PC + 标准移动 UA 两探针（跳过微信 UA 与无头浏览器模拟），供 Worker 低资源环境使用；评估器受 ants 池并发与策略超时约束。
 
 ### 10 大引擎接口契约
 
@@ -657,7 +660,7 @@ erDiagram
         float confidence "0~1 引擎判定可信度"
         string evidence_id FK
         string status
-        string extra "JSON 扩展数据，如 MultiUA 报告 Extra['multi_ua']（probes/scores/total_score/conclusion/abnormal_ends）"
+        string extra "JSON 扩展数据，如 MultiUA 报告 Extra['multi_ua']（probes/scores base+feature+scene/total_score/conclusion/abnormal_ends/dom_similarity/spa_suspected）"
     }
     sensitive_info_hits {
         int id PK
@@ -941,7 +944,7 @@ erDiagram
 
 **结果回传幂等**：`findings / events / vulnerabilities` 表含 `result_id`（Worker 生成的 UUID），建唯一索引 `idx_result_id`，重复回传直接返回成功不重复入库。
 
-**findings 扩展字段（extra）**：`extra` 为 JSON TEXT，承载引擎扩展结果——MultiUA 报告写入 `Extra["multi_ua"]`（probes 三端明细 / scores 四维得分 / total_score 0~100 / conclusion 分级 / abnormal_ends 端级异常列表）；前端多端对比页读取该字段渲染，缺失时该 finding 不做多端展示。其余引擎的扩展结构同规则追加，不新增列。
+**findings 扩展字段（extra）**：`extra` 为 JSON TEXT，承载引擎扩展结果——MultiUA 报告写入 `Extra["multi_ua"]`（probes 四探针明细 / scores 三级得分 base/feature/scene / total_score 0~100 / conclusion 分级 / abnormal_ends 端级异常列表 / dom_similarity SimHash 相似度 / spa_suspected 单页应用疑似标记）；前端多端对比页读取该字段渲染，缺失时该 finding 不做多端展示。其余引擎的扩展结构同规则追加，不新增列。
 
 **敏感信息规则表（rule_definitions）**：`id, org_id, kind(sensitive/poc/keyword/trojan), group, name, loaded, f_regex, s_regex, format, color, scope(any header/request/request line/response header/response body/response), engine(dfa/nfa，Go 统一 regexp 实现), sensitive`。敏感信息规则集支持 HaENet Rules.yml 结构 YAML 导入（走规则库 `GET/POST /api/v1/rules/import`），前端按规则组分组展示并支持启用/禁用。
 
@@ -1304,7 +1307,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 | 任务调度 | 状态机流转、超时对账、断点续扫 |
 | 引擎契约 | 各引擎 mock 输入 → finding 输出 |
 | AI 适配层 | AI 可用→ai 来源 / 超时或 429→regex 回退 / 熔断切换 |
-| MultiUA 评估器 | 三探针抓取比对、四维加权评分、端差异化宕机/单端命中敏感词、probe_failed 降权、结论分级 |
+| MultiUA 评估器 | 四探针抓取对比、基础+特征+场景三级加权评分、端差异化宕机/移动端定向投毒、SimHash 相似度阈值、SPA 空壳容错、probe_failed 降权、结论分级 |
 | 发现处理链路 | 回传幂等去重、降噪过滤（白名单/忽略类型/聚合窗口/风暴抑制）、事件生成、漏洞聚合去重更新 last_seen_at、告警生成与通知路由、WS 广播 |
 | Worker 握手 | Bootstrap Token 一次性使用、长期凭证校验、凭证吊销、token 落库 hash 无明文 |
 | Bleve 索引 | 删除/级联清理同步删索引、index rebuild 全量重建对账 |
