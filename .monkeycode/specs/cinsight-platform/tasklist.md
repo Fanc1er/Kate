@@ -13,6 +13,7 @@ Updated: 2026-08-19
 - [ ] 引入依赖：Gin、GORM、SQLite 驱动（WAL 模式）、BadgerDB、Bleve、ants、gobreaker、fsnotify、swaggo/swag、gorilla/websocket
 - [ ] 统一响应中间件（code/message/data 格式）与错误码定义
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
+- [ ] 全量业务表结构迁移（assets/findings/events/tickets/evidence/audit_logs/api_tokens/notify_channels/noise_rules/worker_nodes/scan_plans/availability_points/trend_points）
 
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
@@ -20,12 +21,14 @@ Updated: 2026-08-19
 - [ ] 组织选择接口 POST /api/v1/auth/select-org（换取带 org_id 的 JWT）
 - [ ] JWT 中间件 + X-Org-Id 校验 + RBAC 中间件（RequireRoles/RequireWrite）
 - [ ] super_admin 全局 org_id=0 平台查询通道
+- [ ] super_admin 禁止加入 user_orgs 约束（触发器/服务层校验）
+- [ ] Repository 层 org_id 强制过滤守卫（缺省 org_id 拒绝查询）
 - [ ] 登录锁定阈值控制
 
 ### 1.3 前端基础框架
 - [ ] 引入 TinyVue (@opentiny/vue) + Pinia + Vue Router 4 + ReconnectingWebSocket
 - [ ] 登录页 /login + 组织选择卡片页
-- [ ] 基于 role 的动态 addRoute() 路由与菜单
+- [ ] 基于 role 的动态 addRoute() 路由与菜单（含 super_admin 平台管理/选择组织双入口）
 - [ ] 顶部导航（组织名 + 角色 Tag + 切换组织/退出）
 - [ ] axios 封装（Bearer + X-Org-Id + 401 跳转）
 
@@ -34,6 +37,8 @@ Updated: 2026-08-19
 - [ ] URL 标准化与 BadgerDB MD5 去重
 - [ ] 资产列表（虚拟滚动/模糊搜索/筛选）
 - [ ] 资产画像抽屉（技术栈指纹/ICP/子域名/SSL 倒计时/端口快照）
+- [ ] 资产变更追踪（标题/技术栈/状态码/端口变动历史）
+- [ ] 微信公众号资产（公众号名/微信号/头像/粉丝数）
 
 ### 1.5 任务调度与可用性引擎
 - [ ] 任务表与策略模板表迁移
@@ -47,15 +52,25 @@ Updated: 2026-08-19
 ### 1.6 证据链
 - [ ] 证据 gzip 落盘 /data/evidence/{date}/ + MD5 去重 + SHA-256 入库
 - [ ] 证据读取时 Hash 强制校验（不一致返回 EVIDENCE_TAMPERED）
+- [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号）+ 结果回传链路
+- [ ] Worker 页面渲染截图采集（截图取证）
 - [ ] 前端全屏证据抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图标签页 + 下载按钮）
 
 ### 1.7 仪表盘与报告
 - [ ] 统计卡片 + 7 天趋势 + 风险 Top10
+- [ ] 引擎覆盖率雷达图（10 大引擎检测覆盖率）
 - [ ] WebSocket 实时事件滚动 + 指数退避重连
 - [ ] 报告导出（PDF 含水印 / Excel 漏洞清单）
 
+### 1.8 阶段 1 单元测试
+- [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作，表驱动）
+- [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/组织选择/登录锁定）
+- [ ] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
+- [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫）
+
 ### 阶段 1 验收
 - [ ] go vet ./... && go build . 通过
+- [ ] go test ./... 单元测试全部通过（RBAC/认证/证据/调度）
 - [ ] 前端 vue-tsc + vite build 通过
 - [ ] 联调：登录→建资产→下发任务→Worker 执行→证据展示全链路可跑
 
@@ -74,6 +89,8 @@ Updated: 2026-08-19
 - [ ] Webshell 检测引擎（路径枚举 + 特征码 + 流量特征）
 - [ ] 钓鱼检测引擎（模板比对 + Levenshtein + 证书异常）
 - [ ] 端口服务监测引擎（TCP SYN 扫描 + Banner 指纹 + 高危暴露告警）
+- [ ] 可用性监测引擎扩展（DNS 监控：解析 IP 变更/解析失败/劫持检测）
+- [ ] 可用性监测引擎扩展（PING 监控：丢包率/延迟/ICMP 不可达告警）
 - [ ] DNS 安全引擎（多节点解析对比 + 污染检测 + 子域名爆破）
 - [ ] 信誉监测引擎（IP/域名威胁情报查询）
 - [ ] 安全情报引擎（CVE/CNVD/CNNVD 订阅 + 资产影响匹配）
@@ -97,6 +114,10 @@ Updated: 2026-08-19
 - [ ] Bleve 索引 + BatchIndexer（5s/50 条批量提交）
 - [ ] BadgerDB 元数据缓存层（API 毫秒级响应）
 - [ ] 异步批量持久化 SQLite/Bleve 通道
+
+### 2.6 阶段 2 单元测试
+- [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
+- [ ] 脱敏单元测试（身份证/手机号/邮箱/AccessKey 三时机脱敏）
 
 ### 阶段 2 验收
 - [ ] 10 大引擎全部可开关执行
@@ -124,14 +145,23 @@ Updated: 2026-08-19
 - [ ] swaggo Swagger 文档全量注解
 - [ ] Webhook 事件推送
 - [ ] 规则热更新（fsnotify）+ Worker 规则 Hash 同步
+- [ ] 扫描授权拦截（白名单校验 + 内网 IP 禁止）
 - [ ] gobreaker 目标熔断（连续失败 5 次）+ 授权违规熔断 Worker
 - [ ] 三时机脱敏（入库/API 返回/报告生成）
 - [ ] 反封禁（Proxy 配置 + 低速隐蔽模式）
 - [ ] Litestream SQLite 热备
+- [ ] VictoriaMetrics 迁移接口预留（MetricsExporter，当前 SQLite 时序表）
 - [ ] Docker/K8s 编排（Master 水平扩展读写分离 + Worker 弹性伸缩）
 - [ ] 私有化单二进制一键安装打包
+
+### 3.4 报告中心全量
+- [ ] 报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议）
+- [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口）
+- [ ] 定时报告（Cron 生成周报/月报）
+- [ ] 报告截图合集导出（按资产/时间范围）
 
 ### 阶段 3 验收
 - [ ] 全部 15 个功能模块上线
 - [ ] 平台管理/团队管理权限隔离正确
-- [ ] 容灾演练：Worker 断网恢复、Master 重启对账、熔断触发
+- [ ] 集成测试：Master + 单 Worker 全链路（任务下发→引擎执行→结果回传→证据入库→前端展示）
+- [ ] 容灾演练：Worker 断网恢复（Outbox 回传）、Master 重启对账、熔断触发
