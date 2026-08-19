@@ -138,7 +138,7 @@ sequenceDiagram
 | Service | 业务逻辑层（脱敏/风暴抑制/证据校验） | `assetsService`, `evidenceService`... |
 | Repository | GORM/SQLite + BadgerDB 数据访问 | `assetRepo`, `taskRepo`, `eventRepo`, `kvRepo` |
 | TaskScheduler | 任务分发、超时对账、断点续扫状态 | `PullTask()`, `MarkProcessing()`, `AckResult()` |
-| CronScheduler | 按 scan_plans.cron_expr 定时生成 scan_tasks（计划绑定时区计算；paused/组织禁用/到期跳过触发，启用后恢复） | `GenerateTasks()`, `Tick()` |
+| CronScheduler | 按 scan_plans.cron_expr 定时生成 scan_tasks、按 report_templates.cron_expr 定时生成 reports（计划/模板绑定时区计算；paused/组织禁用/到期跳过触发，启用后恢复） | `GenerateTasks()`, `Tick()` |
 | WebSocketHub | 实时事件推送、指数退避重连 | `Broadcast(event)` |
 | BatchIndexer | Bleve 批量索引（5s/50 条） | `Enqueue(doc)`, `Flush()` |
 | RuleWatcher | fsnotify 规则热加载 | `WatchRules()`, `GetRuleHash()` |
@@ -821,6 +821,9 @@ erDiagram
         int org_id FK
         string name
         string sections
+        string cron_expr "可空，设置后启用定时报告"
+        string timezone "默认 CINSIGHT_TIMEZONE"
+        bool enabled
     }
     reports {
         int id PK
@@ -887,7 +890,7 @@ erDiagram
 
 **情报订阅表（intel_subscriptions）**：`id, org_id, source(cve/cnvd/cnnvd), enabled, last_sync_at`，`unique(org_id, source)`。
 
-**报告模板表（report_templates）**：`id, org_id, name, sections(JSON，执行摘要/漏洞详情/内容安全/可用性统计/整改建议)，updated_at`。
+**报告模板表（report_templates）**：`id, org_id, name, sections(JSON，执行摘要/漏洞详情/内容安全/可用性统计/整改建议)，cron_expr, timezone, enabled, updated_at`。`cron_expr` 可空：设置后该模板启用定时报告，由 Master `CronScheduler` 按 `cron_expr`+`timezone`（默认 `CINSIGHT_TIMEZONE`）周期性生成 `reports`，调度语义与扫描计划一致（组织禁用/到期跳过触发）。
 
 **报告表（reports）**：`id, org_id, name, template_id FK, asset_ids(JSON), period(JSON), format(pdf/excel/screenshots), status(pending/generating/completed/failed), file_path, created_at`。生成异步执行，进度经 `GET /api/v1/reports/:id` 轮询。
 

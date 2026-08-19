@@ -383,7 +383,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.11 报告中心
 
 1. 系统 SHALL 提供报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议），完整 CRUD（`GET/POST /api/v1/report-templates`、`PUT/DELETE /api/v1/report-templates/:id`）。
-2. 系统 SHALL 支持定时报告（Cron 生成周报/月报），Cron 执行时区 SHALL 与扫描计划一致（默认 `Asia/Shanghai`，`CINSIGHT_TIMEZONE` 可覆盖）。
+2. 系统 SHALL 支持定时报告（Cron 生成周报/月报）：报告模板可配置 `cron_expr`（可空，设置后启用）与 `timezone`（默认 `Asia/Shanghai`，`CINSIGHT_TIMEZONE` 可覆盖），由 Master 调度器按 cron 周期性自动生成报告，调度语义与扫描计划一致（组织禁用/到期跳过触发）；Cron 执行时区 SHALL 与扫描计划一致。
 3. 系统 SHALL 支持报告导出（PDF 含水印/Excel 漏洞清单/按资产与时间范围导出截图合集），提供报告详情 `GET /api/v1/reports/:id`、删除 `DELETE /api/v1/reports/:id` 与异步生成进度通知。报告生成 SHALL 基于生成时刻的数据快照（漏洞/发现/可用性统计在生成时点固化），报告生成后的处置变更 SHALL 不改变已生成报告内容。
 
 #### R5.12 团队管理（仅 org_admin）
