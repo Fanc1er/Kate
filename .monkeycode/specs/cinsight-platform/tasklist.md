@@ -204,6 +204,8 @@ Updated: 2026-08-19
 - [ ] AI 适配层单元测试（AI 可用→ai 来源 / AI 超时/429→regex 回退 / 熔断切换）
 - [ ] MultiUA 评估器单元测试（四探针抓取对比 / 三级加权评分 / 端差异化宕机 / 移动端定向投毒 / 微信 UA 单独放行 / SimHash 相似度>90% 不加分 / SPA 空壳不覆盖 / probe_failed 降权 / 结论分级）
 - [ ] 脱敏单元测试（身份证/手机号/邮箱/AccessKey 三时机脱敏）
+- [ ] Worker 握手单元测试（Bootstrap Token 一次性使用/过期拒绝、长期凭证校验、凭证吊销后拒绝、token/secret 落库 hash 无明文，对应 design「Test Strategy → Worker 握手」）
+- [ ] Bleve 索引单元测试（删除/级联清理同步删索引、index rebuild 全量重建对账）
 
 ### 阶段 2 验收
 - [ ] 10 大引擎全部可开关执行【必执行】

@@ -660,6 +660,7 @@ erDiagram
         int progress
         string outbox_state
         bool stopped_by_user "stop 置 cancelled 标记"
+        datetime created_at
     }
     findings {
         int id PK
@@ -674,6 +675,7 @@ erDiagram
         int line_no "触发点行号，无代码定位为空"
         float confidence "0~1 引擎判定可信度"
         string evidence_ids "关联证据 ID 数组（JSON），对应 evidence 表多条，见回传协议 evidence_ids"
+        string result_id "Worker 回传幂等键（UUID），唯一索引 idx_result_id 去重"
         string status
         string extra "JSON 扩展数据，如 MultiUA 报告 Extra['multi_ua']（probes/scores base+feature+scene/total_score/conclusion/abnormal_ends/dom_similarity/spa_suspected）"
     }
@@ -951,7 +953,7 @@ erDiagram
 
 **Worker 节点表（worker_nodes）**：`id, org_id, name, ip, version, status(online/offline/offline_removed), heartbeat_at, load, boot_token_hash, client_id, client_secret_hash`。token/secret 仅存 hash（boot_token_hash=SHA-256，client_secret_hash=bcrypt），不落明文。状态判定：心跳间隔超 3 倍（默认 15s，`CINSIGHT_WORKER_HEARTBEAT_MS`=5000）未上报自动置 `offline`；移除节点置 `offline_removed` 不计入配额。调度器仅向 `online` 节点分配任务。
 
-**时序降级表（availability_points / trend_points）**：VictoriaMetrics 的内嵌替代。`availability_points(id, org_id, asset_id, engine, timestamp, status_code, latency_ms, up)`, `trend_points(id, org_id, metric, date, value)`。预留 `MetricsExporter` 接口以支持未来切换 VM。
+**时序降级表（availability_points / trend_points）**：VictoriaMetrics 的内嵌替代。`availability_points(id, org_id, asset_id, engine, sampled_at, status_code, response_ms)`, `trend_points(id, org_id, metric, value, sampled_at)`。预留 `MetricsExporter` 接口以支持未来切换 VM。
 
 **微信公众号资产表（wechat_assets）**：`id, org_id, app_name(公众号名), wechat_id(微信号), avatar_url, fans_count, intro(简介), verify_status(认证状态), article_count(文章数), status, created_at`。
 
@@ -959,7 +961,7 @@ erDiagram
 
 **核心表乐观锁**：`assets / scan_policies / alerts / tickets` 均含 `version`（INTEGER DEFAULT 1），更新接口要求请求体或 `If-Match` 头携带 version，与库内不一致返回 409。
 
-**结果回传幂等**：`findings / events / vulnerabilities` 表含 `result_id`（Worker 生成的 UUID），建唯一索引 `idx_result_id`，重复回传直接返回成功不重复入库。
+**结果回传幂等**：`findings` 表含 `result_id`（Worker 生成的 UUID），建唯一索引 `idx_result_id`，重复回传直接返回成功不重复入库（一条回传含多条 finding 时整体幂等，重复回传不生成事件/漏洞/告警）。
 
 **findings 扩展字段（extra）**：`extra` 为 JSON TEXT，承载引擎扩展结果——MultiUA 报告写入 `Extra["multi_ua"]`（probes 四探针明细 / scores 三级得分 base/feature/scene / total_score 0~100 / conclusion 分级 / abnormal_ends 端级异常列表 / dom_similarity SimHash 相似度 / spa_suspected 单页应用疑似标记）；前端多端对比页读取该字段渲染，缺失时该 finding 不做多端展示。其余引擎的扩展结构同规则追加，不新增列。
 
@@ -987,13 +989,13 @@ erDiagram
 | user_orgs | `idx_user_orgs_user`, `idx_user_orgs_org` | 成员关系查询 |
 | assets | `idx_assets_org_url`, `idx_assets_org_group`, `idx_assets_org_importance` | 资产筛选 |
 | scan_tasks | `idx_tasks_org_status`, `idx_tasks_org_created` | 队列监控/状态流转 |
-| findings | `idx_findings_org_severity`, `idx_findings_org_engine`, `idx_findings_org_status` | 漏洞筛选 |
+| findings | `idx_findings_org_severity`, `idx_findings_org_engine`, `idx_findings_org_status`, `idx_result_id`（唯一） | 漏洞筛选 / 结果回传幂等去重 |
 | vulnerabilities | `idx_vuln_org_severity`, `idx_vuln_org_status`, `idx_vuln_org_asset`, `idx_vuln_org_cve` | 漏洞列表/资产关联/CVE 检索 |
 | alerts | `idx_alerts_org_status`, `idx_alerts_org_type`, `idx_alerts_org_severity`, `idx_alerts_org_asset` | 告警筛选/处置 |
 | events | `idx_events_org_status`, `idx_events_org_type`, `idx_events_org_severity` | 事件筛选 |
 | evidence | `idx_evidence_org_md5` | 证据去重 |
-| availability_points | `idx_avail_org_asset_ts`（org_id, asset_id, timestamp） | 时序查询 |
-| trend_points | `idx_trend_org_metric_date` | 趋势聚合 |
+| availability_points | `idx_avail_org_asset_ts`（org_id, asset_id, sampled_at） | 时序查询 |
+| trend_points | `idx_trend_org_metric_sampled`（org_id, metric, sampled_at） | 趋势聚合 |
 | api_tokens | `idx_token_org` | Token 查询 |
 | worker_nodes | `idx_worker_org` | 节点管理 |
 | audit_logs | `idx_audit_org_created`, `idx_audit_org_user`, `idx_audit_org_action`（org_id, username/action, created_at） | 审计筛选/查询 |
