@@ -31,7 +31,7 @@ Updated: 2026-08-19
 - [ ] super_admin 全局 org_id=0 平台查询通道
 - [ ] super_admin 禁止加入 user_orgs 约束（触发器/服务层校验）
 - [ ] Repository 层 org_id 强制过滤守卫（缺省 org_id 拒绝查询）
-- [ ] 登录锁定阈值控制
+- [ ] 登录锁定阈值控制（连续失败 5 次锁定 15 分钟，登录接口限流 5 次/min/IP）
 - [ ] 密码重置流程（POST /api/v1/auth/forgot-password + reset-password，重置后失效旧 token）
 - [ ] 系统级邮件发送（CINSIGHT_SMTP_*：验证码/邀请邮件，验证码 5min 一次性，独立于组织通知渠道）
 - [ ] 登录态改密（POST /api/v1/auth/change-password：校验旧密码 + 符合密码策略 + 改后失效全部 refresh token）

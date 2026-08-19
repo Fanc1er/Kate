@@ -1175,7 +1175,7 @@ src/
 - 引擎结果统一映射为 findings 数组（字段对应 findings 表），evidence 先经 `/api/v1/worker/evidence` 上传取得 `evidence_id`，result 以 `evidence_ids` 数组引用；内联证据（<1MB）允许随 finding 直接回传，Master 落盘后生成 evidence_id 并入 evidence_ids。
 - Master 处理：幂等去重 → 落 findings → 降噪过滤 → 生成事件 → 漏洞聚合 → 告警生成 → WS 广播（见「发现处理链路」）。
 
-**Webhook 订阅事件枚举**（`webhooks.events` JSON 存储下列事件名数组，事件发生时按订阅过滤推送）：`finding.critical / finding.high / finding.medium`、`vulnerability.new / vulnerability.closed`、`event.new / event.acknowledged / event.closed`、`alert.new / alert.acknowledged / alert.closed`、`task.completed / task.failed`、`intel.high`。
+**Webhook 订阅事件枚举**（`webhooks.events` JSON 存储下列事件名数组，事件发生时按订阅过滤推送）：`finding.critical / finding.high / finding.medium`、`vulnerability.new / vulnerability.closed`、`event.new / event.processing / event.closed`、`alert.new / alert.acknowledged / alert.closed`、`task.completed / task.failed`、`intel.high`。
 
 ### 发现处理链路（finding → 事件/漏洞/告警）
 
@@ -1236,6 +1236,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 |------|-----------|--------|---------|
 | JWT 缺失/过期/无效 | 401 | 2000 `AUTH_FAILED` | 前端清理 token 跳登录 |
 | 禁用用户/禁用组织访问 | 401/403 | 2003 `USER_DISABLED` / 2004 `ORG_DISABLED` | AuthMiddleware 每次请求校验 users.status/user_orgs.status/org.status |
+| 登录连续失败触发锁定 | 423 | 2002 `ACCOUNT_LOCKED` | 连续失败 5 次锁定 15 分钟，返回友好提示 |
 | 角色无权限写操作 | 403 | 2100 `FORBIDDEN` | 前端隐藏入口 + Toast |
 | 缺少 X-Org-Id | 400 | 1001 `ORG_REQUIRED` | 提示携带组织上下文 |
 | 资产/成员/Worker 超配额 | 429 | 4290 `ASSET_QUOTA_EXCEEDED` / 4292 `MEMBER_QUOTA_EXCEEDED` / 4291 `WORKER_QUOTA_EXCEEDED` | 前端提示升级套餐 |
@@ -1435,7 +1436,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 - **传输安全**：前置网关终结 TLS（HTTPS），内部 Master↔Worker 使用 mTLS 或内网隔离 + Bootstrap Token；HSTS 响应头。
 - **安全响应头**：CSP、`X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`Referrer-Policy`、HSTS 全局中间件。
 - **CSRF 防护**：前端不依赖 Cookie 鉴权（Bearer 头 + X-Org-Id），配合 `SameSite` Cookie 策略，无 CSRF Token 盲区。
-- **API 通用限流**：网关层每用户/IP 速率限制（如 100 req/min），超限返回 HTTP 429 + `Retry-After` 头（秒）；登录接口单独限流（5 次/min/IP）+ 账户锁定（已有）。
+- **API 通用限流**：网关层每用户/IP 速率限制（如 100 req/min），超限返回 HTTP 429 + `Retry-After` 头（秒）；登录接口单独限流（5 次/min/IP）+ 账户锁定（连续失败 5 次锁定 15 分钟）。
 - **refresh token 机制**：登录签发短时效 access token（15min）+ 长时效 refresh token（7d）；`POST /api/v1/auth/refresh` 换发新 access token；登出、改密、换组织、密码重置后 SHALL 立即失效全部 refresh token（服务端黑名单，JWT jti 拉黑）。
 - **密码策略**：密码 ≥ 12 位含大小写/数字/特殊字符，90 天强制轮换，禁止复用最近 5 次，首次登录强制改密。
 - **MFA**：预留 TOTP 二次认证开关（阶段 4 实现）。

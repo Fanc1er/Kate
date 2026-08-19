@@ -34,7 +34,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 2. WHEN JWT 签发完成，系统 SHALL 查询 `user_orgs` 关联表：单组织用户直接返回 `org_id` 与 `role`；多组织用户返回组织列表由前端展示选择卡片。
 3. WHEN 多组织用户通过 `POST /api/v1/auth/select-org` 提交目标组织，系统 SHALL 校验该用户在此组织的有效成员关系并签发携带 `org_id` 的新 JWT。
 4. WHEN 用户请求受保护 API，系统 SHALL 校验请求头 `Authorization: Bearer {jwt}` 与 `X-Org-Id: {org_id}`，任一项缺失或无效时返回 401。
-5. IF 密码连续校验失败达到锁定阈值，系统 SHALL 临时锁定该账户并返回友好提示。
+5. IF 密码连续校验失败达到锁定阈值，系统 SHALL 临时锁定该账户并返回 423 `ACCOUNT_LOCKED` 与友好提示。
 6. WHEN 用户退出登录，系统 SHALL 提供 `POST /api/v1/auth/logout`：注销当前会话（refresh token 入 jti 黑名单），前端 SHALL 清除本地 JWT 并跳转登录页。
 7. WHEN 用户请求当前用户信息，系统 SHALL 提供 `GET /api/v1/auth/me` 返回当前用户资料（用户名/邮箱/角色/当前组织/头像/权限码集），前端据此渲染顶部导航与按钮权限；me 接口 SHALL 只依赖 JWT，不需要 `X-Org-Id`。
 8. WHEN 用户 `status` 为 `disabled`（禁用用户）提交登录，系统 SHALL 拒绝登录返回 403 `USER_DISABLED`，不签发 JWT；WHEN 用户所在组织被禁用，系统 SHALL 同样拒绝登录并返回 403 `ORG_DISABLED`。
@@ -428,7 +428,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 1. 系统 SHALL 全量开放 REST API（Swagger 文档）。
 2. 系统 SHALL 提供 API Token 认证（独立于 JWT，支持细粒度权限）：scopes SHALL 取 RBAC 权限码子集（`asset:read`、`event:write`、`evidence:upload` 等，见 design API Token 表），请求校验时接口所需权限码 SHALL 为 token scopes 子集，无对应 scope SHALL 返回 2101 `SCOPE_DENIED`；scopes 创建后不可修改，变更 SHALL 撤销重建。
-3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。推送 SHALL 带 HMAC-SHA256 签名（请求头 `X-Webhook-Signature`，密钥经 R5.18 管理），推送失败 SHALL 自动重试 3 次（指数退避），重试仍失败 SHALL 记录推送状态落库并在 UI 标记送达失败。订阅事件 SHALL 支持枚举：`finding.critical/high/medium`、`vulnerability.new/closed`、`event.new/acknowledged/closed`、`alert.new/acknowledged/closed`、`task.completed/failed`、`intel.high`（`webhooks.events` 存事件名数组，按订阅过滤推送，未命中订阅不推送）。
+3. 系统 SHALL 提供 Webhook 事件推送（事件发生时主动 POST 到客户配置的 URL）。推送 SHALL 带 HMAC-SHA256 签名（请求头 `X-Webhook-Signature`，密钥经 R5.18 管理），推送失败 SHALL 自动重试 3 次（指数退避），重试仍失败 SHALL 记录推送状态落库并在 UI 标记送达失败。订阅事件 SHALL 支持枚举：`finding.critical/high/medium`、`vulnerability.new/closed`、`event.new/processing/closed`、`alert.new/acknowledged/closed`、`task.completed/failed`、`intel.high`（`webhooks.events` 存事件名数组，按订阅过滤推送，未命中订阅不推送）。
 4. Swagger 文档（`/swagger/*`）SHALL 受开关控制：生产环境默认关闭，仅当 `CINSIGHT_SWAGGER_ENABLED=true` 时暴露，防止生产环境信息泄露。
 5. API SHALL 遵循统一约定（全部接口一致）：前缀 `/api/v1`、统一响应 `{"code":0,"message":"ok","data":{}}`（错误时 `code` 为非 0 业务码）、列表分页 `page`（1 起）+`page_size`（默认 20 上限 200）返回 `data.list`+`data.total`、排序 `sort=field,-field`、筛选 `filter[字段]=值`、时间戳 RFC3339；集成方 SHALL 仅依据业务码 `code` 判断业务结果（`code=0` 成功，非 0 见错误码段），不依赖 HTTP 状态码。
 
