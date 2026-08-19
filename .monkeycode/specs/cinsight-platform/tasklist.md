@@ -182,8 +182,8 @@ Updated: 2026-08-19
 ### 2.4 引擎相关前端模块
 - [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示）
 - [ ] 暗链木马页（暗链列表/木马列表含检测维度来源标注 + 双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
-- [ ] Webshell 与钓鱼页
-- [ ] 可用性网络页（12h 点阵图 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示）
+- [ ] Webshell 与钓鱼页（Webshell 列表：检测路径/特征码/文件内容片段 + 钓鱼列表：仿冒目标/域名相似度/证书异常）
+- [ ] 可用性网络页（12h 点阵图绿/红竖线 + HTTP/DNS/PING 三维度切换 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示）
 - [ ] 时序查询后端接口（GET /api/v1/assets/:id/availability 点阵图 + /response-time 折线，读 availability_points 按 org_id 隔离）
 - [ ] 安全情报中心页（情报列表 + 受影响资产数 + 订阅配置 GET/PUT /api/v1/intel-subscriptions）
 - [ ] 情报后端接口（GET /api/v1/intel 列表筛选分页 + GET /:id 详情含受影响资产）
