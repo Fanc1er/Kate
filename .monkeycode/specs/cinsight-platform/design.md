@@ -143,6 +143,7 @@ sequenceDiagram
 | WebSocketHub | 实时事件推送、指数退避重连 | `Broadcast(event)` |
 | BatchIndexer | Bleve 批量索引（5s/50 条） | `Enqueue(doc)`, `Flush()` |
 | AsyncPersist | 异步持久化通道（写入收敛单协程，BadgerDB 元数据 + 事件/审计落库） | `Enqueue(write)` |
+| ResultAssessor | 结果评估引擎：发现处理链路中对每条 finding 多因子综合评估（severity 基础分 × confidence + 多引擎重合/重点资产/高危类型加成），输出 risk_score/risk_level/suggestion 与评估明细（R2.13） | `Assess(finding, ctx)`, `Suggestion(engine, level)` |
 | RuleWatcher | fsnotify 规则热加载 | `WatchRules()`, `GetRuleHash()` |
 
 ### Worker 组件
@@ -453,8 +454,8 @@ type Finding struct {
 | 工单 | GET/POST | /api/v1/tickets | org_admin/engineer | 工单列表/创建 |
 | 工单 | GET | /api/v1/tickets/:id | 全部角色 | 工单详情 |
 | 工单 | PUT | /api/v1/tickets/:id | org_admin/engineer | 工单状态/派发 |
-| 发现 | GET | /api/v1/findings | 全部角色 | 发现列表（engine/type/severity/status/asset_id 筛选分页，支撑 R5.5 敏感内容/信息泄漏、R5.6 暗链木马、R5.7 Webshell/钓鱼列表） |
-| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告，`type=content_integrity`/`external_link`/`dead_link`/`keyword_hit`/`sensitive_word` 时含 `extra` 对应子能力明细：变更前后对比/外链变更标记/死链状态码/命中原文与位置/判定来源与置信度） |
+| 发现 | GET | /api/v1/findings | 全部角色 | 发现列表（engine/type/severity/status/risk_level/asset_id 筛选分页，支撑 R5.5 敏感内容/信息泄漏、R5.6 暗链木马、R5.7 Webshell/钓鱼列表） |
+| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 风险分/风险等级/处置建议 + `extra.assessment` 评估明细 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告，`type=content_integrity`/`external_link`/`dead_link`/`keyword_hit`/`sensitive_word` 时含 `extra` 对应子能力明细：变更前后对比/外链变更标记/死链状态码/命中原文与位置/判定来源与置信度） |
 | 证据 | GET | /api/v1/evidence/:id | 全部角色 | 通用证据读取（Req/Resp/HTML/截图，Hash 校验） |
 | 证据 | GET | /api/v1/evidence/:id/download | 全部角色 | 下载 HTML/HAR |
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
@@ -705,6 +706,9 @@ erDiagram
         string description
         int line_no "触发点行号，无代码定位为空"
         float confidence "0~1 引擎判定可信度"
+        string risk_level "结果评估综合等级（info/low/medium/high/critical，与 severity 枚举一致，R2.13）"
+        int risk_score "结果评估综合风险分 0~100（多因子权重模型，R2.13）"
+        string suggestion "处置建议（按引擎类型与风险等级生成，可关联 SOP）"
         string evidence_ids "关联证据 ID 数组（JSON），对应 evidence 表多条，见回传协议 evidence_ids"
         string result_id "Worker 回传幂等键（UUID），唯一索引 idx_result_id 去重"
         string status
@@ -1074,7 +1078,7 @@ erDiagram
 
 **结果回传幂等**：`findings` 表含 `result_id`（Worker 生成的 UUID），建唯一索引 `idx_result_id`，重复回传直接返回成功不重复入库（一条回传含多条 finding 时整体幂等，重复回传不生成事件/漏洞/告警）。
 
-**findings 扩展字段（extra）**：`extra` 为 JSON TEXT，承载引擎扩展结果——MultiUA 报告写入 `Extra["multi_ua"]`（probes 四探针明细 / scores 三级得分 base/feature/scene / total_score 0~100 / conclusion 分级 / abnormal_ends 端级异常列表 / dom_similarity SimHash 相似度 / spa_suspected 单页应用疑似标记）；前端多端对比页读取该字段渲染，缺失时该 finding 不做多端展示。其余引擎的扩展结构同规则追加，不新增列。
+**findings 扩展字段（extra）**：`extra` 为 JSON TEXT，承载引擎扩展结果——MultiUA 报告写入 `Extra["multi_ua"]`（probes 四探针明细 / scores 三级得分 base/feature/scene / total_score 0~100 / conclusion 分级 / abnormal_ends 端级异常列表 / dom_similarity SimHash 相似度 / spa_suspected 单页应用疑似标记）；结果评估明细写入 `Extra["assessment"]`（因子得分/权重/加成项：severity_base/confidence/engine_hit_bonus/importance_bonus/type_bonus/total，R2.13）；前端多端对比页读取该字段渲染，缺失时该 finding 不做多端展示。其余引擎的扩展结构同规则追加，不新增列。
 
 **敏感信息规则表（rule_definitions）**：`id, org_id, kind(sensitive/poc/keyword/trojan), group, name, loaded, f_regex, s_regex, format, color, scope(any header/request/request line/response header/response body/response), engine(dfa/nfa，Go 统一 regexp 实现), sensitive`。敏感信息规则集支持 HaENet Rules.yml 结构 YAML 导入（走规则库 `GET/POST /api/v1/rules/import`），前端按规则组分组展示并支持启用/禁用。`kind=keyword` 为关键词监测规则（R2.3-9）：支持关键词/正则模式与敏感级别（`sensitive` 敏感级触发告警，普通级仅生成事件），供内容安全引擎关键词监测匹配。
 
@@ -1300,8 +1304,9 @@ Worker 结果回传后 Master 的处理顺序：
 
 1. **幂等去重**：按 `result_id` 唯一索引，重复回传直接 ack 不处理。
 2. **落库 finding**：写入 findings（含 engine/severity/line_no/confidence/evidence_ids/extra）。
-3. **降噪过滤**：按 `noise_rules` 在事件生成前过滤（白名单 IP 目标 / 忽略类型 / 聚合窗口 / 风暴抑制），命中则丢弃该条不再生成事件，**同时不生成告警、不触发推送**（降噪在告警生成与推送之前拦截）；规则变更只影响后续生成。
-4. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并），事件 `finding_ids` 记录来源 finding（合并时为多条，取并集），`evidence_ids` 继承 finding 的证据关联（多条 finding 合并时取并集）。
+3. **结果评估**：ResultAssessor 对该 finding 执行多因子综合评估（severity 基础分 × confidence + 多引擎重合加成[同一资产/URL 多引擎命中] + 重点资产加成[importance=high] + 高危事件类型加成），输出 `risk_score`/`risk_level`/`suggestion`，评估因子明细写 `extra.assessment`（R2.13）。
+4. **降噪过滤**：按 `noise_rules` 在事件生成前过滤（白名单 IP 目标 / 忽略类型 / 聚合窗口 / 风暴抑制），命中则丢弃该条不再生成事件，**同时不生成告警、不触发推送**（降噪在告警生成与推送之前拦截）；规则变更只影响后续生成。
+5. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并），事件 `finding_ids` 记录来源 finding（合并时为多条，取并集），`evidence_ids` 继承 finding 的证据关联（多条 finding 合并时取并集）；事件 `title`（风险名称）取 finding 的 `risk_level`/`event_type` 映射友好名称。
 
 | 引擎 | 事件类型（R5.3-2） | 说明 |
 |------|------|------|

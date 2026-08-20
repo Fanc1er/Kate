@@ -186,6 +186,17 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 5. 各探针抓取的 HTML 快照与截图 SHALL 随证据链 gzip 落盘 + SHA-256 入库，供前端多端对比展示与取证。
 6. 评估器 SHALL 受策略模板开关与并发/超时约束，Worker 低资源环境可仅启用 PC + 标准移动 UA 两探针（跳过微信 UA 与无头浏览器模拟）。
 
+#### R2.13 结果评估引擎
+
+**User Story:** AS 安全工程师，I want 每条检测结果经多因子综合评估输出统一风险分与处置建议，SO THAT 我能量化风险优先级并直接获得处置指引。
+
+**Acceptance Criteria:**
+1. 系统 SHALL 在发现处理链路中对每条 finding 执行结果评估（Master 端组件，对所有引擎结果统一适用），评估因子 SHALL 包含：原始严重级别（`severity`）、引擎置信度（`confidence`）、多引擎重合（同一资产/URL 被多个引擎命中）、资产重要度（`assets.importance`）、事件类型权重（篡改/暗链挂马/木马/Webshell 等高危类型加权）。
+2. 评估结果 SHALL 输出 `risk_score`（0~100 综合风险分）与 `risk_level`（`info/low/medium/high/critical`，与 severity 枚举一致）写入 findings；风险分 SHALL 由权重模型计算：severity 基础分（critical=80/high=60/medium=40/low=20/info=0）乘以 confidence（0~1）+ 多引擎重合加成（同一资产/URL 每多一个引擎命中 +10，上限 +30）+ 重点资产加成（`importance=high` +10）+ 高危事件类型加成（+5），结果上限封顶 100；评估权重 SHALL 支持经策略模板覆盖。
+3. 系统 SHALL 按引擎类型与风险等级输出处置建议 `suggestion`（如 `hidden_link`→"隔离+溯源+加固"、`webshell`→"立即下线+清除+溯源"、`vuln_scan`→"按 CVE 修复+复测"、`phishing`→"下线仿冒+备案"、`availability`→"检查服务/DNS/CDN 状态"），并可与 SOP 模板（R5.3b）关联挂载。
+4. 评估因子明细 SHALL 落 finding `extra.assessment`（各因子得分/权重/加成项），前端风险详情页 SHALL 展示评估明细与处置建议。
+5. findings 列表与详情接口 SHALL 支持按 `risk_level` 筛选与排序，`risk_score` SHALL 参与仪表盘风险 Top10（R5.1）排序与告警生成阈值判定。
+
 ### 3. 全量证据链与防篡改
 
 #### R3.1 证据内容采集
@@ -306,7 +317,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.1 仪表盘（全部角色可见）
 
 1. 系统 SHALL 展示统计卡片（资产总数/可用率/高危漏洞/待处理事件）。
-2. 系统 SHALL 展示 7 天趋势图（漏洞发现/事件趋势）、资产风险 Top10 排行、实时事件 WebSocket 滚动。
+2. 系统 SHALL 展示 7 天趋势图（漏洞发现/事件趋势）、资产风险 Top10 排行（按结果评估风险分 `risk_score` 排序，R2.13）、实时事件 WebSocket 滚动。
 3. 系统 SHALL 展示引擎覆盖率雷达图（10 大引擎检测覆盖率）。
 4. 系统 SHALL 提供仪表盘聚合后端接口 `GET /api/v1/dashboard/stats`（统计卡片）与 `GET /api/v1/dashboard/trends`（7 天趋势）、`GET /api/v1/dashboard/top-risks`（风险 Top10）、`GET /api/v1/dashboard/engine-coverage`（引擎覆盖率），各卡片与图表独立拉取、互不阻塞。
 

@@ -165,7 +165,7 @@ Updated: 2026-08-19
 
 ### 2.3 事件中心与漏洞管理
 - [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id；事件字段：风险名称 title/问题 URL/关联资产/检测来源 engine_name/发现时间 created_at/事件详情 content/页面快照证据关联）
-- [ ] 发现处理链路（回传幂等→落 findings→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
+- [ ] 发现处理链路（回传幂等→落 findings→结果评估 ResultAssessor 输出 risk_score/risk_level/suggestion/extra.assessment→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
 - [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规|敏感信息泄漏|篡改|暗链挂马|可用性异常（type=sensitive_word/keyword_hit/content_integrity/external_link/dead_link 区分） / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞 / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
 - [ ] 降噪在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，命中同时抑制告警与推送，规则变更不回溯）
 - [ ] 事件批量状态流转（POST /api/v1/events/batch）
@@ -210,6 +210,7 @@ Updated: 2026-08-19
 - [ ] 敏感信息规则提取单测（scope 分层命中/凭证规则/递归去重/静态文件过滤/深度上限）
 - [ ] 内容安全子能力单测（敏感词库匹配：涉黄赌毒政命中/来源标记 regex 与 ai/AI 超时回退正则/敏感词触发告警；关键词规则匹配：关键词与正则两种模式/敏感级告警与普通级事件/禁用规则不匹配；内容完整性基线 Hash 比对与变更检出/变更前后对比；外链基线新增与移除/目标域名变更/恶意域名库命中与域名相似度；死链判定 4xx/5xx/连接失败/超时边界）
 - [ ] 发现处理链路单元测试（回传幂等 → 降噪过滤命中丢弃 → 事件生成 → 漏洞聚合首建/更新 last_seen_at → 告警生成按 severity 阈值与通知路由 → WS 广播）
+- [ ] 结果评估引擎单元测试（ResultAssessor：severity 基础分 × confidence 计算/多引擎重合加成上限 30/重点资产加成/高危类型加成/封顶 100/risk_level 映射/处置建议按引擎类型生成/评估明细 extra.assessment 结构）
 - [ ] AI 适配层单元测试（AI 可用→ai 来源 / AI 超时/429→regex 回退 / 熔断切换）
 - [ ] MultiUA 评估器单元测试（四探针抓取对比 / 三级加权评分 / 端差异化宕机 / 移动端定向投毒 / 微信 UA 单独放行 / SimHash 相似度>90% 不加分 / SPA 空壳不覆盖 / probe_failed 降权 / 结论分级）
 - [ ] 脱敏单元测试（身份证/手机号/邮箱/AccessKey 三时机脱敏）
