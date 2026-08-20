@@ -282,7 +282,7 @@ type Finding struct {
 | 钓鱼 | `phishing` | 钓鱼模板库、Levenshtein、证书解析 |
 | 可用性 | `availability` | HTTP/DNS/TCP/PING 四维探针、连续失败计数（连续 3 次失败判定宕机，官网/活动等关键资产可配置连续 2 次）、MultiUAAssessor 多端一致性 |
 | 端口服务 | `port_service` | TCP SYN 扫描（Top 常见端口 22/21/3389/3306/6379 等；非特权 Worker 自动降级 TCP Connect 全连接，结果标记 `scan_mode: connect`）、Banner 抓取 |
-| DNS 安全 | `dns_security` | 多节点解析对比、异常 TTL 与异常解析记录识别、字典爆破 + 被动 DNS 子域名发现 |
+| DNS 安全 | `dns_security` | 多节点解析对比、异常 TTL 与异常解析记录识别、字典爆破 + 被动 DNS 子域名发现、证书监测（合法性/有效期剩余天数低于 cert_expire_days 告警/CRL-OCSP 撤销校验/CA 信任链/域名 SAN 配置） |
 | 信誉监测 | `reputation` | 威胁情报库查询（IP 恶意/代理/Tor 标记、域名历史解析记录与恶意标记） |
 | 安全情报 | `intelligence` | CVE/CNVD/CNNVD 订阅、资产匹配 |
 
@@ -455,7 +455,7 @@ type Finding struct {
 | 工单 | GET | /api/v1/tickets/:id | 全部角色 | 工单详情 |
 | 工单 | PUT | /api/v1/tickets/:id | org_admin/engineer | 工单状态/派发 |
 | 发现 | GET | /api/v1/findings | 全部角色 | 发现列表（engine/type/severity/status/risk_level/asset_id 筛选分页，支撑 R5.5 敏感内容/信息泄漏、R5.6 暗链木马、R5.7 Webshell/钓鱼列表） |
-| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 风险分/风险等级/处置建议 + `extra.assessment` 评估明细 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告，`type=content_integrity`/`external_link`/`dead_link`/`keyword_hit`/`sensitive_word` 时含 `extra` 对应子能力明细：变更前后对比/外链变更标记/死链状态码/命中原文与位置/判定来源与置信度） |
+| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 风险分/风险等级/处置建议 + `extra.assessment` 评估明细 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告，`type=content_integrity`/`external_link`/`dead_link`/`keyword_hit`/`sensitive_word` 时含 `extra` 对应子能力明细：变更前后对比/外链变更标记/死链状态码/命中原文与位置/判定来源与置信度，`type=certificate` 时含证书 CN/SAN/签发机构/有效期/剩余天数/撤销状态/信任链判定） |
 | 证据 | GET | /api/v1/evidence/:id | 全部角色 | 通用证据读取（Req/Resp/HTML/截图，Hash 校验） |
 | 证据 | GET | /api/v1/evidence/:id/download | 全部角色 | 下载 HTML/HAR |
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
@@ -672,7 +672,7 @@ erDiagram
         int org_id FK
         string name
         string scenario "业务场景 daily/important/hw/custom，默认 daily（决定引擎/强度预设，见策略模板场景预设段）"
-        string engine_switches "JSON（含 multi_ua.enabled / ua_sets / weights 等评估参数，与内容安全子能力开关 sensitive_word.enabled / keyword_hit.enabled / content_integrity.enabled / external_link.enabled / dead_link.enabled）"
+        string engine_switches "JSON（含 multi_ua.enabled / ua_sets / weights 等评估参数，与内容安全子能力开关 sensitive_word.enabled / keyword_hit.enabled / content_integrity.enabled / external_link.enabled / dead_link.enabled，可用性预置 availability.fail_count(失效判定次数，默认 3，关键资产 2) / availability.slow_threshold_ms(访问速度阈值，默认 3000) / dns_security.cert_expire_days(证书过期告警提前天数，默认 30)）"
         int concurrency
         int timeout "任务级超时上限(分钟)，默认 60"
         int rate_limit
@@ -689,6 +689,7 @@ erDiagram
         int policy_id FK
         int plan_id FK "来源 Cron 计划，可空=手动下发"
         int asset_id FK
+        string task_scope "root/subpage，子页面监控独立频率任务标记（subpage=仅扫描已发现子页面）"
         string status "pending/processing/completed/failed/cancelled"
         int progress
         string outbox_state
@@ -1055,7 +1056,7 @@ erDiagram
 
 **资产分组**：`assets.group_name` 为字符串标签（自由填写，批量改分组 `batch-group` 覆盖），无独立分组实体；资产列表分组筛选下拉按 `distinct(group_name)` + 计数生成；定时计划按 `asset_group_name` 精确匹配资产集合。
 
-**定时计划表（scan_plans）**：`id, org_id, name, policy_id FK, asset_group_name, cron_expr, timezone, time_window, status(enabled/paused), last_run_at`。Cron 按 `timezone`（默认 `CINSIGHT_TIMEZONE`）计算执行时间；`time_window`（JSON，如 `{"start":"02:00","end":"06:00"}`，可空）限定计划触发后的执行时间窗口，窗口外触发的任务顺延至窗口内或跳过（见 CronScheduler）；暂停/启用经 `PATCH /:id/status` 切换。
+**定时计划表（scan_plans）**：`id, org_id, name, policy_id FK, asset_group_name, cron_expr, subpage_cron_expr(子页面监控频率，可空=跟随主频率，策略 crawl_subpages=true 时生效，见 CronScheduler), timezone, time_window, status(enabled/paused), last_run_at`。Cron 按 `timezone`（默认 `CINSIGHT_TIMEZONE`）计算执行时间；`time_window`（JSON，如 `{"start":"02:00","end":"06:00"}`，可空）限定计划触发后的执行时间窗口，窗口外触发的任务顺延至窗口内或跳过（见 CronScheduler）；暂停/启用经 `PATCH /:id/status` 切换。
 
 **情报条目表（intel_items）**：全局情报库（非组织隔离），`id, source(cve/cnvd/cnnvd), intel_id（CVE/CNVD/CNNVD 编号）, title, severity, scope（影响范围描述）, tech_stack（受影响技术栈 JSON，供资产匹配）, published_at, updated_at`，`unique(source, intel_id)`。由情报同步任务从 CVE/CNVD/CNNVD 数据源拉取更新；`GET /api/v1/intel` 列表与 `GET /api/v1/intel/:id` 详情读取本表，"受影响资产数"由引擎按本组织资产技术栈匹配计算（设计 L478/L479 端点）。
 
@@ -1081,7 +1082,7 @@ erDiagram
 
 **findings 扩展字段（extra）**：`extra` 为 JSON TEXT，承载引擎扩展结果——MultiUA 报告写入 `Extra["multi_ua"]`（probes 四探针明细 / scores 三级得分 base/feature/scene / total_score 0~100 / conclusion 分级 / abnormal_ends 端级异常列表 / dom_similarity SimHash 相似度 / spa_suspected 单页应用疑似标记）；结果评估明细写入 `Extra["assessment"]`（因子得分/权重/加成项：severity_base/confidence/engine_hit_bonus/importance_bonus/type_bonus/total，R2.13）；前端多端对比页读取该字段渲染，缺失时该 finding 不做多端展示。其余引擎的扩展结构同规则追加，不新增列。
 
-**敏感信息规则表（rule_definitions）**：`id, org_id, kind(sensitive/poc/keyword/trojan), group, name, loaded, f_regex, s_regex, format, color, scope(any header/request/request line/response header/response body/response), engine(dfa/nfa，Go 统一 regexp 实现), sensitive`。敏感信息规则集支持 HaENet Rules.yml 结构 YAML 导入（走规则库 `GET/POST /api/v1/rules/import`），前端按规则组分组展示并支持启用/禁用。`kind=keyword` 为关键词监测规则（R2.3-9）：支持关键词/正则模式与敏感级别（`sensitive` 敏感级触发告警，普通级仅生成事件），供内容安全引擎关键词监测匹配。
+**敏感信息规则表（rule_definitions）**：`id, org_id, kind(sensitive/poc/keyword/trojan/content_whitelist/domain_whitelist), group, name, loaded, f_regex, s_regex, format, color, scope(any header/request/request line/response header/response body/response), engine(dfa/nfa，Go 统一 regexp 实现), sensitive`。敏感信息规则集支持 HaENet Rules.yml 结构 YAML 导入（走规则库 `GET/POST /api/v1/rules/import`），前端按规则组分组展示并支持启用/禁用。`kind=keyword` 为关键词监测规则（R2.3-9）：支持关键词/正则模式与敏感级别（`sensitive` 敏感级触发告警，普通级仅生成事件），供内容安全引擎关键词监测匹配。`kind=content_whitelist` 为内容白名单词汇规则（R2.3-1/R2.3-9）：精确词或正则，命中文本片段含白名单词汇时剔除该命中（不生成 finding/告警）。`kind=domain_whitelist` 为外链白名单域名规则（R2.3-7）：域名或二级域，外链目标命中白名单时不标记可疑、不进暗链风险列表。
 
 **敏感信息命中表（sensitive_info_hits）**：`id, org_id, task_id, rule_id, group, name, matched_text, scope, url, depth, created_at`。由内容安全引擎在敏感信息监测时按 scope 分层提取写入，findings 记录主命中（`engine_name=content_security, type=sensitive_info`），本表存命中明细（原文/scope/来源 URL/递归深度）供列表与详情展示，同步入 Bleve 索引。
 
@@ -1307,7 +1308,7 @@ Worker 结果回传后 Master 的处理顺序：
 2. **落库 finding**：写入 findings（含 engine/severity/line_no/confidence/evidence_ids/extra）。
 3. **结果评估**：ResultAssessor 对该 finding 执行多因子综合评估（severity 基础分 × confidence + 多引擎重合加成[同一资产/URL 多引擎命中] + 重点资产加成[importance=high] + 高危事件类型加成），输出 `risk_score`/`risk_level`/`suggestion`，评估因子明细写 `extra.assessment`（R2.13）。
 4. **降噪过滤**：按 `noise_rules` 在事件生成前过滤（白名单 IP 目标 / 忽略类型 / 聚合窗口 / 风暴抑制），命中则丢弃该条不再生成事件，**同时不生成告警、不触发推送**（降噪在告警生成与推送之前拦截）；规则变更只影响后续生成。
-5. **生成事件**：按引擎类型映射 `event_type`（12 类），一条 finding 生成一条事件（聚合窗口命中则合并），事件 `finding_ids` 记录来源 finding（合并时为多条，取并集），`evidence_ids` 继承 finding 的证据关联（多条 finding 合并时取并集）；事件 `title`（风险名称）取 finding 的 `risk_level`/`event_type` 映射友好名称。
+5. **生成事件**：按引擎类型映射 `event_type`（13 类），一条 finding 生成一条事件（聚合窗口命中则合并），事件 `finding_ids` 记录来源 finding（合并时为多条，取并集），`evidence_ids` 继承 finding 的证据关联（多条 finding 合并时取并集）；事件 `title`（风险名称）取 finding 的 `risk_level`/`event_type` 映射友好名称。
 
 | 引擎 | 事件类型（R5.3-2） | 说明 |
 |------|------|------|
@@ -1324,7 +1325,7 @@ Worker 结果回传后 Master 的处理顺序：
 | `phishing` | 钓鱼 | — |
 | `availability` | 可用性异常 | 连续失败宕机（HTTP）/ DNS 解析异常/劫持 / TCP 连通失败（超时/拒绝/握手失败）/ PING 不可达 / 端差异化宕机 / 访问状态变化（HTTP 状态码/重定向变更，含变更前后对比，官网/活动等关键资产四维持续监测） |
 | `port_service` | 端口暴露 | 新端口服务暴露 |
-| `dns_security` | 篡改 / 漏洞 | DNS 劫持/污染→篡改；子域名接管类→漏洞（进漏洞聚合） |
+| `dns_security` | 篡改 / 漏洞 / 证书告警 | DNS 劫持/污染→篡改；子域名接管类→漏洞（进漏洞聚合）；证书异常（合法性/过期/撤销/不受信任 CA/域名配置）→证书告警（`type=certificate`，含 CN/SAN/签发机构/有效期/剩余天数/撤销状态/信任链） |
 | `reputation` | 信誉异常 | IP/域名恶意标记 |
 | `intelligence` | 情报预警 | CVE/CNVD/CNNVD 命中资产 |
 5. **漏洞聚合**：漏洞类引擎（漏洞扫描/DNS）按 `org_id+asset_id+engine+签名` 聚合并入 vulnerabilities：首见创建（status=open），重复仅更新 `last_seen_at`；`vulnerabilities.closed_at` 记录关闭时间。
@@ -1340,7 +1341,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 ### 任务调度交互
 
 - **Pull 模型**：Worker 定时轮询 `GET /api/v1/worker/tasks/pull` 拉取 `pending` 任务，Master 返回后原子置 `processing`（单事务，避免两个 Worker 拉到同一任务）；任务以任务为单位整体执行，不拆分。
-- **计划调度**：Master 常驻 `CronScheduler` 按 `scan_plans.cron_expr` 在计划 `timezone`（默认 `CINSIGHT_TIMEZONE`）对应时刻，为计划绑定资产组（`asset_group_name` 精确匹配）的资产批量生成 `scan_tasks`（`pending`）并入队分发；计划 `paused`、所属组织 `disabled` 或到期（`expire_at` 已过）时不触发，组织启用后按 cron 继续触发。
+- **计划调度**：Master 常驻 `CronScheduler` 按 `scan_plans.cron_expr` 在计划 `timezone`（默认 `CINSIGHT_TIMEZONE`）对应时刻，为计划绑定资产组（`asset_group_name` 精确匹配）的资产批量生成 `scan_tasks`（`pending`，`task_scope=root`）并入队分发；计划 `paused`、所属组织 `disabled` 或到期（`expire_at` 已过）时不触发，组织启用后按 cron 继续触发。WHEN 计划配置 `subpage_cron_expr` 且策略 `crawl_subpages=true`，CronScheduler SHALL 另按 `subpage_cron_expr` 为同一资产组生成 `task_scope=subpage` 任务（仅递归扫描已发现子页面，执行各内容子能力监测，不重新做种子页面资产发现）；`subpage_cron_expr` 为空时子页面跟随主 `cron_expr` 同任务扫描。
 - **负载分配**：Worker 心跳上报 `load`，调度器出队时优先分配 `load` 最低的在线 Worker；无在线 Worker 时任务保持 `pending` 等待。
 - **任务去重**：创建任务时按 `org_id + asset_id + policy_id` 检查是否存在 `pending`/`processing` 任务，存在返回 3001 `TASK_STATE_CONFLICT`，防止同目标并发重复扫描。
 - **停止信号**：`POST /tasks/:id/stop` 置 `cancelled(stopped_by_user=true)`，Worker 在心跳/拉取间隙经 `stop_check` 感知后中止当前引擎，回传 `cancelled`（Master 已置 cancelled，重复回传幂等忽略），不再拉取新任务。

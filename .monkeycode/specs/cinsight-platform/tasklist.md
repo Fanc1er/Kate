@@ -80,7 +80,7 @@ Updated: 2026-08-19
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
 - [ ] Worker 注册握手（POST /api/v1/worker/register：Bootstrap Token 一次性换长期凭证 client_id+client_secret，后续心跳/拉取/回传用长期凭证，支持吊销/重发）
-- [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定；官网/活动等关键资产可配置连续 2 次更敏感阈值，R2.7-6）
+- [ ] 可用性监测引擎（HTTP 探针 + 连续失败判定次数可配置 engine_switches.availability.fail_count（默认 3，关键资产 2）+ 访问速度预置 engine_switches.availability.slow_threshold_ms（默认 3000ms 采样均值判定服务不稳定），R2.7-1/R2.7-7）
 - [ ] 可用性引擎接入 MultiUAAssessor（端间状态码/延迟不一致 + 端差异化宕机标记）
 - [ ] Worker Outbox 本地缓存与断网回传
 - [ ] 结果回传幂等键去重（result_id 唯一索引，重复回传不重复入库）
@@ -159,18 +159,18 @@ Updated: 2026-08-19
 - [ ] 可用性监测引擎扩展（PING 监控：丢包率/延迟/ICMP 不可达告警）
 - [ ] 可用性监测引擎扩展（TCP 检测：目标 IP:端口握手连通性/连接超时/拒绝/失败原因，与 port_service 端口暴露语义区分，R2.7-4）
 - [ ] 可用性监测引擎扩展（访问状态变化：HTTP 状态码/重定向变更检测 + 变更前后对比 + 事件生成，R2.7-6）
-- [ ] DNS 安全引擎（多节点解析对比 + 污染检测 + 子域名爆破）
+- [ ] DNS 安全引擎（多节点解析对比 + 污染检测 + 子域名爆破 + 证书监测：合法性/有效期剩余天数低于 cert_expire_days 告警/CRL-OCSP 撤销校验/CA 信任链/域名 SAN 配置，type=certificate，R2.9-4~7）
 - [ ] 信誉监测引擎（IP/域名威胁情报查询）
 - [ ] 安全情报引擎（CVE/CNVD/CNNVD 订阅拉取落 intel_items 表 + 资产影响匹配 + 受影响资产数计算）
 
 ### 2.3 事件中心与漏洞管理
 - [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id；事件字段：风险名称 title/问题 URL/关联资产/检测来源 engine_name/发现时间 created_at/事件详情 content/页面快照证据关联）
 - [ ] 发现处理链路（回传幂等→落 findings→结果评估 ResultAssessor 输出 risk_score/risk_level/suggestion/extra.assessment→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
-- [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规|敏感信息泄漏|篡改|暗链挂马|可用性异常（type=content_violation/sensitive_word/keyword_hit/content_integrity/external_link/dead_link 区分） / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞 / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
+- [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规|敏感信息泄漏|篡改|暗链挂马|可用性异常（type=content_violation/sensitive_word/keyword_hit/content_integrity/external_link/dead_link 区分） / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞|证书告警（type=certificate） / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
 - [ ] 降噪在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，命中同时抑制告警与推送，规则变更不回溯）
 - [ ] 事件批量状态流转（POST /api/v1/events/batch）
 - [ ] 单事件状态流转（POST /api/v1/events/:id/status）
-- [ ] 事件类型筛选（12 类）+ 降噪规则完整 CRUD（GET/POST /api/v1/noise-rules，PUT/DELETE /api/v1/noise-rules/:id）
+- [ ] 事件类型筛选（13 类）+ 降噪规则完整 CRUD（GET/POST /api/v1/noise-rules，PUT/DELETE /api/v1/noise-rules/:id）
 - [ ] 独立告警接口（GET /api/v1/alerts 列表 + GET /:id 详情 + PATCH /api/v1/alerts/:id 处置 + POST /api/v1/alerts/batch 批量处置）
 - [ ] 漏洞表与告警表迁移（vulnerabilities/alerts 独立表，见 design ER 图）
 - [ ] 漏洞列表（GET /api/v1/vulnerabilities，等级/状态/引擎筛选）+ 漏洞详情接口（GET /api/v1/vulnerabilities/:id）+ 证据链抽屉接入
@@ -208,9 +208,10 @@ Updated: 2026-08-19
 ### 2.6 阶段 2 单元测试【必执行】
 - [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
 - [ ] 敏感信息规则提取单测（scope 分层命中/凭证规则/递归去重/静态文件过滤/深度上限）
-- [ ] 内容安全子能力单测（敏感词库匹配：涉黄赌毒政命中/来源标记 regex 与 ai/AI 超时回退正则/敏感词触发告警；关键词规则匹配：关键词与正则两种模式/敏感级告警与普通级事件/禁用规则不匹配；内容完整性基线 Hash 比对与变更检出/变更前后对比；外链基线新增与移除/目标域名变更/恶意域名库命中与域名相似度；死链判定 4xx/5xx/连接失败/超时边界）
+- [ ] 内容安全子能力单测（敏感词库匹配：涉黄赌毒政命中/来源标记 regex 与 ai/AI 超时回退正则/敏感词触发告警/白名单词汇剔除命中；关键词规则匹配：关键词与正则两种模式/敏感级告警与普通级事件/禁用规则不匹配/白名单词汇剔除；内容完整性基线 Hash 比对与变更检出/变更前后对比；外链基线新增与移除/目标域名变更/恶意域名库命中与域名相似度/白名单域名不标记可疑；死链判定 4xx/5xx/连接失败/超时边界）
 - [ ] 发现处理链路单元测试（回传幂等 → 降噪过滤命中丢弃 → 事件生成 → 漏洞聚合首建/更新 last_seen_at → 告警生成按 severity 阈值与通知路由 → WS 广播）
 - [ ] 结果评估引擎单元测试（ResultAssessor：severity 基础分 × confidence 计算/多引擎重合加成上限 30/重点资产加成/高危类型加成/封顶 100/risk_level 映射/处置建议按引擎类型生成/评估明细 extra.assessment 结构）
+- [ ] 证书监测单元测试（合法性/有效期剩余天数低于 cert_expire_days 告警/CRL-OCSP 撤销/不受信任 CA/域名 SAN 不匹配，type=certificate 归"证书告警"事件）
 - [ ] AI 适配层单元测试（AI 可用→ai 来源 / AI 超时/429→regex 回退 / 熔断切换）
 - [ ] MultiUA 评估器单元测试（四探针抓取对比 / 三级加权评分 / 端差异化宕机 / 移动端定向投毒 / 微信 UA 单独放行 / SimHash 相似度>90% 不加分 / SPA 空壳不覆盖 / probe_failed 降权 / 结论分级）
 - [ ] 脱敏单元测试（身份证/手机号/邮箱/AccessKey 三时机脱敏）
@@ -235,7 +236,7 @@ Updated: 2026-08-19
 - [ ] 通知渠道密钥加密（AES-256-GCM 主密钥 CINSIGHT_CHANNEL_KEY + 接口掩码脱敏 + 编辑留空保持原值）
 - [ ] 通知路由规则（GET/PUT /api/v1/notify-routes：rule JSON 匹配 severity/event_type 优先 event_type 后 severity，* 通配 + default_channel_id 兜底 + 渠道启用开关 + 风暴抑制在路由层生效）
 - [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4291 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
-- [ ] 规则库管理（POC/敏感词/木马特征库/敏感信息规则集/关键词监测规则 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import（敏感信息规则集支持 HaENet Rules.yml YAML）+ 导出 /api/v1/rules/export；关键词规则 kind=keyword 支持关键词/正则 + 敏感级别 + 启用禁用，R5.13-9）
+- [ ] 规则库管理（POC/敏感词/木马特征库/敏感信息规则集/关键词监测规则/内容白名单词汇/外链白名单域名 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import（敏感信息规则集支持 HaENet Rules.yml YAML）+ 导出 /api/v1/rules/export；关键词规则 kind=keyword 支持关键词/正则 + 敏感级别 + 启用禁用，kind=content_whitelist 内容白名单词汇（精确词/正则），kind=domain_whitelist 外链白名单域名（域名/二级域），R5.13-9）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
 - [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent + action 统一 resource.verb 枚举见 design audit_logs 段 + 覆盖范围见 design audit_logs 段，批量逐条记录，读操作与引擎回传不审计）
 - [ ] API Token 管理（GET/POST 列表/创建，scopes 取 RBAC 权限码子集勾选 + 有效期 + 撤销 DELETE :id + 停用/恢复 PATCH :id/status，校验时接口所需权限码须为 token scopes 子集，无 scope 返回 2101 SCOPE_DENIED，scopes 不可改需撤销重建）
@@ -274,7 +275,8 @@ Updated: 2026-08-19
 ### 3.4 报告中心全量
 - [ ] 策略模板完整 CRUD（GET/POST /api/v1/policies + PUT/DELETE /api/v1/policies/:id + 批量删除 POST /api/v1/policies/batch-delete；引擎开关/并发/超时/速率限制/递归扫描参数（含 crawl_subpages 子页面监控开关）+ scenario 场景字段维护，engineer 读用于任务创建选模板）
 - [ ] 报告模板完整 CRUD（执行摘要/漏洞详情/内容安全/可用性统计/整改建议 + PUT/DELETE :id）
-- [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 时区 CINSIGHT_TIMEZONE 默认 Asia/Shanghai + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
+- [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 子页面监控频率 subpage_cron_expr（可空，配置且 crawl_subpages=true 时生成 task_scope=subpage 子页面任务）+ 时区 CINSIGHT_TIMEZONE 默认 Asia/Shanghai + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
+- [ ] 扫描计划前端页（CRUD 表单：资产分组/策略模板选择/时间窗口/子页面监控频率 subpage_cron_expr/时区展示/启停开关/批量启停）
 - [ ] Master CronScheduler 计划调度（按 cron_expr+计划时区定时生成 scan_tasks 入队分发；time_window 执行时间窗口窗口外跳过/顺延；paused/组织禁用/到期跳过触发；组织启用后恢复触发）
 - [ ] 策略模板复制（POST /api/v1/policies/:id/copy 深拷贝引擎开关）
 - [ ] 策略模板前端页（CRUD 表单：10 大引擎开关/并发/超时/速率限制/递归扫描参数（含 crawl_subpages 子页面监控开关）/scenario 场景选择/复制/批量删除，engineer 任务创建选模板）

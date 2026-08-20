@@ -93,7 +93,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 平台，I want 引擎发现按统一规则分流到事件/漏洞/告警，SO THAT 三类台账职责清晰、不重复处置。
 
 **Acceptance Criteria:**
-1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（AI 分类涉黄赌毒政 `type=content_violation` / `type=sensitive_word` 敏感词命中 / `type=keyword_hit` 关键词命中）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）/篡改（`type=content_integrity` 内容完整性基线偏差）/暗链挂马（`type=external_link` 外链发现异常）/可用性异常（`type=dead_link` 死链命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染，子域名接管类进漏洞聚合）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
+1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 13 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（AI 分类涉黄赌毒政 `type=content_violation` / `type=sensitive_word` 敏感词命中 / `type=keyword_hit` 关键词命中）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）/篡改（`type=content_integrity` 内容完整性基线偏差）/暗链挂马（`type=external_link` 外链发现异常）/可用性异常（`type=dead_link` 死链命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染）/漏洞（子域名接管类进漏洞聚合）/证书告警（证书合法性/有效期/撤销/CA 信任/域名配置异常，R2.9-4）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
 2. 降噪规则 SHALL 在**事件生成时**生效（白名单 IP 目标不生成事件、忽略指定类型不生成、聚合时间窗合并同类、风暴抑制限流），命中规则的事件 SHALL 直接丢弃不落库；命中降噪规则的 finding SHALL 同时不生成告警、不触发通知推送（降噪在告警生成与推送之前拦截）；规则变更仅影响之后的事件生成，不回溯清理已生成事件。
 3. WHEN finding 属于漏洞类引擎（漏洞扫描/DNS 解析类等），系统 SHALL 按 `org_id + asset_id + 引擎 + 特征签名` 聚合：首次命中生成 `vulnerabilities` 记录，重复命中仅更新 `last_seen_at` 并刷新严重级别。
 4. WHEN finding 严重级别为 `high/critical` 或命中告警类型（可用性宕机、端口暴露、页面篡改、情报预警等），系统 SHALL 生成 `alerts` 记录（`resolved_at` 为空），并按通知路由（R5.13-6）推送。
@@ -107,15 +107,15 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R2.3 内容安全引擎
 
-1. WHEN 启用敏感词监测（content_security 子能力，`engine_switches.sensitive_word.enabled`），引擎 SHALL 以内置敏感词库（涉黄/涉赌/涉毒/涉政等违禁词，可配置正则）匹配页面正文/HTML/标题，WHEN 命中，系统 SHALL 生成敏感词命中（finding `type=sensitive_word`，含命中词/原文片段/位置），判定来源 SHALL 标记 `regex`（敏感词库）或 `ai`（AI 文本分类增强，AI 不可用/超时/429 时自动回退正则，对齐 R5.5-4），归入"内容违规"事件类型并触发告警。
+1. WHEN 启用敏感词监测（content_security 子能力，`engine_switches.sensitive_word.enabled`），引擎 SHALL 以内置敏感词库（涉黄/涉赌/涉毒/涉政等违禁词，可配置正则）匹配页面正文/HTML/标题，WHEN 命中，系统 SHALL 生成敏感词命中（finding `type=sensitive_word`，含命中词/原文片段/位置），判定来源 SHALL 标记 `regex`（敏感词库）或 `ai`（AI 文本分类增强，AI 不可用/超时/429 时自动回退正则，对齐 R5.5-4），归入"内容违规"事件类型并触发告警；WHEN 命中文本片段包含白名单词汇（`rule_definitions.kind=content_whitelist`，组织自定义排除词），该命中 SHALL 剔除（不生成 finding、不触发告警），白名单词汇规则支持精确词与正则。
 2. WHEN 检测敏感信息，引擎 SHALL 基于可配置规则集（HaENet Rules.yml 风格）按 scope 分层提取并识别敏感信息：每条规则含 `group/name/f_regex/s_regex/scope/engine/sensitive` 字段，scope SHALL 支持 request line / request header / response header / response body 分层匹配；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证（AccessKey 等）等敏感数据与安全凭证，命中结果 SHALL 记录命中原文、scope、来源 URL 与递归深度（落 `sensitive_info_hits` 明细表，findings 记录主命中）。
 3. WHEN 监控页面篡改，引擎 SHALL 以标题、图片 Hash、正文 DOM 结构三维度建立基线，WHEN 偏离阈值超过设定值，系统 SHALL 生成篡改告警。
 4. WHEN 执行内容安全监测，引擎 SHALL 调用多端 UA 综合评估器（R2.12）：以随机 PC UA、标准移动 UA、微信内置浏览器 UA、无头浏览器移动视口模拟（移动 UA + 手机宽度视口）四探针抓取比对，WHEN 任一探针命中敏感词/敏感信息或与基线偏差超阈，系统 SHALL 将对应维度计入综合评分并输出端级结论（哪一端异常、异常类型）。
-5. WHEN 执行敏感信息监测，引擎 SHALL 支持深度递归扫描与资产发现：以种子 URL 递归抓取并解析页面链接与静态资源（JS/CSS/图片/音视频），`scan_depth` 范围 1-5（默认 2）、单站点并发上限 2-32（默认 4，可配置），自动过滤静态文件与无效链接（404/死链），URL 归一化去重（同任务内去重）；递归进度 SHALL 经任务进度接口（R5.10-4）实时上报（已抓 URL 数/已发现资产数/命中数），已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）SHALL 写入 `assets` 表并标注来源类型。WHEN 策略开启子页面监控（`crawl_subpages` 策略字段，默认 true），引擎 SHALL 对递归抓取的子页面执行各内容子能力监测（敏感词/敏感信息/多端 UA 等）；WHEN 关闭 `crawl_subpages`，递归深度 SHALL 强制为 1（仅种子 URL 列表，内容子能力只作用于种子页面，不执行子页面资产发现）。
+5. WHEN 执行敏感信息监测，引擎 SHALL 支持深度递归扫描与资产发现：以种子 URL 递归抓取并解析页面链接与静态资源（JS/CSS/图片/音视频），`scan_depth` 范围 1-5（默认 2）、单站点并发上限 2-32（默认 4，可配置），自动过滤静态文件与无效链接（404/死链），URL 归一化去重（同任务内去重）；递归进度 SHALL 经任务进度接口（R5.10-4）实时上报（已抓 URL 数/已发现资产数/命中数），已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）SHALL 写入 `assets` 表并标注来源类型。WHEN 策略开启子页面监控（`crawl_subpages` 策略字段，默认 true），引擎 SHALL 对递归抓取的子页面执行各内容子能力监测（敏感词/敏感信息/多端 UA 等）；WHEN 关闭 `crawl_subpages`，递归深度 SHALL 强制为 1（仅种子 URL 列表，内容子能力只作用于种子页面，不执行子页面资产发现）。WHEN 开启子页面监控且计划配置了子页面频率（`scan_plans.subpage_cron_expr`，可空），子页面递归扫描 SHALL 按子页面频率独立触发（任务 `task_scope=subpage`，仅扫描已发现子页面）；WHEN `subpage_cron_expr` 为空，子页面 SHALL 跟随主频率（`cron_expr`）与种子页面同任务扫描。
 6. WHEN 启用内容完整性持续监测（防篡改增强），引擎 SHALL 对纳入监测的重点资产（`assets.importance=high`）以重要内容维度建立并维护基线（标题、正文关键区域、用户指定的关键文案/文本片段 Hash、关键外链集合），按计划任务周期持续与基线比对，WHEN 关键内容被修改/删除/替换或关键外链集合变化，系统 SHALL 生成篡改发现（finding `type=content_integrity`，含变更前后对比与变更维度）并触发篡改告警（对齐 R5.20-5 重点资产加强监控与 R2.1b-4 告警生成）。
-7. WHEN 启用外链发现监测，引擎 SHALL 解析页面全部外链（外部资源 JS/CSS/图片/音视频、出站链接、第三方域名）并建立外链清单基线，WHEN 检测到新增外链、移除外链、外链目标域名变更或外链指向可疑域名（恶意域名库命中/域名相似度异常），系统 SHALL 生成外链发现（finding `type=external_link`，含外链 URL/类型/来源页面/新增或移除变更标记），归入"暗链挂马"事件类型并进入暗链风险列表。
+7. WHEN 启用外链发现监测，引擎 SHALL 解析页面全部外链（外部资源 JS/CSS/图片/音视频、出站链接、第三方域名）并建立外链清单基线，WHEN 检测到新增外链、移除外链、外链目标域名变更或外链指向可疑域名（恶意域名库命中/域名相似度异常），系统 SHALL 生成外链发现（finding `type=external_link`，含外链 URL/类型/来源页面/新增或移除变更标记），归入"暗链挂马"事件类型并进入暗链风险列表；WHEN 外链目标命中白名单域名（`rule_definitions.kind=domain_whitelist`，组织自定义可信域名/二级域），该外链 SHALL 不标记可疑、不进暗链风险列表（新增/移除仍记录变更）。
 8. WHEN 启用死链监测，引擎 SHALL 对资产页面内链接（内链+外链）逐一校验健康度，WHEN 链接返回 4xx/5xx/连接失败/超时，系统 SHALL 生成死链记录（finding `type=dead_link`，含死链 URL/来源页面/状态码/响应时间），归入"可用性异常"事件类型，支持筛选与统计。
-9. WHEN 启用关键词监测，引擎 SHALL 按用户自定义关键词清单（规则库关键词规则，`rule_definitions.kind=keyword`，支持正则与敏感级别分级）对页面正文/HTML 源码/URL 持续匹配，WHEN 命中，系统 SHALL 生成关键词命中记录（finding `type=keyword_hit`，含命中关键词/原文片段/位置/所属规则），归入"内容违规"事件类型；敏感级关键词 SHALL 触发告警，普通级 SHALL 仅生成事件。
+9. WHEN 启用关键词监测，引擎 SHALL 按用户自定义关键词清单（规则库关键词规则，`rule_definitions.kind=keyword`，支持正则与敏感级别分级）对页面正文/HTML 源码/URL 持续匹配，WHEN 命中，系统 SHALL 生成关键词命中记录（finding `type=keyword_hit`，含命中关键词/原文片段/位置/所属规则），归入"内容违规"事件类型；敏感级关键词 SHALL 触发告警，普通级 SHALL 仅生成事件；WHEN 命中文本片段包含白名单词汇（`rule_definitions.kind=content_whitelist`），该命中 SHALL 剔除（不生成 finding）。
 
 #### R2.4 暗链挂马引擎
 
@@ -141,12 +141,13 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R2.7 可用性监测引擎
 
-1. WHEN 执行 HTTP 监控，引擎 SHALL 记录状态码、响应时间、页面大小，IF 连续失败 3 次，系统 SHALL 判定宕机并告警。
+1. WHEN 执行 HTTP 监控，引擎 SHALL 记录状态码、响应时间、页面大小，IF 连续失败达到判定次数（`engine_switches.availability.fail_count`，默认 3，官网/活动关键资产默认 2，范围 1-5 可配置），系统 SHALL 判定宕机并告警（页面失效依据：HTTP 4xx/5xx、连接失败、超时，均计入连续失败；判定次数与失效码类别可按预置设置调整）。
 2. WHEN 执行 DNS 监控，引擎 SHALL 检测解析 IP 变更、解析失败与 DNS 劫持。
 3. WHEN 执行 PING 监控，引擎 SHALL 记录丢包率与延迟，IF ICMP 不可达，系统 SHALL 告警。
 4. WHEN 执行 TCP 检测，引擎 SHALL 对目标 IP:端口执行 TCP 握手连通性探测，WHEN 连接超时/连接拒绝/握手失败，系统 SHALL 判定服务不可达并告警（记录端口/连接耗时/失败原因），与 `port_service` 引擎的端口暴露扫描（新端口服务发现）语义区分。
 5. WHEN 执行 HTTP 可用性监测，引擎 SHALL 调用多端 UA 综合评估器（R2.12）多探针探测，WHEN 端间可用性不一致（如某端返回错误、重定向降级、移动端独有拦截页），系统 SHALL 标记端差异化异常并计入综合评分。
-6. WHEN 对官网/活动等对外关键资产（`assets.importance=high` 或按 `assets.group_name` 分组标记）启用可用性监测，引擎 SHALL 支持更高监测频率与更敏感告警阈值（连续失败 2 次即判定），并基于 HTTP/DNS/TCP/PING 四维持续发现：网站打不开、DNS 解析异常、服务不稳定（响应时间超阈/抖动）、网络连通异常（TCP/PING 不可达）、访问状态变化（HTTP 状态码变更/重定向变更）；四维监测结果 SHALL 落 `availability_points`（`engine` 区分 http/dns/tcp/ping），访问状态变化 SHALL 生成事件（归入"可用性异常"）并记录状态变更前后对比。
+6. WHEN 对官网/活动等对外关键资产（`assets.importance=high` 或按 `assets.group_name` 分组标记）启用可用性监测，引擎 SHALL 支持更高监测频率与更敏感告警阈值（连续失败 2 次即判定，R2.7-1），并基于 HTTP/DNS/TCP/PING 四维持续发现：网站打不开、DNS 解析异常、服务不稳定（响应时间超阈/抖动）、网络连通异常（TCP/PING 不可达）、访问状态变化（HTTP 状态码变更/重定向变更）；四维监测结果 SHALL 落 `availability_points`（`engine` 区分 http/dns/tcp/ping），访问状态变化 SHALL 生成事件（归入"可用性异常"）并记录状态变更前后对比。
+7. WHEN 启用访问速度预置设置（`engine_switches.availability.slow_threshold_ms`，响应时间阈值，默认 3000ms，可配置），引擎 SHALL 以最近 N 次（默认 5 次）采样均值与阈值比对判定"访问速度过慢"，WHEN 响应时间均值超过阈值，系统 SHALL 生成可用性事件（服务不稳定，含当前均值/阈值/最近采样序列）；IF 均值超阈且连续多次（`fail_count` 内）持续超阈，系统 SHALL 判定服务不稳定并告警。
 
 #### R2.8 端口服务监测引擎
 
@@ -160,6 +161,10 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. WHEN 检测 DNS 劫持，引擎 SHALL 对比多节点解析结果的一致性。
 2. WHEN 检测 DNS 污染，引擎 SHALL 识别异常 TTL 与异常解析记录。
 3. 引擎 SHALL 通过字典爆破 + 被动 DNS 收集发现子域名。
+4. WHEN 对目标执行证书监测，引擎 SHALL 检测证书合法性（证书是否有效/自签名/过期）与有效期剩余天数，WHEN 证书剩余有效期低于可配置阈值（`engine_switches.dns_security.cert_expire_days`，默认 30 天），系统 SHALL 生成证书告警（finding `type=certificate`，含证书 CN/SAN/签发机构/有效期/剩余天数，归入"证书告警"事件类型并触发告警）。
+5. WHEN 检测证书被撤销，引擎 SHALL 经 CRL/OCSP 校验证书撤销状态，WHEN 证书处于撤销列表或 OCSP 返回 revoked，系统 SHALL 生成证书告警。
+6. WHEN 检测证书信任链，引擎 SHALL 校验签发机构是否受信任（CA 证书库匹配），WHEN 证书由不受信任/未知 CA 签发，系统 SHALL 生成证书告警（对齐 R2.6-3 钓鱼上下文证书检测）。
+7. WHEN 检测证书域名配置，引擎 SHALL 校验证书 SAN/CN 与目标域名是否匹配，WHEN SAN 未包含目标域名或存在域名配置错误（证书与域名不匹配/证书用于错误域名），系统 SHALL 生成证书告警。
 
 #### R2.10 信誉监测引擎
 
@@ -324,7 +329,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.2 资产管理
 
 1. 系统 SHALL 提供资产后端 API：CRUD（`GET/POST /api/v1/assets`、`GET/PUT/DELETE /api/v1/assets/:id`）。
-2. 系统 SHALL 提供资产画像接口 `GET /api/v1/assets/:id/profile`（技术栈指纹/ICP 备案/子域名/SSL 证书倒计时/端口服务快照）。
+2. 系统 SHALL 提供资产画像接口 `GET /api/v1/assets/:id/profile`（技术栈指纹/ICP 备案/子域名/SSL 证书倒计时/端口服务快照），证书倒计时 SHALL 展示剩余天数并联动证书告警（R2.9-4~7，剩余天数低于阈值标红提示）。
 3. 系统 SHALL 提供资产变更追踪接口 `GET /api/v1/assets/:id/history`（标题/技术栈/状态码/端口变动历史）。
 4. 系统 SHALL 在资产入库前执行 URL 归一化，并通过 BadgerDB MD5 防重。
 5. 系统 SHALL 提供微信公众号资产接口完整 CRUD（`GET/POST /api/v1/wechat-assets`、`GET/PUT/DELETE /api/v1/wechat-assets/:id`），字段包含公众号名、微信号、头像、粉丝数、简介、认证状态与文章数。
@@ -336,7 +341,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.3 安全事件中心
 
 1. 系统 SHALL 提供事件列表 `GET /api/v1/events`（风险名称/问题 URL/关联资产/检测来源/发现时间/级别/状态流转：待处理→处理中→已关闭→已归档）与事件详情 `GET /api/v1/events/{id}`（事件详情内容/关联证据/页面快照/工单/时间线），列表支持按级别/来源资产/引擎类型/内容/状态/时间范围筛选。
-2. 系统 SHALL 支持事件类型筛选：漏洞/内容违规/暗链挂马/木马/Webshell/钓鱼/篡改/可用性异常/端口暴露/敏感信息泄漏/信誉异常/情报预警。
+2. 系统 SHALL 支持事件类型筛选：漏洞/内容违规/暗链挂马/木马/Webshell/钓鱼/篡改/可用性异常/端口暴露/敏感信息泄漏/信誉异常/情报预警/证书告警。
 3. 系统 SHALL 提供降噪规则配置完整 CRUD（`GET/POST /api/v1/noise-rules`、`PUT/DELETE /api/v1/noise-rules/:id`），规则类型包含白名单 IP/忽略特定类型/聚合时间窗/风暴抑制。
 4. 系统 SHALL 提供单事件状态流转 `POST /api/v1/events/{id}/status`（待处理→处理中→已关闭→已归档）与批量状态流转接口 `POST /api/v1/events/batch`（批量确认/关闭/归档）。
 5. 系统 SHALL 支持闭环处置流程：事件确认→工单派发→修复跟踪→复测验证→归档；工单状态 SHALL 按 `open`（生成/派发）→ `in_progress`（修复跟踪）→ `verify`（复测验证）→ `closed`（关闭归档）流转并记录状态变更时间线。流程 SHALL 自动挂载应急响应 SOP，SOP SHALL 来自内置模板库（按事件类型默认挂载对应处置步骤，如 WebShell 事件挂"隔离+溯源+加固"步骤），org_admin 可在系统设置维护自定义 SOP。
@@ -405,7 +410,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.10 任务调度与策略
 
 1. 系统 SHALL 提供策略模板（10 大引擎开关/扫描并发/超时/速率限制/递归扫描参数，含子页面监控开关 `crawl_subpages`），完整 CRUD（`GET/POST /api/v1/policies`、`PUT/DELETE /api/v1/policies/:id`）、复制模板 `POST /api/v1/policies/:id/copy` 与批量删除 `POST /api/v1/policies/batch-delete`。策略模板 SHALL 标注业务场景 `scenario`（`daily` 日常巡检 / `important` 重保 / `hw` 护网 / `custom` 自定义，默认 `daily`），场景 SHALL 决定默认引擎开关与强度参数预设：`daily` 低强度巡检（默认参数、告警正常路由）、`important` 重保期高强度监测（全引擎高频扫描 + 告警升级 + 每日战报，见 R5.20）、`hw` 护网期间临时高并发（全引擎 + 高并发 + 告警升级通道 + 值守模式，见 R5.20）、`custom` 由用户自由配置；场景可在创建时选择、创建后修改，复制模板时场景随深拷贝继承。
-2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口），完整 CRUD（`GET/POST /api/v1/scan-plans`、`PUT/DELETE /api/v1/scan-plans/:id`）、启停开关 `PATCH /api/v1/scan-plans/:id/status` 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。Cron 表达式 SHALL 绑定明确时区（默认 `Asia/Shanghai`，可经 `CINSIGHT_TIMEZONE` 覆盖），服务端按该时区计算执行时间，前端创建/编辑时展示所选时区。
+2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口，可配置子页面监控频率 `subpage_cron_expr`，可空），完整 CRUD（`GET/POST /api/v1/scan-plans`、`PUT/DELETE /api/v1/scan-plans/:id`）、启停开关 `PATCH /api/v1/scan-plans/:id/status` 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。Cron 表达式 SHALL 绑定明确时区（默认 `Asia/Shanghai`，可经 `CINSIGHT_TIMEZONE` 覆盖），服务端按该时区计算执行时间，前端创建/编辑时展示所选时区。
 3. 系统 SHALL 提供任务列表、任务详情 `GET /api/v1/tasks/:id`（状态/进度/执行日志/结果统计/Worker 分配）、停止 `POST /api/v1/tasks/:id/stop`（停止后任务状态置 `cancelled` 并标记 `stopped_by_user=true`，`cancelled` 表示用户主动中止、不参与失败重试）、失败重跑 `POST /api/v1/tasks/:id/rerun`、删除历史任务 `DELETE /api/v1/tasks/:id`、批量停止 `POST /api/v1/tasks/batch-stop` 与批量失败重跑 `POST /api/v1/tasks/batch-rerun`。
 4. 系统 SHALL 提供任务队列监控 `GET /api/v1/tasks/queue`（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示 `GET /api/v1/tasks/{id}/progress`。
 5. 任务分发 SHALL 采用 Worker 拉取（Pull）模型，以任务为单位整体分配给单个 Worker 执行，不在任务内分片；同一任务同一时刻仅一个 Worker 执行（`processing` 状态锁定）；调度器 SHALL 按心跳上报的负载（`load`）优先分发给负载最低的在线 Worker。
@@ -433,7 +438,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 6. 系统 SHALL 提供通知路由规则配置 `GET/PUT /api/v1/notify-routes`：按事件类型与严重级别（如 critical/high 走钉钉 + 邮件、medium 走企微、低危静默）映射到具体渠道，未命中路由的告警 SHALL 按默认渠道发送；渠道启用开关与风暴抑制（R4.2-4）在路由层生效。
 7. 通知渠道的密钥/令牌类字段（Webhook Secret、SMTP 密码等）SHALL 加密存储（AES-256-GCM，主密钥经环境变量注入），接口返回时 SHALL 脱敏（仅掩码显示），编辑回显 SHALL 提供"留空则保持原值"。
 8. Worker 注册 SHALL 受组织 Worker 配额约束：已注册 Worker 数达到该组织 `max_workers` 时，注册握手 SHALL 返回 4291 `WORKER_QUOTA_EXCEEDED` 拒绝注册；移除节点释放配额。
-9. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/敏感信息规则集/关键词监测规则/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）；敏感信息规则集 SHALL 支持 HaENet Rules.yml 结构（group/name/f_regex/s_regex/scope/engine/sensitive）YAML 导入；关键词监测规则 SHALL 支持关键词或正则模式、敏感级别（敏感/普通）与启用禁用，供内容安全引擎关键词监测（R2.3-9）使用。
+9. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/敏感信息规则集/关键词监测规则/内容白名单词汇/外链白名单域名/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）；敏感信息规则集 SHALL 支持 HaENet Rules.yml 结构（group/name/f_regex/s_regex/scope/engine/sensitive）YAML 导入；关键词监测规则 SHALL 支持关键词或正则模式、敏感级别（敏感/普通）与启用禁用，供内容安全引擎关键词监测（R2.3-9）使用；内容白名单词汇规则（`kind=content_whitelist`）SHALL 支持精确词或正则，供敏感词/关键词监测剔除命中（R2.3-1/R2.3-9）；外链白名单域名规则（`kind=domain_whitelist`）SHALL 支持域名或二级域，供外链发现排除可疑标记（R2.3-7）。
 10. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
 11. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 记录客户端 IP 与 User-Agent（服务端请求中间件捕获，不依赖前端上报），并禁止修改与删除。审计 SHALL 覆盖：登录/登出、资产增删改与批量操作、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎内部回传不审计，批量操作逐条记录。
 12. 系统 SHALL 提供 API Token 管理（`GET/POST /api/v1/api-tokens` 列表/创建，细粒度权限/有效期），支持撤销 `DELETE /api/v1/api-tokens/{id}` 与临时停用/恢复 `PATCH /api/v1/api-tokens/{id}/status`。
