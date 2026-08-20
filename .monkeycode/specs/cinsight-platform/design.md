@@ -138,7 +138,8 @@ sequenceDiagram
 | Service | 业务逻辑层（脱敏/风暴抑制/证据校验） | `assetsService`, `evidenceService`... |
 | Repository | GORM/SQLite + BadgerDB 数据访问 | `assetRepo`, `taskRepo`, `eventRepo`, `kvRepo` |
 | TaskScheduler | 任务分发、超时对账、断点续扫状态 | `PullTask()`, `MarkProcessing()`, `AckResult()` |
-| CronScheduler | 按 scan_plans.cron_expr 定时生成 scan_tasks、按 report_templates.period/cron_expr 定时生成 reports（计划/模板绑定时区计算；paused/组织禁用/到期跳过触发，启用后恢复；计划 time_window 窗口外跳过触发） | `GenerateTasks()`, `Tick()` |
+| CronScheduler | 按 scan_plans.cron_expr 定时生成 scan_tasks、按 report_templates.period/cron_expr 定时生成 reports、重保/护网激活期间按日生成 daily_war_reports（计划/模板绑定时区计算；paused/组织禁用/到期跳过触发，启用后恢复；计划 time_window 窗口外跳过触发） | `GenerateTasks()`, `Tick()` |
+| AlertEscalator | 告警升级 watchdog：周期（默认每 30s）扫描未确认告警，命中 escalation_rules（级别门槛+延迟时间，如 critical-30）超时未确认 SHALL 逐级升级至 escalate_to 并加急推送、写审计日志（alert.escalate）、广播 WebSocket alert.escalated；仅重保/护网（scenario=important/hw）激活期间运行 | `ScanAndEscalate()`, `Escalate(alert)` |
 | WebSocketHub | 实时事件推送、指数退避重连 | `Broadcast(event)` |
 | BatchIndexer | Bleve 批量索引（5s/50 条） | `Enqueue(doc)`, `Flush()` |
 | AsyncPersist | 异步持久化通道（写入收敛单协程，BadgerDB 元数据 + 事件/审计落库） | `Enqueue(write)` |
@@ -462,6 +463,8 @@ type Finding struct {
 | 场景 | POST | /api/v1/scenarios/:id/deactivate | org_admin | 停用场景 |
 | 值守 | GET | /api/v1/watch/shift | 全部角色 | 值守班次列表/当前值班人 |
 | 值守 | POST | /api/v1/watch/handover | org_admin/engineer | 交接班记录（交接时间/交接人/未处置告警与事件清单） |
+| 升级 | GET/POST | /api/v1/escalation-rules | org_admin | 告警升级规则（级别门槛/延迟时间/升级对象） |
+| 升级 | PUT/DELETE | /api/v1/escalation-rules/:id | org_admin | 升级规则编辑/删除 |
 | 成员 | GET/POST | /api/v1/members | org_admin | 成员列表/邀请 |
 | 成员 | POST | /api/v1/members/batch-invite | org_admin | 批量邀请（邮箱数组） |
 | 成员 | POST | /api/v1/members/batch-remove | org_admin | 批量移除成员 |
@@ -607,6 +610,7 @@ erDiagram
     organizations ||--o{ escalation_rules : owns
     organizations ||--o{ watch_shifts : owns
     organizations ||--o{ daily_war_reports : owns
+    organizations ||--o{ scenarios : owns
 
     organizations {
         int id PK
@@ -751,6 +755,7 @@ erDiagram
         string title
         string content
         string status "open/acknowledged/closed/silenced"
+        string extra "JSON 扩展（重保升级信息 extra.escalated 等）"
         datetime created_at
         datetime resolved_at
         int version "乐观锁版本，默认 1"
@@ -988,6 +993,17 @@ erDiagram
         string file_path "导出产物路径（PDF/Excel）"
         datetime created_at
     }
+    scenarios {
+        int id PK
+        int org_id FK
+        string name
+        string scenario_type "daily/important/hw/custom"
+        string description
+        bool activated "当前是否激活，同一组织至多一个激活场景"
+        datetime activated_at "最近激活时间，可空"
+        datetime deactivated_at "最近停用时间，可空"
+        datetime created_at
+    }
 ```
 
 ### 关键表字段补充
@@ -1011,9 +1027,11 @@ erDiagram
 **重保/护网（HW）专项（R5.20）**：
 - **告警升级通道**：`escalation_rules`（`id, org_id, name, trigger(级别门槛+延迟时间，如 critical-30), escalate_to(org_admin/值班组), enabled, version`）配置升级规则。处于 `scenario=important/hw` 时，`critical/high` 告警超过延迟时间仍未确认 SHALL 逐级升级：升级目标写入告警 `extra.escalated` 并加急推送（通知路由 `*` 通配兜底），升级动作写审计日志（`alert.escalate`）并广播 WebSocket 值守通道。
 - **值守模式**：`watch_shifts`（`id, org_id, start_time, end_time, on_duty, handover_note, status(active/ended), created_at`）记录班次与交接。值守期间前端提供全屏值守视图（实时事件流 + 告警处置 + 升级状态 + 战报入口）；交接班经 `POST /api/v1/watch/handover` 记录交接人与未处置告警/事件清单。
-- **每日战报**：`daily_war_reports`（`id, org_id, report_date, summary, file_path, created_at`）由调度器在重保/护网期间按日生成（当日数据快照：新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次），可经报告中心导出并推送通知渠道；次日生成不回溯当日。
+- **每日战报**：`daily_war_reports`（`id, org_id, report_date, summary, file_path, created_at`）由 `CronScheduler` 在重保/护网激活期间按日生成（每日按 `CINSIGHT_TIMEZONE` 时区 00:30 生成前一日数据快照：新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次），可经报告中心导出并推送通知渠道；次日生成不回溯当日。
 - **重点资产加强监控**：`assets.importance=high` 标记资产纳入重保范围，其 `critical/high` 事件自动创建告警并进入升级通道。
-- **场景启停**：`org_admin` 经 `POST /api/v1/scenarios/{id}/activate|deactivate` 控制场景激活；组织禁用/到期自动停用并停止相关定时计划。
+- **场景启停**：`org_admin` 经 `POST /api/v1/scenarios/{id}/activate|deactivate` 控制场景激活；激活状态持久化于 `scenarios.activated`（同一组织至多一个激活场景，激活新场景自动停用旧场景）；组织禁用/到期自动停用并停止相关定时计划。
+
+**场景表（scenarios）**：`id, org_id, name, scenario_type(daily/important/hw/custom), description, activated, activated_at, deactivated_at, created_at`。场景为可管理实体（`GET/POST /api/v1/scenarios`、`PUT/DELETE /api/v1/scenarios/:id`），激活后：重保/护网（`scenario_type=important/hw`）启用告警升级通道、值守模式与每日战报；`daily`/`custom` 激活仅作为平台展示的状态标记，不触发专项能力。
 
 **资产分组**：`assets.group_name` 为字符串标签（自由填写，批量改分组 `batch-group` 覆盖），无独立分组实体；资产列表分组筛选下拉按 `distinct(group_name)` + 计数生成；定时计划按 `asset_group_name` 精确匹配资产集合。
 
@@ -1052,7 +1070,7 @@ erDiagram
 **策略模板场景预设（R5.10-1）**：`scan_policies.scenario ∈ daily/important/hw/custom`，决定创建模板时的默认引擎开关与强度参数，创建后参数可改：
 - `daily`（日常巡检，默认）：默认引擎参数（并发默认 4、递归 2、告警正常路由）。
 - `important`（重保）：全量开启 10 大引擎，推荐递归深度 3、单站并发 8-16、任务并发放宽；`critical/high` 告警进入升级通道（`escalation_rules`）。
-- `hw`（护网）：在重保基础上任务并发优先（Worker 弹性伸缩、峰值 1000 任务并发可临时上调）、告警升级通道 + 值守模式 + 每日战报。
+- `hw`（护网）：在重保基础上任务并发优先（Worker 弹性伸缩、峰值 1000 任务并发可临时上调，紧急提速即临时上调峰值并发与单站并发并优先调度）、告警升级通道 + 值守模式 + 每日战报。
 - `custom`：用户自由配置，不做预设覆盖。
 场景切换仅影响之后下发的任务，不追溯已执行任务；复制模板时 `scenario` 随深拷贝继承。
 
@@ -1087,6 +1105,7 @@ erDiagram
 | escalation_rules | `idx_escalation_org` | 升级规则按组织查询 |
 | watch_shifts | `idx_shift_org_status`（org_id, status） | 值守班次列表/当前值班人 |
 | daily_war_reports | `idx_war_report_org_date`（org_id, report_date） | 每日战报按组织/日期查询 |
+| scenarios | `idx_scenarios_org`（org_id） | 场景按组织查询 |
 | audit_logs | `idx_audit_org_created`, `idx_audit_org_user`, `idx_audit_org_action`（org_id, username/action, created_at） | 审计筛选/查询 |
 
 ### 迁移策略

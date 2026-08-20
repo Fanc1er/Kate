@@ -16,7 +16,7 @@ Updated: 2026-08-19
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
 - [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
 - [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
-- [ ] 全量业务表结构迁移（organizations/users/user_orgs/assets/vulnerabilities/alerts/findings/scan_tasks/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_items/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points/sensitive_info_hits/rule_definitions/escalation_rules/watch_shifts/daily_war_reports）
+- [ ] 全量业务表结构迁移（organizations/users/user_orgs/assets/vulnerabilities/alerts/findings/scan_tasks/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_items/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points/sensitive_info_hits/rule_definitions/escalation_rules/watch_shifts/daily_war_reports/scenarios）
 
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
@@ -277,7 +277,7 @@ Updated: 2026-08-19
 - [ ] 扫描场景 CRUD（GET/POST /api/v1/scenarios + PUT/DELETE /api/v1/scenarios/:id；scenario=daily/important/hw/custom，策略模板绑定场景，复制模板时继承 scenario）
 - [ ] 场景预设参数：重保（important）全量开启 10 大引擎 + 递归 3 + 并发 8-16；护网（hw）任务并发优先/Worker 弹性伸缩/峰值 1000 可临时上调；自定义（custom）自由配置；场景切换仅影响之后下发任务
 - [ ] 场景激活/停用（POST /api/v1/scenarios/:id/activate|deactivate，org_admin；组织禁用/到期自动停用并停止相关定时计划）
-- [ ] 告警升级通道（escalation_rules 表 + 配置 CRUD：级别门槛/延迟时间/升级对象；critical/high 超时未确认逐级升级至 org_admin + 加急推送 + 审计 alert.escalate + WebSocket 广播 alert.escalated）
+- [ ] 告警升级通道（escalation_rules 表 + 配置 CRUD：级别门槛/延迟时间/升级对象；AlertEscalator watchdog 每 30s 扫描未确认告警，critical/high 超时未确认逐级升级至 org_admin + 加急推送 + 审计 alert.escalate + WebSocket 广播 alert.escalated；仅重保/护网激活期间运行）
 - [ ] 重点资产加强监控（assets.importance=high 标记；重保/护网期间其 critical/high 事件自动建告警并进入升级通道）
 - [ ] 值守班次与交接（watch_shifts 表；GET /api/v1/watch/shift 班次列表/当前值班人；POST /api/v1/watch/handover 交接记录含未处置告警/事件清单；WebSocket 广播 watch.handover）
 - [ ] 值守全屏视图（前端：实时事件流 + 告警处置入口 + 升级状态 + 战报入口）
