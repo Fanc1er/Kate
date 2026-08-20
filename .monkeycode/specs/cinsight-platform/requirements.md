@@ -93,7 +93,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 平台，I want 引擎发现按统一规则分流到事件/漏洞/告警，SO THAT 三类台账职责清晰、不重复处置。
 
 **Acceptance Criteria:**
-1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 13 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（AI 分类涉黄赌毒政 `type=content_violation` / `type=sensitive_word` 敏感词命中 / `type=keyword_hit` 关键词命中）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）/篡改（`type=content_integrity` 内容完整性基线偏差）/暗链挂马（`type=external_link` 外链发现异常）/可用性异常（`type=dead_link` 死链命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染）/漏洞（子域名接管类进漏洞聚合）/证书告警（证书合法性/有效期/撤销/CA 信任/域名配置异常，R2.9-4）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
+1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 13 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（AI 分类涉黄赌毒政 `type=content_violation` / `type=sensitive_word` 敏感词命中 / `type=keyword_hit` 关键词命中 / `type=image_ocr` 图片 OCR 识别命中）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）/篡改（`type=content_integrity` 内容完整性基线偏差）/暗链挂马（`type=external_link` 外链发现异常，含友链/引用篡改 / `type=image_ocr` 图片 OCR 提取可疑 URL）/可用性异常（`type=dead_link` 死链命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染）/漏洞（子域名接管类进漏洞聚合）/证书告警（证书合法性/有效期/撤销/CA 信任/域名配置异常，R2.9-4）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
 2. 降噪规则 SHALL 在**事件生成时**生效（白名单 IP 目标不生成事件、忽略指定类型不生成、聚合时间窗合并同类、风暴抑制限流），命中规则的事件 SHALL 直接丢弃不落库；命中降噪规则的 finding SHALL 同时不生成告警、不触发通知推送（降噪在告警生成与推送之前拦截）；规则变更仅影响之后的事件生成，不回溯清理已生成事件。
 3. WHEN finding 属于漏洞类引擎（漏洞扫描/DNS 解析类等），系统 SHALL 按 `org_id + asset_id + 引擎 + 特征签名` 聚合：首次命中生成 `vulnerabilities` 记录，重复命中仅更新 `last_seen_at` 并刷新严重级别。
 4. WHEN finding 严重级别为 `high/critical` 或命中告警类型（可用性宕机、端口暴露、页面篡改、情报预警等），系统 SHALL 生成 `alerts` 记录（`resolved_at` 为空），并按通知路由（R5.13-6）推送。
@@ -113,9 +113,10 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 4. WHEN 执行内容安全监测，引擎 SHALL 调用多端 UA 综合评估器（R2.12）：以随机 PC UA、标准移动 UA、微信内置浏览器 UA、无头浏览器移动视口模拟（移动 UA + 手机宽度视口）四探针抓取比对，WHEN 任一探针命中敏感词/敏感信息或与基线偏差超阈，系统 SHALL 将对应维度计入综合评分并输出端级结论（哪一端异常、异常类型）。
 5. WHEN 执行敏感信息监测，引擎 SHALL 支持深度递归扫描与资产发现：以种子 URL 递归抓取并解析页面链接与静态资源（JS/CSS/图片/音视频），`scan_depth` 范围 1-5（默认 2）、单站点并发上限 2-32（默认 4，可配置），自动过滤静态文件与无效链接（404/死链），URL 归一化去重（同任务内去重）；递归进度 SHALL 经任务进度接口（R5.10-4）实时上报（已抓 URL 数/已发现资产数/命中数），已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）SHALL 写入 `assets` 表并标注来源类型。WHEN 策略开启子页面监控（`crawl_subpages` 策略字段，默认 true），引擎 SHALL 对递归抓取的子页面执行各内容子能力监测（敏感词/敏感信息/多端 UA 等）；WHEN 关闭 `crawl_subpages`，递归深度 SHALL 强制为 1（仅种子 URL 列表，内容子能力只作用于种子页面，不执行子页面资产发现）。WHEN 开启子页面监控且计划配置了子页面频率（`scan_plans.subpage_cron_expr`，可空），子页面递归扫描 SHALL 按子页面频率独立触发（任务 `task_scope=subpage`，仅扫描已发现子页面）；WHEN `subpage_cron_expr` 为空，子页面 SHALL 跟随主频率（`cron_expr`）与种子页面同任务扫描。
 6. WHEN 启用内容完整性持续监测（防篡改增强），引擎 SHALL 对纳入监测的重点资产（`assets.importance=high`）以重要内容维度建立并维护基线（标题、正文关键区域、用户指定的关键文案/文本片段 Hash、关键外链集合），按计划任务周期持续与基线比对，WHEN 关键内容被修改/删除/替换或关键外链集合变化，系统 SHALL 生成篡改发现（finding `type=content_integrity`，含变更前后对比与变更维度）并触发篡改告警（对齐 R5.20-5 重点资产加强监控与 R2.1b-4 告警生成）。
-7. WHEN 启用外链发现监测，引擎 SHALL 解析页面全部外链（外部资源 JS/CSS/图片/音视频、出站链接、第三方域名）并建立外链清单基线，WHEN 检测到新增外链、移除外链、外链目标域名变更或外链指向可疑域名（恶意域名库命中/域名相似度异常），系统 SHALL 生成外链发现（finding `type=external_link`，含外链 URL/类型/来源页面/新增或移除变更标记），归入"暗链挂马"事件类型并进入暗链风险列表；WHEN 外链目标命中白名单域名（`rule_definitions.kind=domain_whitelist`，组织自定义可信域名/二级域），该外链 SHALL 不标记可疑、不进暗链风险列表（新增/移除仍记录变更）。
+7. WHEN 启用外链发现监测，引擎 SHALL 解析页面全部外链（外部资源 JS/CSS/图片/音视频、出站链接、第三方域名）并建立外链清单基线，WHEN 检测到新增外链、移除外链、外链目标域名变更或外链指向可疑域名（恶意域名库命中/域名相似度异常），系统 SHALL 生成外链发现（finding `type=external_link`，含外链 URL/类型/来源页面/新增或移除变更标记），归入"暗链挂马"事件类型并进入暗链风险列表；WHEN 外链目标命中白名单域名（`rule_definitions.kind=domain_whitelist`，组织自定义可信域名/二级域），该外链 SHALL 不标记可疑、不进暗链风险列表（新增/移除仍记录变更）。WHEN 检测到页面引用链接/友情链接区块被篡改（友链区、引用区链接被替换为恶意、无关或未授权链接，含区块结构比对与 rel 标记异常），系统 SHALL 标记友链/引用篡改（finding `type=external_link` 子类 `link_tampered`，含被篡改链接/原始链接/变更前后区块），归入"暗链挂马"并触发篡改告警。
 8. WHEN 启用死链监测，引擎 SHALL 对资产页面内链接（内链+外链）逐一校验健康度，WHEN 链接返回 4xx/5xx/连接失败/超时，系统 SHALL 生成死链记录（finding `type=dead_link`，含死链 URL/来源页面/状态码/响应时间），归入"可用性异常"事件类型，支持筛选与统计。
 9. WHEN 启用关键词监测，引擎 SHALL 按用户自定义关键词清单（规则库关键词规则，`rule_definitions.kind=keyword`，支持正则与敏感级别分级）对页面正文/HTML 源码/URL 持续匹配，WHEN 命中，系统 SHALL 生成关键词命中记录（finding `type=keyword_hit`，含命中关键词/原文片段/位置/所属规则），归入"内容违规"事件类型；敏感级关键词 SHALL 触发告警，普通级 SHALL 仅生成事件；WHEN 命中文本片段包含白名单词汇（`rule_definitions.kind=content_whitelist`），该命中 SHALL 剔除（不生成 finding）。
+10. WHEN 启用图片内容 OCR 识别（content_security 子能力，`engine_switches.image_ocr.enabled`），引擎 SHALL 对页面内图片（jpg/png/gif/webp，可配置扩展名与大小上限）执行 OCR 文字识别（Worker 侧 OCR 引擎，如 tesseract，超时/引擎不可用 SHALL 降级跳过不阻断任务），WHEN 识别文本命中敏感词库/AI 文本分类（对齐 R2.3-1 来源标记 regex|ai 与白名单词汇剔除），系统 SHALL 生成 OCR 发现（finding `type=image_ocr`，含图片 URL/识别文本/置信度/判定来源）；WHEN 识别文本中提取到 URL，该 URL SHALL 交外链发现核验（可疑归"暗链挂马"），WHEN 命中敏感词/违规分类 SHALL 归入"内容违规"并触发告警。
 
 #### R2.4 暗链挂马引擎
 
@@ -378,6 +379,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 9. 系统 SHALL 提供外链发现列表：外链 URL/类型（外部资源/出站链接/第三方域名）/来源页面/新增或移除标记/可疑标记（恶意域名库命中/域名相似度），数据源为 `GET /api/v1/findings`（`engine=content_security&type=external_link`），可疑外链 SHALL 进入暗链风险列表。
 10. 系统 SHALL 提供死链监测列表：死链 URL/来源页面/状态码/响应时间，支持按状态码与来源资产筛选和统计，数据源为 `GET /api/v1/findings`（`engine=content_security&type=dead_link`）。
 11. 系统 SHALL 提供关键词命中列表：命中关键词/原文片段/位置/所属规则/敏感级别，数据源为 `GET /api/v1/findings`（`engine=content_security&type=keyword_hit`）；关键词规则管理复用规则库（R5.13-9 关键词规则类别，支持正则/敏感级别/启用禁用）。
+12. 系统 SHALL 提供图片 OCR 识别结果列表：图片 URL/识别文本/置信度/判定来源（regex/ai）/归入事件类型（内容违规或暗链挂马），数据源为 `GET /api/v1/findings`（`engine=content_security&type=image_ocr`），识别文本含敏感词/违规分类的项 SHALL 高亮展示。
 
 #### R5.6 暗链与木马监测
 

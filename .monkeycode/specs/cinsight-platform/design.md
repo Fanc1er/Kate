@@ -144,6 +144,7 @@ sequenceDiagram
 | BatchIndexer | Bleve 批量索引（5s/50 条） | `Enqueue(doc)`, `Flush()` |
 | AsyncPersist | 异步持久化通道（写入收敛单协程，BadgerDB 元数据 + 事件/审计落库） | `Enqueue(write)` |
 | ResultAssessor | 结果评估引擎：发现处理链路中对每条 finding 多因子综合评估（severity 基础分 × confidence + 多引擎重合/重点资产/高危类型加成），输出 risk_score/risk_level/suggestion 与评估明细（R2.13） | `Assess(finding, ctx)`, `Suggestion(engine, level)` |
+| OcrEngine | 图片内容 OCR 识别：对页面图片执行文字识别（Worker 侧集成 tesseract，超时/不可用降级跳过），识别文本回传内容安全引擎复核敏感词/AI 分类/URL 提取（R2.3-10） | `Ocr(ctx, image) (*OcrResult, error)` |
 | RuleWatcher | fsnotify 规则热加载 | `WatchRules()`, `GetRuleHash()` |
 
 ### Worker 组件
@@ -276,7 +277,7 @@ type Finding struct {
 | 引擎 | Name | 依赖 |
 |------|------|------|
 | 漏洞扫描 | `vuln_scan` | POC 库、ants 协程池、gobreaker |
-| 内容安全 | `content_security` | AI 文本分类 + 敏感词监测（内置敏感词库正则双判定）+ MultiUAAssessor 多端评估 + 内容完整性基线 + 外链发现 + 死链健康度 + 关键词规则匹配 |
+| 内容安全 | `content_security` | AI 文本分类 + 敏感词监测（内置敏感词库正则双判定）+ MultiUAAssessor 多端评估 + 内容完整性基线 + 外链发现（含友链/引用篡改检出）+ 死链健康度 + 关键词规则匹配 + 图片内容 OCR 识别 |
 | 暗链挂马 | `hidden_link` | 特征库、双 UA 抓取、沙箱行为分析 |
 | Webshell | `webshell` | 路径字典、特征码库、流量特征 |
 | 钓鱼 | `phishing` | 钓鱼模板库、Levenshtein、证书解析 |
@@ -455,7 +456,7 @@ type Finding struct {
 | 工单 | GET | /api/v1/tickets/:id | 全部角色 | 工单详情 |
 | 工单 | PUT | /api/v1/tickets/:id | org_admin/engineer | 工单状态/派发 |
 | 发现 | GET | /api/v1/findings | 全部角色 | 发现列表（engine/type/severity/status/risk_level/asset_id 筛选分页，支撑 R5.5 敏感内容/信息泄漏、R5.6 暗链木马、R5.7 Webshell/钓鱼列表） |
-| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 风险分/风险等级/处置建议 + `extra.assessment` 评估明细 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告，`type=content_integrity`/`external_link`/`dead_link`/`keyword_hit`/`sensitive_word` 时含 `extra` 对应子能力明细：变更前后对比/外链变更标记/死链状态码/命中原文与位置/判定来源与置信度，`type=certificate` 时含证书 CN/SAN/签发机构/有效期/剩余天数/撤销状态/信任链判定） |
+| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 风险分/风险等级/处置建议 + `extra.assessment` 评估明细 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告，`type=content_integrity`/`external_link`/`dead_link`/`keyword_hit`/`sensitive_word` 时含 `extra` 对应子能力明细：变更前后对比/外链变更标记（含 link_tampered 篡改明细）/死链状态码/命中原文与位置/判定来源与置信度，`type=image_ocr` 时含图片 URL/识别文本/置信度/判定来源，`type=certificate` 时含证书 CN/SAN/签发机构/有效期/剩余天数/撤销状态/信任链判定） |
 | 证据 | GET | /api/v1/evidence/:id | 全部角色 | 通用证据读取（Req/Resp/HTML/截图，Hash 校验） |
 | 证据 | GET | /api/v1/evidence/:id/download | 全部角色 | 下载 HTML/HAR |
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
@@ -672,7 +673,7 @@ erDiagram
         int org_id FK
         string name
         string scenario "业务场景 daily/important/hw/custom，默认 daily（决定引擎/强度预设，见策略模板场景预设段）"
-        string engine_switches "JSON（含 multi_ua.enabled / ua_sets / weights 等评估参数，与内容安全子能力开关 sensitive_word.enabled / keyword_hit.enabled / content_integrity.enabled / external_link.enabled / dead_link.enabled，可用性预置 availability.fail_count(失效判定次数，默认 3，关键资产 2) / availability.slow_threshold_ms(访问速度阈值，默认 3000) / dns_security.cert_expire_days(证书过期告警提前天数，默认 30)）"
+        string engine_switches "JSON（含 multi_ua.enabled / ua_sets / weights 等评估参数，与内容安全子能力开关 sensitive_word.enabled / keyword_hit.enabled / content_integrity.enabled / external_link.enabled / dead_link.enabled / image_ocr.enabled，可用性预置 availability.fail_count(失效判定次数，默认 3，关键资产 2) / availability.slow_threshold_ms(访问速度阈值，默认 3000) / dns_security.cert_expire_days(证书过期告警提前天数，默认 30)）"
         int concurrency
         int timeout "任务级超时上限(分钟)，默认 60"
         int rate_limit
@@ -1204,7 +1205,7 @@ src/
 │   ├── event/           # 安全事件中心（列表/详情/状态流转/降噪规则）
 │   ├── alert/           # 独立告警中心（列表/处置/静默）
 │   ├── vulnerability/   # 漏洞管理（列表/详情/证据链/批量处置）
-│   ├── content/         # 内容安全（敏感内容/信息泄漏/篡改/多端 UA 评估/内容完整性/外链发现/死链/关键词命中）
+│   ├── content/         # 内容安全（敏感内容/信息泄漏/篡改/多端 UA 评估/内容完整性/外链发现（含友链/引用篡改）/死链/关键词命中/图片 OCR 识别）
 │   ├── hidden-link/     # 暗链与木马（列表/双 UA 对比）
 │   ├── webshell/        # Webshell 与钓鱼检测
 │   ├── availability/    # 可用性与网络（四维点阵图 HTTP/DNS/TCP/PING/时序折线/端口/多端 UA/官网活动关键资产持续监测）
@@ -1318,8 +1319,9 @@ Worker 结果回传后 Master 的处理顺序：
 | `content_security` | 敏感信息泄漏 | 敏感信息命中（`type=sensitive_info`，命中原文/scope/来源 URL/递归深度见 `sensitive_info_hits` 明细表） |
 | `content_security` | 内容违规 | 关键词命中（`type=keyword_hit`，命中关键词/原文片段/位置/所属规则，敏感级触发告警） |
 | `content_security` | 篡改 | 内容完整性基线偏差（`type=content_integrity`，标题/正文关键区域/关键文案 Hash 变更，含变更前后对比） |
-| `content_security` | 暗链挂马 | 外链发现异常（`type=external_link`，新增/移除/目标域名变更/指向可疑域名，进暗链风险列表） |
+| `content_security` | 暗链挂马 | 外链发现异常（`type=external_link`，新增/移除/目标域名变更/指向可疑域名，进暗链风险列表；子类 `link_tampered` 友链/引用链接被篡改，含被篡改链接/原始链接/变更前后区块） |
 | `content_security` | 可用性异常 | 死链命中（`type=dead_link`，4xx/5xx/连接失败/超时，含来源页面/状态码/响应时间） |
+| `content_security` | 内容违规 / 暗链挂马 | 图片 OCR 识别（`type=image_ocr`，识别文本命中敏感词/违规分类→内容违规，提取 URL 交外链核验→暗链挂马，含图片 URL/识别文本/置信度/判定来源 regex|ai） |
 | `hidden_link` | 暗链挂马 / 木马 / 篡改 | 暗链与 SEO 黑帽→暗链挂马；网页木马/Shellcode→木马；双 UA 对比检出条件性加载/篡改→篡改 |
 | `webshell` | Webshell | — |
 | `phishing` | 钓鱼 | — |

@@ -140,7 +140,7 @@ Updated: 2026-08-19
 
 ### 2.2 引擎实现
 - [ ] 漏洞扫描引擎（POC + Fuzzing + 参数注入，context 30s 超时 + ants 并发）
-- [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息规则集提取 + 篡改基线）
+- [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息规则集提取 + 篡改基线 + 外链发现含友链/引用篡改检出 link_tampered + 图片 OCR 识别 image_ocr（Worker 集成 tesseract，超时降级跳过，识别文本复核敏感词/AI 分类/URL 提取））
 - [ ] 敏感词监测（内置敏感词库涉黄赌毒政正则匹配 + AI 文本分类增强/不可用超时回退正则 + 来源标记 regex/ai，type=sensitive_word，engine_switches.sensitive_word.enabled，R2.3-1）
 - [ ] 敏感信息规则集提取（rule_definitions 规则按 scope 分层匹配 request line/header/body，s_regex 过滤 + f_regex 提取，命中写 sensitive_info_hits + Bleve + findings 主命中；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证）
 - [ ] 递归扫描与资产发现（scan_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin/crawl_subpages（关闭时深度强制 1 仅测种子页）；达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded）
@@ -188,7 +188,7 @@ Updated: 2026-08-19
 - [ ] findings 查询接口（GET /api/v1/findings 列表：engine/type/severity/status/asset_id 筛选分页；GET /api/v1/findings/:id 详情：主记录 + 关联证据 + 命中明细，type=sensitive_info 返回 sensitive_info_hits、type=multi_ua 返回 extra.multi_ua，支撑 R5.5/R5.6/R5.7 列表页）
 
 ### 2.4 引擎相关前端模块
-- [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示 + 内容完整性 tab：重点资产基线/变更记录/变更前后对比 + 外链发现 tab：外链列表/变更标记/可疑标记 + 死链 tab：死链列表/状态码/筛选统计 + 关键词命中 tab：命中词/原文/规则/敏感级别）
+- [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示 + 内容完整性 tab：重点资产基线/变更记录/变更前后对比 + 外链发现 tab：外链列表/变更标记/可疑标记/友链引用篡改标记 + 死链 tab：死链列表/状态码/筛选统计 + 关键词命中 tab：命中词/原文/规则/敏感级别 + 图片 OCR tab：图片 URL/识别文本/置信度/判定来源）
 - [ ] 暗链木马页（暗链列表/木马列表含检测维度来源标注 + 双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
 - [ ] Webshell 与钓鱼页（Webshell 列表：检测路径/特征码/文件内容片段 + 钓鱼列表：仿冒目标/域名相似度/证书异常）
 - [ ] 可用性网络页（12h 点阵图绿/红竖线 + HTTP/DNS/TCP/PING 四维度切换 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示 + 官网/活动关键资产四维持续监测视图：网站打不开/DNS 解析异常/服务不稳定/网络连通异常/访问状态变化五类异常记录与状态变更对比）
@@ -208,7 +208,7 @@ Updated: 2026-08-19
 ### 2.6 阶段 2 单元测试【必执行】
 - [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
 - [ ] 敏感信息规则提取单测（scope 分层命中/凭证规则/递归去重/静态文件过滤/深度上限）
-- [ ] 内容安全子能力单测（敏感词库匹配：涉黄赌毒政命中/来源标记 regex 与 ai/AI 超时回退正则/敏感词触发告警/白名单词汇剔除命中；关键词规则匹配：关键词与正则两种模式/敏感级告警与普通级事件/禁用规则不匹配/白名单词汇剔除；内容完整性基线 Hash 比对与变更检出/变更前后对比；外链基线新增与移除/目标域名变更/恶意域名库命中与域名相似度/白名单域名不标记可疑；死链判定 4xx/5xx/连接失败/超时边界）
+- [ ] 内容安全子能力单测（敏感词库匹配：涉黄赌毒政命中/来源标记 regex 与 ai/AI 超时回退正则/敏感词触发告警/白名单词汇剔除命中；关键词规则匹配：关键词与正则两种模式/敏感级告警与普通级事件/禁用规则不匹配/白名单词汇剔除；内容完整性基线 Hash 比对与变更检出/变更前后对比；外链基线新增与移除/目标域名变更/恶意域名库命中与域名相似度/白名单域名不标记可疑/友链引用篡改 link_tampered 检出；死链判定 4xx/5xx/连接失败/超时边界；图片 OCR：识别文本命中敏感词/违规分类/提取 URL 交外链核验/OCR 超时降级跳过）
 - [ ] 发现处理链路单元测试（回传幂等 → 降噪过滤命中丢弃 → 事件生成 → 漏洞聚合首建/更新 last_seen_at → 告警生成按 severity 阈值与通知路由 → WS 广播）
 - [ ] 结果评估引擎单元测试（ResultAssessor：severity 基础分 × confidence 计算/多引擎重合加成上限 30/重点资产加成/高危类型加成/封顶 100/risk_level 映射/处置建议按引擎类型生成/评估明细 extra.assessment 结构）
 - [ ] 证书监测单元测试（合法性/有效期剩余天数低于 cert_expire_days 告警/CRL-OCSP 撤销/不受信任 CA/域名 SAN 不匹配，type=certificate 归"证书告警"事件）
