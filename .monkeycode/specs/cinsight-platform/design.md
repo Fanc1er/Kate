@@ -1064,7 +1064,7 @@ erDiagram
 
 **证据-截图关联（evidence_files）**：`id, evidence_id, org_id, kind(html/har/screenshot/req/resp), file_path, md5, sha256, size, mime_type, created_at, expires_at`，支持一条证据链多文件（Req/Resp/HTML/截图各一文件）。`expires_at` 默认 `created_at + 365 天`，超期文件由清理任务删除并回收空间。
 
-**核心表乐观锁**：`assets / scan_policies / alerts / tickets` 均含 `version`（INTEGER DEFAULT 1），更新接口要求请求体或 `If-Match` 头携带 version，与库内不一致返回 409。
+**核心表乐观锁**：`assets / scan_policies / alerts / tickets / escalation_rules` 均含 `version`（INTEGER DEFAULT 1），更新接口要求请求体或 `If-Match` 头携带 version，与库内不一致返回 409。
 
 **结果回传幂等**：`findings` 表含 `result_id`（Worker 生成的 UUID），建唯一索引 `idx_result_id`，重复回传直接返回成功不重复入库（一条回传含多条 finding 时整体幂等，重复回传不生成事件/漏洞/告警）。
 
@@ -1441,7 +1441,7 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 - 备份恢复脚本：`backup.sh`（触发 Litestream snapshot + 校验副本）、`restore.sh`（从副本恢复指定时间点 + 校验库完整性）、`drill.sh`（沙箱环境恢复演练，验证 `/readyz` 通过 + 抽样数据比对）。
 - 结果回传幂等：Worker 为每条结果生成 `result_id`（UUID），Master 唯一索引去重，重复回传返回 `{code:0, received:true}`。
 - 任务重试：失败任务自动重试上限 3 次（指数退避），超限置 `failed` 并生成告警事件。
-- 乐观锁：assets/scan_policies/alerts/tickets 表含 `version` 字段，更新接口校验请求 version 与库内一致，不一致返回 409 冲突，前端提示"数据已被他人修改，请刷新后重试"。
+- 乐观锁：assets/scan_policies/alerts/tickets/escalation_rules 表含 `version` 字段，更新接口校验请求 version 与库内一致，不一致返回 409 冲突，前端提示"数据已被他人修改，请刷新后重试"。
 
 ## Test Strategy
 
