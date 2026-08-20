@@ -93,7 +93,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 平台，I want 引擎发现按统一规则分流到事件/漏洞/告警，SO THAT 三类台账职责清晰、不重复处置。
 
 **Acceptance Criteria:**
-1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（涉黄赌毒政/AI 分类）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染，子域名接管类进漏洞聚合）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
+1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（涉黄赌毒政/AI 分类；`type=keyword_hit` 关键词命中）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）/篡改（`type=content_integrity` 内容完整性基线偏差）/暗链挂马（`type=external_link` 外链发现异常）/可用性异常（`type=dead_link` 死链命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染，子域名接管类进漏洞聚合）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
 2. 降噪规则 SHALL 在**事件生成时**生效（白名单 IP 目标不生成事件、忽略指定类型不生成、聚合时间窗合并同类、风暴抑制限流），命中规则的事件 SHALL 直接丢弃不落库；命中降噪规则的 finding SHALL 同时不生成告警、不触发通知推送（降噪在告警生成与推送之前拦截）；规则变更仅影响之后的事件生成，不回溯清理已生成事件。
 3. WHEN finding 属于漏洞类引擎（漏洞扫描/DNS 解析类等），系统 SHALL 按 `org_id + asset_id + 引擎 + 特征签名` 聚合：首次命中生成 `vulnerabilities` 记录，重复命中仅更新 `last_seen_at` 并刷新严重级别。
 4. WHEN finding 严重级别为 `high/critical` 或命中告警类型（可用性宕机、端口暴露、页面篡改、情报预警等），系统 SHALL 生成 `alerts` 记录（`resolved_at` 为空），并按通知路由（R5.13-6）推送。
@@ -112,6 +112,10 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 3. WHEN 监控页面篡改，引擎 SHALL 以标题、图片 Hash、正文 DOM 结构三维度建立基线，WHEN 偏离阈值超过设定值，系统 SHALL 生成篡改告警。
 4. WHEN 执行内容安全监测，引擎 SHALL 调用多端 UA 综合评估器（R2.12）：以随机 PC UA、标准移动 UA、微信内置浏览器 UA、无头浏览器移动视口模拟（移动 UA + 手机宽度视口）四探针抓取比对，WHEN 任一探针命中敏感词/敏感信息或与基线偏差超阈，系统 SHALL 将对应维度计入综合评分并输出端级结论（哪一端异常、异常类型）。
 5. WHEN 执行敏感信息监测，引擎 SHALL 支持深度递归扫描与资产发现：以种子 URL 递归抓取并解析页面链接与静态资源（JS/CSS/图片/音视频），`scan_depth` 范围 1-5（默认 2）、单站点并发上限 2-32（默认 4，可配置），自动过滤静态文件与无效链接（404/死链），URL 归一化去重（同任务内去重）；递归进度 SHALL 经任务进度接口（R5.10-4）实时上报（已抓 URL 数/已发现资产数/命中数），已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）SHALL 写入 `assets` 表并标注来源类型。
+6. WHEN 启用内容完整性持续监测（防篡改增强），引擎 SHALL 对纳入监测的重点资产（`assets.importance=high`）以重要内容维度建立并维护基线（标题、正文关键区域、用户指定的关键文案/文本片段 Hash、关键外链集合），按计划任务周期持续与基线比对，WHEN 关键内容被修改/删除/替换或关键外链集合变化，系统 SHALL 生成篡改发现（finding `type=content_integrity`，含变更前后对比与变更维度）并触发篡改告警（对齐 R5.20-5 重点资产加强监控与 R2.1b-4 告警生成）。
+7. WHEN 启用外链发现监测，引擎 SHALL 解析页面全部外链（外部资源 JS/CSS/图片/音视频、出站链接、第三方域名）并建立外链清单基线，WHEN 检测到新增外链、移除外链、外链目标域名变更或外链指向可疑域名（恶意域名库命中/域名相似度异常），系统 SHALL 生成外链发现（finding `type=external_link`，含外链 URL/类型/来源页面/新增或移除变更标记），归入"暗链挂马"事件类型并进入暗链风险列表。
+8. WHEN 启用死链监测，引擎 SHALL 对资产页面内链接（内链+外链）逐一校验健康度，WHEN 链接返回 4xx/5xx/连接失败/超时，系统 SHALL 生成死链记录（finding `type=dead_link`，含死链 URL/来源页面/状态码/响应时间），归入"可用性异常"事件类型，支持筛选与统计。
+9. WHEN 启用关键词监测，引擎 SHALL 按用户自定义关键词清单（规则库关键词规则，`rule_definitions.kind=keyword`，支持正则与敏感级别分级）对页面正文/HTML 源码/URL 持续匹配，WHEN 命中，系统 SHALL 生成关键词命中记录（finding `type=keyword_hit`，含命中关键词/原文片段/位置/所属规则），归入"内容违规"事件类型；敏感级关键词 SHALL 触发告警，普通级 SHALL 仅生成事件。
 
 #### R2.4 暗链挂马引擎
 
@@ -352,6 +356,10 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 5. 系统 SHALL 提供多端 UA 综合评估结果展示（R2.12）：展示四探针（PC / 标准移动 UA / 微信内置浏览器 UA / 移动视口模拟）的对比明细（各端状态码、重定向链路、响应时间、敏感词命中、DOM 指纹差异、独有外链）与三级评分（基础分/特征分/场景分）、综合分、结论分级及处置建议，标注端级异常定位；SPA 疑似页面 SHALL 展示 `spa_suspected` 待复核标记，DOM 相似度（SimHash）SHALL 数值化展示。评估报告经 `GET /api/v1/findings/:id` 读取 `extra.multi_ua`（engine=content_security 且 type=multi_ua 的 finding）。
 6. 系统 SHALL 提供敏感信息规则集管理视图：按规则组（Basic Information / Sensitive Information 凭证类等）查看/启用/禁用规则（group/name/scope/sensitive），支持 HaENet Rules.yml 格式 YAML 导入导出（走规则库接口 R5.13-9）。
 7. 系统 SHALL 提供资产发现结果展示（前端资源 JS/CSS/图片/音视频、子域名、接口路径，标注来源类型）与递归扫描进度实时展示（深度/已抓 URL 数/已发现资产数/命中数）。
+8. 系统 SHALL 提供内容完整性监测视图：纳入监测的重点资产内容基线（标题/正文关键区域/关键文案 Hash）、变更记录（变更前后对比/变更时间/变更维度），数据源为 `GET /api/v1/findings`（`engine=content_security&type=content_integrity`），并支持配置纳入监测资产与关键文案片段（对齐 R5.20-5 重点资产）。
+9. 系统 SHALL 提供外链发现列表：外链 URL/类型（外部资源/出站链接/第三方域名）/来源页面/新增或移除标记/可疑标记（恶意域名库命中/域名相似度），数据源为 `GET /api/v1/findings`（`engine=content_security&type=external_link`），可疑外链 SHALL 进入暗链风险列表。
+10. 系统 SHALL 提供死链监测列表：死链 URL/来源页面/状态码/响应时间，支持按状态码与来源资产筛选和统计，数据源为 `GET /api/v1/findings`（`engine=content_security&type=dead_link`）。
+11. 系统 SHALL 提供关键词命中列表：命中关键词/原文片段/位置/所属规则/敏感级别，数据源为 `GET /api/v1/findings`（`engine=content_security&type=keyword_hit`）；关键词规则管理复用规则库（R5.13-9 关键词规则类别，支持正则/敏感级别/启用禁用）。
 
 #### R5.6 暗链与木马监测
 
@@ -411,7 +419,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 6. 系统 SHALL 提供通知路由规则配置 `GET/PUT /api/v1/notify-routes`：按事件类型与严重级别（如 critical/high 走钉钉 + 邮件、medium 走企微、低危静默）映射到具体渠道，未命中路由的告警 SHALL 按默认渠道发送；渠道启用开关与风暴抑制（R4.2-4）在路由层生效。
 7. 通知渠道的密钥/令牌类字段（Webhook Secret、SMTP 密码等）SHALL 加密存储（AES-256-GCM，主密钥经环境变量注入），接口返回时 SHALL 脱敏（仅掩码显示），编辑回显 SHALL 提供"留空则保持原值"。
 8. Worker 注册 SHALL 受组织 Worker 配额约束：已注册 Worker 数达到该组织 `max_workers` 时，注册握手 SHALL 返回 4291 `WORKER_QUOTA_EXCEEDED` 拒绝注册；移除节点释放配额。
-9. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/敏感信息规则集/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）；敏感信息规则集 SHALL 支持 HaENet Rules.yml 结构（group/name/f_regex/s_regex/scope/engine/sensitive）YAML 导入。
+9. 系统 SHALL 提供规则库管理（POC 列表/敏感词库/木马特征库/敏感信息规则集/关键词监测规则/版本号），规则项支持增删改查（`GET/POST /api/v1/rules/items`、`PUT/DELETE /api/v1/rules/items/:id`），并支持批量导入导出（`GET/POST /api/v1/rules/import`、`GET /api/v1/rules/export`）；敏感信息规则集 SHALL 支持 HaENet Rules.yml 结构（group/name/f_regex/s_regex/scope/engine/sensitive）YAML 导入；关键词监测规则 SHALL 支持关键词或正则模式、敏感级别（敏感/普通）与启用禁用，供内容安全引擎关键词监测（R2.3-9）使用。
 10. 系统 SHALL 提供情报订阅配置独立接口 `GET/PUT /api/v1/intel-subscriptions`（CVE/CNVD/CNNVD 数据源开关）。
 11. 系统 SHALL 提供审计日志（操作人/时间/类型/前后值），支持按操作人、操作类型、资源类型、时间范围筛选（`GET /api/v1/audit-logs?operator=&action=&resource_type=&start=&end=`）与分页；审计日志 SHALL 记录客户端 IP 与 User-Agent（服务端请求中间件捕获，不依赖前端上报），并禁止修改与删除。审计 SHALL 覆盖：登录/登出、资产增删改与批量操作、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎内部回传不审计，批量操作逐条记录。
 12. 系统 SHALL 提供 API Token 管理（`GET/POST /api/v1/api-tokens` 列表/创建，细粒度权限/有效期），支持撤销 `DELETE /api/v1/api-tokens/{id}` 与临时停用/恢复 `PATCH /api/v1/api-tokens/{id}/status`。

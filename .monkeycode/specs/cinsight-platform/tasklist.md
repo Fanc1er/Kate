@@ -146,6 +146,10 @@ Updated: 2026-08-19
 - [ ] 多端 UA 综合评估器（MultiUAAssessor：PC 随机 UA + 标准移动 UA + 微信内置浏览器 UA + 无头浏览器移动视口模拟四探针 + 基础/特征/场景三级加权评分 + SimHash DOM 相似度阈值 + SPA 空壳识别容错 + 结论分级与处置建议 + probe_failed 降权 + 各端快照证据链）
 - [ ] 内容安全引擎接入 MultiUAAssessor（端级敏感词/敏感信息命中计入评分）
 - [ ] AI 内容分类适配层（AIAdapter：endpoint/model/key 环境注入 + 超时/429 失败回退正则 + 结果缓存 + gobreaker 熔断）
+- [ ] 内容完整性持续监测（重点资产 importance=high 的标题/正文关键区域/关键文案 Hash 基线建立与维护 + 按计划任务周期比对 + 变更前后对比与变更维度，type=content_integrity，对齐 R2.3-6/R5.20-5）
+- [ ] 外链发现监测（页面外链解析：外部资源/出站链接/第三方域名 + 外链清单基线 + 新增/移除/目标域名变更/恶意域名库命中与域名相似度检测，type=external_link，R2.3-7）
+- [ ] 死链监测（内链+外链健康度校验：4xx/5xx/连接失败/超时，记录死链 URL/来源页面/状态码/响应时间，type=dead_link，R2.3-8）
+- [ ] 关键词监测（rule_definitions.kind=keyword 关键词/正则规则匹配，覆盖正文/HTML 源码/URL，敏感级告警/普通级事件，type=keyword_hit，R2.3-9）
 - [ ] 暗链挂马引擎（检测器子单元：关键字整词匹配 + HTML 双通道[正则 URL 打分/DOM 结构 script/frame/link/form] + JS 高危函数与混淆手法/信息熵 + CSS 隐藏手法与危险链接 + 隐藏手法专项[零宽/同色/出屏/实体编码] + 自定义规则逐条匹配 + 无头浏览器动态检测[运行时样式判隐藏/动态链接打分，复用 R3.2b 组件] + 双 UA 对比）
 - [ ] Webshell 检测引擎（路径枚举 + 特征码 + 流量特征）
 - [ ] 钓鱼检测引擎（模板比对 + Levenshtein + 证书异常）
@@ -159,7 +163,7 @@ Updated: 2026-08-19
 ### 2.3 事件中心与漏洞管理
 - [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id）
 - [ ] 发现处理链路（回传幂等→落 findings→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
-- [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规 / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞 / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
+- [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规|敏感信息泄漏|篡改|暗链挂马|可用性异常（type=keyword_hit/content_integrity/external_link/dead_link 区分） / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞 / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
 - [ ] 降噪在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，命中同时抑制告警与推送，规则变更不回溯）
 - [ ] 事件批量状态流转（POST /api/v1/events/batch）
 - [ ] 单事件状态流转（POST /api/v1/events/:id/status）
@@ -181,7 +185,7 @@ Updated: 2026-08-19
 - [ ] findings 查询接口（GET /api/v1/findings 列表：engine/type/severity/status/asset_id 筛选分页；GET /api/v1/findings/:id 详情：主记录 + 关联证据 + 命中明细，type=sensitive_info 返回 sensitive_info_hits、type=multi_ua 返回 extra.multi_ua，支撑 R5.5/R5.6/R5.7 列表页）
 
 ### 2.4 引擎相关前端模块
-- [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示）
+- [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示 + 内容完整性 tab：重点资产基线/变更记录/变更前后对比 + 外链发现 tab：外链列表/变更标记/可疑标记 + 死链 tab：死链列表/状态码/筛选统计 + 关键词命中 tab：命中词/原文/规则/敏感级别）
 - [ ] 暗链木马页（暗链列表/木马列表含检测维度来源标注 + 双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
 - [ ] Webshell 与钓鱼页（Webshell 列表：检测路径/特征码/文件内容片段 + 钓鱼列表：仿冒目标/域名相似度/证书异常）
 - [ ] 可用性网络页（12h 点阵图绿/红竖线 + HTTP/DNS/PING 三维度切换 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示）
@@ -201,6 +205,7 @@ Updated: 2026-08-19
 ### 2.6 阶段 2 单元测试【必执行】
 - [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
 - [ ] 敏感信息规则提取单测（scope 分层命中/凭证规则/递归去重/静态文件过滤/深度上限）
+- [ ] 内容安全子能力单测（关键词规则匹配：关键词与正则两种模式/敏感级告警与普通级事件/禁用规则不匹配；内容完整性基线 Hash 比对与变更检出/变更前后对比；外链基线新增与移除/目标域名变更/恶意域名库命中与域名相似度；死链判定 4xx/5xx/连接失败/超时边界）
 - [ ] 发现处理链路单元测试（回传幂等 → 降噪过滤命中丢弃 → 事件生成 → 漏洞聚合首建/更新 last_seen_at → 告警生成按 severity 阈值与通知路由 → WS 广播）
 - [ ] AI 适配层单元测试（AI 可用→ai 来源 / AI 超时/429→regex 回退 / 熔断切换）
 - [ ] MultiUA 评估器单元测试（四探针抓取对比 / 三级加权评分 / 端差异化宕机 / 移动端定向投毒 / 微信 UA 单独放行 / SimHash 相似度>90% 不加分 / SPA 空壳不覆盖 / probe_failed 降权 / 结论分级）
@@ -226,7 +231,7 @@ Updated: 2026-08-19
 - [ ] 通知渠道密钥加密（AES-256-GCM 主密钥 CINSIGHT_CHANNEL_KEY + 接口掩码脱敏 + 编辑留空保持原值）
 - [ ] 通知路由规则（GET/PUT /api/v1/notify-routes：rule JSON 匹配 severity/event_type 优先 event_type 后 severity，* 通配 + default_channel_id 兜底 + 渠道启用开关 + 风暴抑制在路由层生效）
 - [ ] Worker 注册握手配额校验（已注册 Worker ≥ max_workers 返回 4291 WORKER_QUOTA_EXCEEDED，删除节点释放配额）
-- [ ] 规则库管理（POC/敏感词/木马特征库/敏感信息规则集 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import（敏感信息规则集支持 HaENet Rules.yml YAML）+ 导出 /api/v1/rules/export）
+- [ ] 规则库管理（POC/敏感词/木马特征库/敏感信息规则集/关键词监测规则 + 版本号 + 规则项增删改查 GET/POST /api/v1/rules/items + PUT/DELETE /api/v1/rules/items/:id + 导入 GET/POST /api/v1/rules/import（敏感信息规则集支持 HaENet Rules.yml YAML）+ 导出 /api/v1/rules/export；关键词规则 kind=keyword 支持关键词/正则 + 敏感级别 + 启用禁用，R5.13-9）
 - [ ] 情报订阅配置独立接口（GET/PUT /api/v1/intel-subscriptions，CVE/CNVD/CNNVD 数据源开关）
 - [ ] 审计日志（禁止修改删除 + 筛选 operator/action/resource_type/start/end + 分页 + 服务端捕获 IP/User-Agent + action 统一 resource.verb 枚举见 design audit_logs 段 + 覆盖范围见 design audit_logs 段，批量逐条记录，读操作与引擎回传不审计）
 - [ ] API Token 管理（GET/POST 列表/创建，scopes 取 RBAC 权限码子集勾选 + 有效期 + 撤销 DELETE :id + 停用/恢复 PATCH :id/status，校验时接口所需权限码须为 token scopes 子集，无 scope 返回 2101 SCOPE_DENIED，scopes 不可改需撤销重建）

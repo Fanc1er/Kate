@@ -275,7 +275,7 @@ type Finding struct {
 | 引擎 | Name | 依赖 |
 |------|------|------|
 | 漏洞扫描 | `vuln_scan` | POC 库、ants 协程池、gobreaker |
-| 内容安全 | `content_security` | AI 文本分类 API + 敏感词库正则双判定 + MultiUAAssessor 多端评估 |
+| 内容安全 | `content_security` | AI 文本分类 API + 敏感词库正则双判定 + MultiUAAssessor 多端评估 + 内容完整性基线 + 外链发现 + 死链健康度 + 关键词规则匹配 |
 | 暗链挂马 | `hidden_link` | 特征库、双 UA 抓取、沙箱行为分析 |
 | Webshell | `webshell` | 路径字典、特征码库、流量特征 |
 | 钓鱼 | `phishing` | 钓鱼模板库、Levenshtein、证书解析 |
@@ -454,7 +454,7 @@ type Finding struct {
 | 工单 | GET | /api/v1/tickets/:id | 全部角色 | 工单详情 |
 | 工单 | PUT | /api/v1/tickets/:id | org_admin/engineer | 工单状态/派发 |
 | 发现 | GET | /api/v1/findings | 全部角色 | 发现列表（engine/type/severity/status/asset_id 筛选分页，支撑 R5.5 敏感内容/信息泄漏、R5.6 暗链木马、R5.7 Webshell/钓鱼列表） |
-| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告） |
+| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告，`type=content_integrity`/`external_link`/`dead_link`/`keyword_hit` 时含 `extra` 对应子能力明细：变更前后对比/外链变更标记/死链状态码/命中原文与位置） |
 | 证据 | GET | /api/v1/evidence/:id | 全部角色 | 通用证据读取（Req/Resp/HTML/截图，Hash 校验） |
 | 证据 | GET | /api/v1/evidence/:id/download | 全部角色 | 下载 HTML/HAR |
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
@@ -1073,7 +1073,7 @@ erDiagram
 
 **findings 扩展字段（extra）**：`extra` 为 JSON TEXT，承载引擎扩展结果——MultiUA 报告写入 `Extra["multi_ua"]`（probes 四探针明细 / scores 三级得分 base/feature/scene / total_score 0~100 / conclusion 分级 / abnormal_ends 端级异常列表 / dom_similarity SimHash 相似度 / spa_suspected 单页应用疑似标记）；前端多端对比页读取该字段渲染，缺失时该 finding 不做多端展示。其余引擎的扩展结构同规则追加，不新增列。
 
-**敏感信息规则表（rule_definitions）**：`id, org_id, kind(sensitive/poc/keyword/trojan), group, name, loaded, f_regex, s_regex, format, color, scope(any header/request/request line/response header/response body/response), engine(dfa/nfa，Go 统一 regexp 实现), sensitive`。敏感信息规则集支持 HaENet Rules.yml 结构 YAML 导入（走规则库 `GET/POST /api/v1/rules/import`），前端按规则组分组展示并支持启用/禁用。
+**敏感信息规则表（rule_definitions）**：`id, org_id, kind(sensitive/poc/keyword/trojan), group, name, loaded, f_regex, s_regex, format, color, scope(any header/request/request line/response header/response body/response), engine(dfa/nfa，Go 统一 regexp 实现), sensitive`。敏感信息规则集支持 HaENet Rules.yml 结构 YAML 导入（走规则库 `GET/POST /api/v1/rules/import`），前端按规则组分组展示并支持启用/禁用。`kind=keyword` 为关键词监测规则（R2.3-9）：支持关键词/正则模式与敏感级别（`sensitive` 敏感级触发告警，普通级仅生成事件），供内容安全引擎关键词监测匹配。
 
 **敏感信息命中表（sensitive_info_hits）**：`id, org_id, task_id, rule_id, group, name, matched_text, scope, url, depth, created_at`。由内容安全引擎在敏感信息监测时按 scope 分层提取写入，findings 记录主命中（`engine_name=content_security, type=sensitive_info`），本表存命中明细（原文/scope/来源 URL/递归深度）供列表与详情展示，同步入 Bleve 索引。
 
@@ -1195,7 +1195,7 @@ src/
 │   ├── event/           # 安全事件中心（列表/详情/状态流转/降噪规则）
 │   ├── alert/           # 独立告警中心（列表/处置/静默）
 │   ├── vulnerability/   # 漏洞管理（列表/详情/证据链/批量处置）
-│   ├── content/         # 内容安全（敏感内容/信息泄漏/篡改/多端 UA 评估）
+│   ├── content/         # 内容安全（敏感内容/信息泄漏/篡改/多端 UA 评估/内容完整性/外链发现/死链/关键词命中）
 │   ├── hidden-link/     # 暗链与木马（列表/双 UA 对比）
 │   ├── webshell/        # Webshell 与钓鱼检测
 │   ├── availability/    # 可用性与网络（点阵图/时序折线/端口/多端 UA）
@@ -1305,6 +1305,10 @@ Worker 结果回传后 Master 的处理顺序：
 | `vuln_scan` | 漏洞 | 漏洞扫描结果 |
 | `content_security` | 内容违规 | 涉黄赌毒政/AI 分类；MultiUA 端级异常与篡改偏差随 finding 关联展示 |
 | `content_security` | 敏感信息泄漏 | 敏感信息命中（`type=sensitive_info`，命中原文/scope/来源 URL/递归深度见 `sensitive_info_hits` 明细表） |
+| `content_security` | 内容违规 | 关键词命中（`type=keyword_hit`，命中关键词/原文片段/位置/所属规则，敏感级触发告警） |
+| `content_security` | 篡改 | 内容完整性基线偏差（`type=content_integrity`，标题/正文关键区域/关键文案 Hash 变更，含变更前后对比） |
+| `content_security` | 暗链挂马 | 外链发现异常（`type=external_link`，新增/移除/目标域名变更/指向可疑域名，进暗链风险列表） |
+| `content_security` | 可用性异常 | 死链命中（`type=dead_link`，4xx/5xx/连接失败/超时，含来源页面/状态码/响应时间） |
 | `hidden_link` | 暗链挂马 / 木马 / 篡改 | 暗链与 SEO 黑帽→暗链挂马；网页木马/Shellcode→木马；双 UA 对比检出条件性加载/篡改→篡改 |
 | `webshell` | Webshell | — |
 | `phishing` | 钓鱼 | — |
