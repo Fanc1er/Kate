@@ -369,7 +369,7 @@ type Finding struct {
 | WebSocket /ws/events | 登录用户（JWT + org 绑定，禁止跨组织订阅） | | | |
 | Worker 内部 /worker/*（register/tasks/evidence/heartbeat） | Worker 凭证鉴权（Bootstrap 一次性 / client_id+secret），不经 RBAC | | | |
 
-**权限码清单**（`src/config/permissions.ts`，与上表一致，菜单/路由/按钮三级共用同一数据源）：`asset:read/export`、`asset:write`、`asset:batch-delete`、`wechat:write`、`policy:write`、`plan:write`、`task:write`、`task:delete`、`event:write`、`noise:write`、`alert:write`、`vuln:write`、`ticket:write`、`evidence:upload`、`report:delete`、`report-template:write`、`member:write`、`worker:write`、`channel:write`、`route:write`、`rules:write`、`intel-sub:write`、`whitelist:write`、`token:write`、`webhook:write`、`org:write`（仅 s）、`platform:read`（仅 s）。`viewer` 无任何 `*:write` 权限码，写按钮直接不渲染。
+**权限码清单**（`src/config/permissions.ts`，与上表一致，菜单/路由/按钮三级共用同一数据源）：`asset:read/export`、`asset:write`、`asset:batch-delete`、`wechat:write`、`policy:write`、`plan:write`、`task:write`、`task:delete`、`event:write`、`noise:write`、`alert:write`、`vuln:write`、`ticket:write`、`evidence:upload`、`report:delete`、`report-template:write`、`member:write`、`worker:write`、`channel:write`、`route:write`、`rules:write`、`intel-sub:write`、`whitelist:write`、`token:write`、`webhook:write`、`scenario:write`（场景 CRUD/激活/停用）、`escalation:write`（告警升级规则 CRUD）、`watch:write`（交接班）、`org:write`（仅 s）、`platform:read`（仅 s）。`viewer` 无任何 `*:write` 权限码，写按钮直接不渲染。
 
 ### REST 端点清单
 
@@ -1206,8 +1206,9 @@ src/
 │   ├── plan/            # Cron 定时计划（CRUD/启停/批量）
 │   ├── report/          # 报告中心（模板/生成/导出/定时报告）
 │   ├── team/            # 团队管理（成员列表/邀请/角色）
-│   ├── settings/        # 系统设置（Worker/通知渠道/通知路由/规则库/扫描白名单/API Token/Webhook/审计）
+│   ├── settings/        # 系统设置（Worker/通知渠道/通知路由/规则库/扫描白名单/API Token/Webhook/审计/扫描场景/告警升级规则/值守班次）
 │   ├── platform/        # 平台管理（组织管理/平台统计/Worker 总览，仅 super_admin）
+│   ├── watch/           # 值守全屏视图（重保/护网激活时，R5.20-3）
 │   └── error/           # 异常兜底页（404/403/500）
 ├── components/          # 复用组件（证据抽屉/图表/脱敏显示）
 ├── directives/          # v-permission 按钮级权限指令
