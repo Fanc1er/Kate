@@ -166,7 +166,7 @@ Updated: 2026-08-19
 ### 2.3 事件中心与漏洞管理
 - [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id；事件字段：风险名称 title/问题 URL/关联资产/检测来源 engine_name/发现时间 created_at/事件详情 content/页面快照证据关联）
 - [ ] 发现处理链路（回传幂等→落 findings→结果评估 ResultAssessor 输出 risk_score/risk_level/suggestion/extra.assessment→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
-- [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规|敏感信息泄漏|篡改|暗链挂马|可用性异常（type=sensitive_word/keyword_hit/content_integrity/external_link/dead_link 区分） / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞 / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
+- [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规|敏感信息泄漏|篡改|暗链挂马|可用性异常（type=content_violation/sensitive_word/keyword_hit/content_integrity/external_link/dead_link 区分） / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞 / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
 - [ ] 降噪在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，命中同时抑制告警与推送，规则变更不回溯）
 - [ ] 事件批量状态流转（POST /api/v1/events/batch）
 - [ ] 单事件状态流转（POST /api/v1/events/:id/status）

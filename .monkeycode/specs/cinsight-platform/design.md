@@ -672,7 +672,7 @@ erDiagram
         int org_id FK
         string name
         string scenario "业务场景 daily/important/hw/custom，默认 daily（决定引擎/强度预设，见策略模板场景预设段）"
-        string engine_switches "JSON（含 multi_ua.enabled / ua_sets / weights 等评估参数）"
+        string engine_switches "JSON（含 multi_ua.enabled / ua_sets / weights 等评估参数，与内容安全子能力开关 sensitive_word.enabled / keyword_hit.enabled / content_integrity.enabled / external_link.enabled / dead_link.enabled）"
         int concurrency
         int timeout "任务级超时上限(分钟)，默认 60"
         int rate_limit
@@ -1181,7 +1181,7 @@ src/
 │   ├── asset.ts         # 资产 CRUD/画像/历史/公众号
 │   ├── task.ts          # 任务/策略/计划/队列
 │   ├── event.ts         # 事件/告警/工单/降噪
-│   ├── finding.ts       # 漏洞/证据/发现（findings 列表/详情，含敏感信息与多端 UA 报告）
+│   ├── finding.ts       # 漏洞/证据/发现（findings 列表/详情，含敏感信息与多端 UA 报告、风险分/风险等级/处置建议/评估明细）
 │   ├── report.ts        # 报告
 │   ├── dashboard.ts     # 仪表盘（stats/trends/top-risks/engine-coverage）
 │   ├── intel.ts         # 安全情报（列表/详情/订阅配置）
@@ -1311,7 +1311,7 @@ Worker 结果回传后 Master 的处理顺序：
 | 引擎 | 事件类型（R5.3-2） | 说明 |
 |------|------|------|
 | `vuln_scan` | 漏洞 | 漏洞扫描结果 |
-| `content_security` | 内容违规 | 涉黄赌毒政/AI 分类；MultiUA 端级异常与篡改偏差随 finding 关联展示 |
+| `content_security` | 内容违规 | AI 分类涉黄赌毒政（`type=content_violation`，AI 置信度存 `extra.confidence`）；MultiUA 端级异常与篡改偏差随 finding 关联展示 |
 | `content_security` | 内容违规 | 敏感词命中（`type=sensitive_word`，内置敏感词库，判定来源 regex/ai，AI 不可用/超时回退正则，敏感词→告警） |
 | `content_security` | 敏感信息泄漏 | 敏感信息命中（`type=sensitive_info`，命中原文/scope/来源 URL/递归深度见 `sensitive_info_hits` 明细表） |
 | `content_security` | 内容违规 | 关键词命中（`type=keyword_hit`，命中关键词/原文片段/位置/所属规则，敏感级触发告警） |

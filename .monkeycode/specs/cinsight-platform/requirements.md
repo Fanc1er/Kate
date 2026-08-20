@@ -93,7 +93,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 平台，I want 引擎发现按统一规则分流到事件/漏洞/告警，SO THAT 三类台账职责清晰、不重复处置。
 
 **Acceptance Criteria:**
-1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（涉黄赌毒政/AI 分类；`type=sensitive_word` 敏感词命中 / `type=keyword_hit` 关键词命中）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）/篡改（`type=content_integrity` 内容完整性基线偏差）/暗链挂马（`type=external_link` 外链发现异常）/可用性异常（`type=dead_link` 死链命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染，子域名接管类进漏洞聚合）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
+1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（AI 分类涉黄赌毒政 `type=content_violation` / `type=sensitive_word` 敏感词命中 / `type=keyword_hit` 关键词命中）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）/篡改（`type=content_integrity` 内容完整性基线偏差）/暗链挂马（`type=external_link` 外链发现异常）/可用性异常（`type=dead_link` 死链命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染，子域名接管类进漏洞聚合）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
 2. 降噪规则 SHALL 在**事件生成时**生效（白名单 IP 目标不生成事件、忽略指定类型不生成、聚合时间窗合并同类、风暴抑制限流），命中规则的事件 SHALL 直接丢弃不落库；命中降噪规则的 finding SHALL 同时不生成告警、不触发通知推送（降噪在告警生成与推送之前拦截）；规则变更仅影响之后的事件生成，不回溯清理已生成事件。
 3. WHEN finding 属于漏洞类引擎（漏洞扫描/DNS 解析类等），系统 SHALL 按 `org_id + asset_id + 引擎 + 特征签名` 聚合：首次命中生成 `vulnerabilities` 记录，重复命中仅更新 `last_seen_at` 并刷新严重级别。
 4. WHEN finding 严重级别为 `high/critical` 或命中告警类型（可用性宕机、端口暴露、页面篡改、情报预警等），系统 SHALL 生成 `alerts` 记录（`resolved_at` 为空），并按通知路由（R5.13-6）推送。
