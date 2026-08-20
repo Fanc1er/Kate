@@ -357,6 +357,12 @@ type Finding struct {
 | Webhook：写（CRUD/测试/密钥重生成） | - | ✓ | ✗ | ✗ |
 | 组织管理：读/写（CRUD/禁用/启用） | ✓ | - | - | - |
 | 平台统计/Worker 总览：读 | ✓ | - | - | - |
+| 扫描场景：读 | ✓ | ✓ | ✗ | ✗ |
+| 扫描场景：写（CRUD/激活/停用） | - | ✓ | ✗ | ✗ |
+| 告警升级规则：读 | ✓ | ✓ | ✗ | ✗ |
+| 告警升级规则：写（CRUD） | - | ✓ | ✗ | ✗ |
+| 值守：读（班次/当前值班人） | ✓ | ✓ | ✓ | ✓ |
+| 值守：写（交接班） | - | ✓ | ✓ | ✗ |
 | 认证：login/forgot-password/reset-password | 公开 | 公开 | 公开 | 公开 |
 | 认证：refresh/change-password/select-org/logout/delete-account/me/data-export | 登录用户（依赖 JWT，无需角色判断） | | | |
 | WebSocket /ws/events | 登录用户（JWT + org 绑定，禁止跨组织订阅） | | | |
