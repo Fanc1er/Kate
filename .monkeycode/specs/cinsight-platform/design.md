@@ -279,7 +279,7 @@ type Finding struct {
 | 暗链挂马 | `hidden_link` | 特征库、双 UA 抓取、沙箱行为分析 |
 | Webshell | `webshell` | 路径字典、特征码库、流量特征 |
 | 钓鱼 | `phishing` | 钓鱼模板库、Levenshtein、证书解析 |
-| 可用性 | `availability` | HTTP/DNS/PING 探针、连续失败计数（连续 3 次失败判定宕机）、MultiUAAssessor 多端一致性 |
+| 可用性 | `availability` | HTTP/DNS/TCP/PING 四维探针、连续失败计数（连续 3 次失败判定宕机，官网/活动等关键资产可配置连续 2 次）、MultiUAAssessor 多端一致性 |
 | 端口服务 | `port_service` | TCP SYN 扫描（Top 常见端口 22/21/3389/3306/6379 等；非特权 Worker 自动降级 TCP Connect 全连接，结果标记 `scan_mode: connect`）、Banner 抓取 |
 | DNS 安全 | `dns_security` | 多节点解析对比、异常 TTL 与异常解析记录识别、字典爆破 + 被动 DNS 子域名发现 |
 | 信誉监测 | `reputation` | 威胁情报库查询（IP 恶意/代理/Tor 标记、域名历史解析记录与恶意标记） |
@@ -776,11 +776,14 @@ erDiagram
         string finding_ids "来源 finding ID 数组（JSON，聚合窗口命中合并时为多条，可空）"
         string engine_name
         string event_type
+        string title "风险名称（如 网站打不开/DNS 解析异常/页面篡改），展示友好名称"
         string severity
+        string url "问题 URL（命中资产的具体 URL，可用性/内容类事件的检测目标）"
         string content
         string evidence_ids "关联证据 ID 数组（JSON，由生成事件的 finding 关联证据继承，可空）"
         string status "pending/processing/closed/archived"
         string sop_attached
+        datetime created_at "发现时间"
     }
     tickets {
         int id PK
@@ -1061,7 +1064,7 @@ erDiagram
 
 **Worker 节点表（worker_nodes）**：`id, org_id, name, ip, version, status(online/offline/offline_removed), heartbeat_at, load, boot_token_hash, client_id, client_secret_hash`。token/secret 仅存 hash（boot_token_hash=SHA-256，client_secret_hash=bcrypt），不落明文。状态判定：心跳间隔超 3 倍（默认 15s，`CINSIGHT_WORKER_HEARTBEAT_MS`=5000）未上报自动置 `offline`；移除节点置 `offline_removed` 不计入配额。调度器仅向 `online` 节点分配任务。
 
-**时序降级表（availability_points / trend_points）**：VictoriaMetrics 的内嵌替代。`availability_points(id, org_id, asset_id, engine, sampled_at, status_code, response_ms)`, `trend_points(id, org_id, metric, value, sampled_at)`。预留 `MetricsExporter` 接口以支持未来切换 VM。
+**时序降级表（availability_points / trend_points）**：VictoriaMetrics 的内嵌替代。`availability_points(id, org_id, asset_id, engine, sampled_at, status_code, response_ms)`（`engine` 区分 http/dns/tcp/ping 四维探针，status_code 记 HTTP 状态码或 TCP/DNS/PING 结果码，页面快照经事件证据链关联）, `trend_points(id, org_id, metric, value, sampled_at)`。预留 `MetricsExporter` 接口以支持未来切换 VM。
 
 **微信公众号资产表（wechat_assets）**：`id, org_id, app_name(公众号名), wechat_id(微信号), avatar_url, fans_count, intro(简介), verify_status(认证状态), article_count(文章数), status, created_at`。
 
@@ -1198,7 +1201,7 @@ src/
 │   ├── content/         # 内容安全（敏感内容/信息泄漏/篡改/多端 UA 评估/内容完整性/外链发现/死链/关键词命中）
 │   ├── hidden-link/     # 暗链与木马（列表/双 UA 对比）
 │   ├── webshell/        # Webshell 与钓鱼检测
-│   ├── availability/    # 可用性与网络（点阵图/时序折线/端口/多端 UA）
+│   ├── availability/    # 可用性与网络（四维点阵图 HTTP/DNS/TCP/PING/时序折线/端口/多端 UA/官网活动关键资产持续监测）
 │   ├── intel/           # 安全情报（列表/详情/订阅配置）
 │   ├── search/          # 全局搜索（顶部导航搜索框 + 资产/发现/事件分类结果页）
 │   ├── task/            # 任务调度（任务列表/详情/队列监控）
@@ -1313,7 +1316,7 @@ Worker 结果回传后 Master 的处理顺序：
 | `hidden_link` | 暗链挂马 / 木马 / 篡改 | 暗链与 SEO 黑帽→暗链挂马；网页木马/Shellcode→木马；双 UA 对比检出条件性加载/篡改→篡改 |
 | `webshell` | Webshell | — |
 | `phishing` | 钓鱼 | — |
-| `availability` | 可用性异常 | 连续失败宕机 / 端差异化宕机 |
+| `availability` | 可用性异常 | 连续失败宕机（HTTP）/ DNS 解析异常/劫持 / TCP 连通失败（超时/拒绝/握手失败）/ PING 不可达 / 端差异化宕机 / 访问状态变化（HTTP 状态码/重定向变更，含变更前后对比，官网/活动等关键资产四维持续监测） |
 | `port_service` | 端口暴露 | 新端口服务暴露 |
 | `dns_security` | 篡改 / 漏洞 | DNS 劫持/污染→篡改；子域名接管类→漏洞（进漏洞聚合） |
 | `reputation` | 信誉异常 | IP/域名恶意标记 |

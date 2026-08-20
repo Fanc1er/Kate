@@ -144,7 +144,9 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. WHEN 执行 HTTP 监控，引擎 SHALL 记录状态码、响应时间、页面大小，IF 连续失败 3 次，系统 SHALL 判定宕机并告警。
 2. WHEN 执行 DNS 监控，引擎 SHALL 检测解析 IP 变更、解析失败与 DNS 劫持。
 3. WHEN 执行 PING 监控，引擎 SHALL 记录丢包率与延迟，IF ICMP 不可达，系统 SHALL 告警。
-4. WHEN 执行 HTTP 可用性监测，引擎 SHALL 调用多端 UA 综合评估器（R2.12）多探针探测，WHEN 端间可用性不一致（如某端返回错误、重定向降级、移动端独有拦截页），系统 SHALL 标记端差异化异常并计入综合评分。
+4. WHEN 执行 TCP 检测，引擎 SHALL 对目标 IP:端口执行 TCP 握手连通性探测，WHEN 连接超时/连接拒绝/握手失败，系统 SHALL 判定服务不可达并告警（记录端口/连接耗时/失败原因），与 `port_service` 引擎的端口暴露扫描（新端口服务发现）语义区分。
+5. WHEN 执行 HTTP 可用性监测，引擎 SHALL 调用多端 UA 综合评估器（R2.12）多探针探测，WHEN 端间可用性不一致（如某端返回错误、重定向降级、移动端独有拦截页），系统 SHALL 标记端差异化异常并计入综合评分。
+6. WHEN 对官网/活动等对外关键资产（`assets.importance=high` 或按 `assets.group_name` 分组标记）启用可用性监测，引擎 SHALL 支持更高监测频率与更敏感告警阈值（连续失败 2 次即判定），并基于 HTTP/DNS/TCP/PING 四维持续发现：网站打不开、DNS 解析异常、服务不稳定（响应时间超阈/抖动）、网络连通异常（TCP/PING 不可达）、访问状态变化（HTTP 状态码变更/重定向变更）；四维监测结果 SHALL 落 `availability_points`（`engine` 区分 http/dns/tcp/ping），访问状态变化 SHALL 生成事件（归入"可用性异常"）并记录状态变更前后对比。
 
 #### R2.8 端口服务监测引擎
 
@@ -322,7 +324,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.3 安全事件中心
 
-1. 系统 SHALL 提供事件列表 `GET /api/v1/events`（级别/来源资产/引擎类型/内容/状态流转：待处理→处理中→已关闭→已归档）与事件详情 `GET /api/v1/events/{id}`（关联证据/工单/时间线）。
+1. 系统 SHALL 提供事件列表 `GET /api/v1/events`（风险名称/问题 URL/关联资产/检测来源/发现时间/级别/状态流转：待处理→处理中→已关闭→已归档）与事件详情 `GET /api/v1/events/{id}`（事件详情内容/关联证据/页面快照/工单/时间线），列表支持按级别/来源资产/引擎类型/内容/状态/时间范围筛选。
 2. 系统 SHALL 支持事件类型筛选：漏洞/内容违规/暗链挂马/木马/Webshell/钓鱼/篡改/可用性异常/端口暴露/敏感信息泄漏/信誉异常/情报预警。
 3. 系统 SHALL 提供降噪规则配置完整 CRUD（`GET/POST /api/v1/noise-rules`、`PUT/DELETE /api/v1/noise-rules/:id`），规则类型包含白名单 IP/忽略特定类型/聚合时间窗/风暴抑制。
 4. 系统 SHALL 提供单事件状态流转 `POST /api/v1/events/{id}/status`（待处理→处理中→已关闭→已归档）与批量状态流转接口 `POST /api/v1/events/batch`（批量确认/关闭/归档）。
@@ -375,11 +377,12 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.8 可用性与网络监测
 
-1. 系统 SHALL 提供 12 小时可用性点阵图（绿/红竖线，支持 HTTP/DNS/PING 三维度切换）。
+1. 系统 SHALL 提供 12 小时可用性点阵图（绿/红竖线，支持 HTTP/DNS/TCP/PING 四维度切换）。
 2. 系统 SHALL 提供 24 小时响应时序折线图与 DNS 劫持/污染记录。
 3. 系统 SHALL 提供端口服务监测（开放端口列表/服务指纹/新增端口告警/高危服务暴露）。
-4. 系统 SHALL 提供时序查询接口 `GET /api/v1/assets/:id/availability?engine=http&hours=12`（点阵图）与 `GET /api/v1/assets/:id/response-time?hours=24`（响应折线），数据来自时序降级表（availability_points），按 org_id 隔离。
+4. 系统 SHALL 提供时序查询接口 `GET /api/v1/assets/:id/availability?engine=http&hours=12`（点阵图，engine 支持 http/dns/tcp/ping）与 `GET /api/v1/assets/:id/response-time?hours=24`（响应折线），数据来自时序降级表（availability_points），按 org_id 隔离。
 5. 系统 SHALL 展示多端 UA 可用性评估结果（R2.12）：四探针（PC / 标准移动 UA / 微信内置浏览器 UA / 移动视口模拟）的状态码与响应时间对比、端差异化异常（如仅移动端拦截/降级）与综合评分结论，并支持下载各端抓取快照。
+6. 系统 SHALL 提供官网/活动等对外关键资产（`importance=high` 或分组标记）的可用性持续监测视图：四维（HTTP/DNS/TCP/PING）状态总览与异常记录，覆盖网站打不开、DNS 解析异常、服务不稳定、网络连通异常、访问状态变化五类问题（事件归入"可用性异常"，含问题 URL/状态变更前后对比），并支持针对此类资产配置更高监测频率与更敏感告警阈值（连续失败 2 次判定）。
 
 #### R5.9 安全情报中心
 

@@ -80,7 +80,7 @@ Updated: 2026-08-19
 - [ ] Worker 调度器（拉取 + 执行 + 回传）
 - [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
 - [ ] Worker 注册握手（POST /api/v1/worker/register：Bootstrap Token 一次性换长期凭证 client_id+client_secret，后续心跳/拉取/回传用长期凭证，支持吊销/重发）
-- [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定）
+- [ ] 可用性监测引擎（HTTP 探针 + 连续 3 次失败宕机判定；官网/活动等关键资产可配置连续 2 次更敏感阈值，R2.7-6）
 - [ ] 可用性引擎接入 MultiUAAssessor（端间状态码/延迟不一致 + 端差异化宕机标记）
 - [ ] Worker Outbox 本地缓存与断网回传
 - [ ] 结果回传幂等键去重（result_id 唯一索引，重复回传不重复入库）
@@ -157,12 +157,14 @@ Updated: 2026-08-19
 - [ ] 端口服务监测引擎（TCP SYN 扫描，非特权 Worker 降级 TCP Connect 全连接并标记 scan_mode:connect + Banner 指纹 + 高危暴露告警）
 - [ ] 可用性监测引擎扩展（DNS 监控：解析 IP 变更/解析失败/劫持检测）
 - [ ] 可用性监测引擎扩展（PING 监控：丢包率/延迟/ICMP 不可达告警）
+- [ ] 可用性监测引擎扩展（TCP 检测：目标 IP:端口握手连通性/连接超时/拒绝/失败原因，与 port_service 端口暴露语义区分，R2.7-4）
+- [ ] 可用性监测引擎扩展（访问状态变化：HTTP 状态码/重定向变更检测 + 变更前后对比 + 事件生成，R2.7-6）
 - [ ] DNS 安全引擎（多节点解析对比 + 污染检测 + 子域名爆破）
 - [ ] 信誉监测引擎（IP/域名威胁情报查询）
 - [ ] 安全情报引擎（CVE/CNVD/CNNVD 订阅拉取落 intel_items 表 + 资产影响匹配 + 受影响资产数计算）
 
 ### 2.3 事件中心与漏洞管理
-- [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id）
+- [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id；事件字段：风险名称 title/问题 URL/关联资产/检测来源 engine_name/发现时间 created_at/事件详情 content/页面快照证据关联）
 - [ ] 发现处理链路（回传幂等→落 findings→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
 - [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规|敏感信息泄漏|篡改|暗链挂马|可用性异常（type=sensitive_word/keyword_hit/content_integrity/external_link/dead_link 区分） / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞 / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
 - [ ] 降噪在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，命中同时抑制告警与推送，规则变更不回溯）
@@ -189,7 +191,7 @@ Updated: 2026-08-19
 - [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示 + 内容完整性 tab：重点资产基线/变更记录/变更前后对比 + 外链发现 tab：外链列表/变更标记/可疑标记 + 死链 tab：死链列表/状态码/筛选统计 + 关键词命中 tab：命中词/原文/规则/敏感级别）
 - [ ] 暗链木马页（暗链列表/木马列表含检测维度来源标注 + 双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
 - [ ] Webshell 与钓鱼页（Webshell 列表：检测路径/特征码/文件内容片段 + 钓鱼列表：仿冒目标/域名相似度/证书异常）
-- [ ] 可用性网络页（12h 点阵图绿/红竖线 + HTTP/DNS/PING 三维度切换 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示）
+- [ ] 可用性网络页（12h 点阵图绿/红竖线 + HTTP/DNS/TCP/PING 四维度切换 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示 + 官网/活动关键资产四维持续监测视图：网站打不开/DNS 解析异常/服务不稳定/网络连通异常/访问状态变化五类异常记录与状态变更对比）
 - [ ] 时序查询后端接口（GET /api/v1/assets/:id/availability 点阵图 + /response-time 折线，读 availability_points 按 org_id 隔离）
 - [ ] 安全情报中心页（情报列表 + 受影响资产数 + 订阅配置 GET/PUT /api/v1/intel-subscriptions）
 - [ ] 情报后端接口（GET /api/v1/intel 列表筛选分页 + GET /:id 详情含受影响资产）
