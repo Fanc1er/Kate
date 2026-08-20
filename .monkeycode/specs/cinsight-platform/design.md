@@ -1348,7 +1348,8 @@ event/alert 独立：关闭 event 不影响 alert 处置，反之亦然。前端
 
 | 场景 | HTTP 状态 | 业务码 | 处理策略 |
 |------|-----------|--------|---------|
-| JWT 缺失/过期/无效 | 401 | 2000 `AUTH_FAILED` | 前端清理 token 跳登录 |
+| JWT 缺失/无效 | 401 | 2000 `AUTH_FAILED` | 前端清理 token 跳登录 |
+| JWT 过期 | 401 | 2001 `TOKEN_EXPIRED` | 前端用 refresh token 续期，失败则跳登录 |
 | 禁用用户/禁用组织访问 | 401/403 | 2003 `USER_DISABLED` / 2004 `ORG_DISABLED` | AuthMiddleware 每次请求校验 users.status/user_orgs.status/org.status |
 | 登录连续失败触发锁定 | 423 | 2002 `ACCOUNT_LOCKED` | 连续失败 5 次锁定 15 分钟，返回友好提示 |
 | 角色无权限写操作 | 403 | 2100 `FORBIDDEN` | 前端隐藏入口 + Toast |

@@ -332,7 +332,7 @@ Updated: 2026-08-19
 - [ ] API 通用限流（每用户/IP 100 req/min，超限 HTTP 429 + Retry-After 头）+ 登录接口独立限流（5 次/min/IP，连续失败 5 次锁 15 分钟）
 - [ ] 密码策略（≥12 位复杂度/90 天轮换/禁复用 5 次/首登强制改密）
 - [ ] WebSocket 越权订阅防护（握手校验 JWT + org_id，通道绑定 org，禁止跨组织订阅）
-- [ ] 乐观锁并发控制（assets/scan_policies/alerts/tickets 含 version，不匹配返回 409）
+- [ ] 乐观锁并发控制（assets/scan_policies/alerts/tickets/escalation_rules 含 version，不匹配返回 409）
 - [ ] MFA 预留（TOTP 二次认证开关）
 - [ ] Secrets 管理（环境/K8s Secret 注入 + 轮换，禁止入日志）
 - [ ] 依赖漏洞扫描（govulncheck）+ 容器镜像扫描（Trivy）+ distroless 最小化镜像

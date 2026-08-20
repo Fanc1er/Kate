@@ -59,7 +59,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 前端，I want 根据登录返回的 role 动态生成菜单与路由，SO THAT 用户只能看到有权限的模块。
 
 **Acceptance Criteria:**
-1. WHEN 用户登录成功，前端 SHALL 依据 `role` 通过 `addRoute()` 动态注册路由：`org_admin` 含仪表盘/资产/安全事件中心/告警/漏洞/内容安全/暗链木马/Webshell钓鱼/可用性/安全情报/任务/策略模板/定时计划/报告/团队管理/系统设置；`engineer` 含仪表盘/资产/安全事件中心/告警/漏洞/内容安全/暗链木马/Webshell钓鱼/可用性/安全情报/任务/报告；`viewer` 含仪表盘/资产/安全事件中心/告警/漏洞/内容安全/暗链木马/Webshell钓鱼/可用性/安全情报/任务/报告（全部为只读，不渲染任何写入口）。
+1. WHEN 用户登录成功，前端 SHALL 依据 `role` 通过 `addRoute()` 动态注册路由：`org_admin` 含仪表盘/资产/安全事件中心/告警/漏洞/内容安全/暗链木马/Webshell钓鱼/可用性/安全情报/任务/策略模板/定时计划/报告/团队管理/系统设置；`engineer` 含仪表盘/资产/安全事件中心/告警/漏洞/内容安全/暗链木马/Webshell钓鱼/可用性/安全情报/任务/报告；`viewer` 含仪表盘/资产/安全事件中心/告警/漏洞/内容安全/暗链木马/Webshell钓鱼/可用性/安全情报/任务/报告（全部为只读，不渲染任何写入口）。重保/护网（`scenario=important/hw`）激活期间，前端 SHALL 额外注册值守全屏视图路由 `/watch`（R5.20-3）并在报告中心展示"战报"标签（R5.20-4），非激活期间隐藏值守入口。
 2. WHEN 用户为 `super_admin`，前端 SHALL 展示"进入平台管理"与"选择组织"两个入口。
 3. WHEN 顶部导航栏加载，系统 SHALL 展示当前组织名 + 用户角色 Tag，并支持多组织用户点击切换组织。
 4. WHEN 用户切换组织，前端 SHALL 调用 `POST /api/v1/auth/select-org` 换取新 JWT 并刷新全部数据请求；SHALL 同时关闭旧组织 WebSocket 连接并携带新 JWT 重新建立 `/api/v1/ws/events` 连接（绑定新 org_id，防止收到旧组织事件）。
@@ -248,7 +248,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. Worker 断网时 SHALL 将结果缓存至本地 Outbox，网络恢复后批量回传。
 2. Worker SHALL 以 `local:crawled:{task_id}` 记录已爬取 URL，重启后跳过已扫页面实现断点续扫。
 3. Master 启动时 SHALL 将超时（30min）未回传的 `processing` 任务重置为 `pending`。
-4. Master SQLite SHALL 通过 Litestream 实时流式备份，RPO ≤ 5s，备份保留 30 天。
+4. Master SQLite SHALL 通过 Litestream 实时流式备份，RPO ≤ 5s，故障恢复 RTO ≤ 30min，备份保留 30 天。
 5. Master SHALL 支持只读副本水平扩展（查询路由到副本，写入收敛单写通道），单 Master 支撑 10 万资产 / 100 Worker。
 6. 结果回传 SHALL 携带幂等键（`result_id`，Worker 端生成 UUID），Master SHALL 按幂等键去重，重复回传 SHALL 忽略并返回已接收。
 7. 任务失败 SHALL 自动重试，重试上限 3 次，超过上限 SHALL 置为 `failed` 并生成告警事件。
