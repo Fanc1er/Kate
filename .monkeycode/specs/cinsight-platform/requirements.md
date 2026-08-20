@@ -481,6 +481,6 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 1. 系统 SHALL 提供重保/护网场景策略预设（R5.10-1 的 `scenario=important/hw`）：重保预设 SHALL 全量开启 10 大引擎并提升监测频率（引擎默认全部启用、递归深度建议 3、单站并发建议 8-16），护网预设 SHALL 在重保基础上提高任务并发（Worker 弹性伸缩 + 峰值并发优先）并允许紧急提速；场景切换 SHALL 仅影响之后下发的任务，不追溯已执行任务。
 2. WHEN 处于重保/护网场景，系统 SHALL 提供告警升级通道：`critical/high` 告警 SHALL 经升级规则（`escalation_rules` 配置 CRUD：`GET/POST /api/v1/escalation-rules`、`PUT/DELETE /api/v1/escalation-rules/:id`；级别门槛/升级对象/延迟时间，如 critical 未在 30 分钟内确认 SHALL 升级至 `org_admin` 并加急推送）逐级升级，升级动作 SHALL 写入审计日志并广播 WebSocket 提醒值守人员。
 3. 系统 SHALL 提供值守模式：WebSocket 值守通道（重保/护网期间前端 SHALL 提供全屏值守视图，实时事件流 + 告警处置入口 + 升级状态 + 战报入口），并支持 `GET /api/v1/watch/shift`（值守班次列表/当前值班人）与 `POST /api/v1/watch/handover`（交接班记录，记录交接时间/交接人/未处置告警与事件清单）。
-4. 系统 SHALL 提供每日战报：重保/护网期间由调度器按日自动生成 `daily_war_report`（当日新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次），经报告中心导出并推送至通知渠道（R5.13-5）；战报数据基于当日数据快照，次日生成不回溯。
+4. 系统 SHALL 提供每日战报：重保/护网期间由调度器按日自动生成 `daily_war_reports`（当日新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次），经报告中心导出并推送至通知渠道（R5.13-5）；战报数据基于当日数据快照，次日生成不回溯。
 5. 系统 SHALL 在重保/护网场景下对指定重点资产启用加强监控：`importance=high` 标记资产 SHALL 纳入重保监测范围，其 `critical/high` 事件 SHALL 自动创建告警并进入升级通道（对齐 R2.1b-4）。
 6. 系统 SHALL 提供扫描场景管理（`GET/POST /api/v1/scenarios` 列表/创建、`PUT/DELETE /api/v1/scenarios/:id` 编辑/删除，`scenario_type` 为 daily/important/hw/custom），场景启停 SHALL 由 `org_admin` 通过 `POST /api/v1/scenarios/{id}/activate` 与 `POST /api/v1/scenarios/{id}/deactivate` 控制（同一组织至多一个激活场景，激活新场景自动停用旧场景），当前激活场景 SHALL 展示在平台/系统设置页并支持一键停用；场景激活期间组织禁用/到期 SHALL 自动停用并停止定时计划。

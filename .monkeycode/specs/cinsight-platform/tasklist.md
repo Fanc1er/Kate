@@ -274,14 +274,14 @@ Updated: 2026-08-19
 - [ ] 报告详情（GET /api/v1/reports/:id）+ 报告删除（DELETE /api/v1/reports/:id）
 
 ### 3.4a 重保/护网专项（R5.20）
-- [ ] 扫描场景 CRUD（GET/POST /api/v1/scenarios + PUT/DELETE /api/v1/scenarios/:id；scenario=daily/important/hw/custom，策略模板绑定场景，复制模板时继承 scenario）
-- [ ] 场景预设参数：重保（important）全量开启 10 大引擎 + 递归 3 + 并发 8-16；护网（hw）任务并发优先/Worker 弹性伸缩/峰值 1000 可临时上调；自定义（custom）自由配置；场景切换仅影响之后下发任务
-- [ ] 场景激活/停用（POST /api/v1/scenarios/:id/activate|deactivate，org_admin；组织禁用/到期自动停用并停止相关定时计划）
-- [ ] 告警升级通道（escalation_rules 表 + 配置 CRUD：级别门槛/延迟时间/升级对象；AlertEscalator watchdog 每 30s 扫描未确认告警，critical/high 超时未确认逐级升级至 org_admin + 加急推送 + 审计 alert.escalate + WebSocket 广播 alert.escalated；仅重保/护网激活期间运行）
-- [ ] 重点资产加强监控（assets.importance=high 标记；重保/护网期间其 critical/high 事件自动建告警并进入升级通道）
-- [ ] 值守班次与交接（watch_shifts 表；GET /api/v1/watch/shift 班次列表/当前值班人；POST /api/v1/watch/handover 交接记录含未处置告警/事件清单；WebSocket 广播 watch.handover）
-- [ ] 值守全屏视图（前端：实时事件流 + 告警处置入口 + 升级状态 + 战报入口）
-- [ ] 每日战报（daily_war_reports 表；调度器按日生成当日数据快照：新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次；报告中心导出 + 推送通知渠道）
+- [ ] 扫描场景 CRUD（GET/POST /api/v1/scenarios + PUT/DELETE /api/v1/scenarios/:id；scenario=daily/important/hw/custom，策略模板绑定场景，复制模板时继承 scenario，R5.20-6）
+- [ ] 场景预设参数：重保（important）全量开启 10 大引擎 + 递归 3 + 并发 8-16；护网（hw）任务并发优先/Worker 弹性伸缩/峰值 1000 可临时上调；自定义（custom）自由配置；场景切换仅影响之后下发任务（R5.20-1）
+- [ ] 场景激活/停用（POST /api/v1/scenarios/:id/activate|deactivate，org_admin；同一组织至多一个激活场景；组织禁用/到期自动停用并停止相关定时计划，R5.20-6）
+- [ ] 告警升级通道（escalation_rules 表 + 配置 CRUD：级别门槛/延迟时间/升级对象；AlertEscalator watchdog 每 30s 扫描未确认告警，critical/high 超时未确认逐级升级至 org_admin + 加急推送 + 审计 alert.escalate + WebSocket 广播 alert.escalated；仅重保/护网激活期间运行，R5.20-2）
+- [ ] 重点资产加强监控（assets.importance=high 标记；重保/护网期间其 critical/high 事件自动建告警并进入升级通道，R5.20-5）
+- [ ] 值守班次与交接（watch_shifts 表；GET /api/v1/watch/shift 班次列表/当前值班人；POST /api/v1/watch/handover 交接记录含未处置告警/事件清单；WebSocket 广播 watch.handover，R5.20-3）
+- [ ] 值守全屏视图（前端：实时事件流 + 告警处置入口 + 升级状态 + 战报入口，R5.20-3）
+- [ ] 每日战报（daily_war_reports 表；CronScheduler 按日 00:30 生成前一日数据快照：新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次；报告中心导出 + 推送通知渠道，R5.20-4）
 
 ### 3.5 前端 UX 基座（R5.19）
 - [ ] 全局 Toast + MessageBox 二次确认弹窗封装 + 全局错误边界组件（R5.19-1）
