@@ -275,7 +275,7 @@ type Finding struct {
 | 引擎 | Name | 依赖 |
 |------|------|------|
 | 漏洞扫描 | `vuln_scan` | POC 库、ants 协程池、gobreaker |
-| 内容安全 | `content_security` | AI 文本分类 API + 敏感词库正则双判定 + MultiUAAssessor 多端评估 + 内容完整性基线 + 外链发现 + 死链健康度 + 关键词规则匹配 |
+| 内容安全 | `content_security` | AI 文本分类 + 敏感词监测（内置敏感词库正则双判定）+ MultiUAAssessor 多端评估 + 内容完整性基线 + 外链发现 + 死链健康度 + 关键词规则匹配 |
 | 暗链挂马 | `hidden_link` | 特征库、双 UA 抓取、沙箱行为分析 |
 | Webshell | `webshell` | 路径字典、特征码库、流量特征 |
 | 钓鱼 | `phishing` | 钓鱼模板库、Levenshtein、证书解析 |
@@ -454,7 +454,7 @@ type Finding struct {
 | 工单 | GET | /api/v1/tickets/:id | 全部角色 | 工单详情 |
 | 工单 | PUT | /api/v1/tickets/:id | org_admin/engineer | 工单状态/派发 |
 | 发现 | GET | /api/v1/findings | 全部角色 | 发现列表（engine/type/severity/status/asset_id 筛选分页，支撑 R5.5 敏感内容/信息泄漏、R5.6 暗链木马、R5.7 Webshell/钓鱼列表） |
-| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告，`type=content_integrity`/`external_link`/`dead_link`/`keyword_hit` 时含 `extra` 对应子能力明细：变更前后对比/外链变更标记/死链状态码/命中原文与位置） |
+| 发现 | GET | /api/v1/findings/:id | 全部角色 | 发现详情（finding 主记录 + 关联证据 + 命中明细；`type=sensitive_info` 时含 `sensitive_info_hits` 明细，`type=multi_ua` 时含 `extra.multi_ua` 多端评估报告，`type=content_integrity`/`external_link`/`dead_link`/`keyword_hit`/`sensitive_word` 时含 `extra` 对应子能力明细：变更前后对比/外链变更标记/死链状态码/命中原文与位置/判定来源与置信度） |
 | 证据 | GET | /api/v1/evidence/:id | 全部角色 | 通用证据读取（Req/Resp/HTML/截图，Hash 校验） |
 | 证据 | GET | /api/v1/evidence/:id/download | 全部角色 | 下载 HTML/HAR |
 | 证据 | POST | /api/v1/evidence/screenshots | org_admin/engineer | 截图上传 |
@@ -1304,6 +1304,7 @@ Worker 结果回传后 Master 的处理顺序：
 |------|------|------|
 | `vuln_scan` | 漏洞 | 漏洞扫描结果 |
 | `content_security` | 内容违规 | 涉黄赌毒政/AI 分类；MultiUA 端级异常与篡改偏差随 finding 关联展示 |
+| `content_security` | 内容违规 | 敏感词命中（`type=sensitive_word`，内置敏感词库，判定来源 regex/ai，AI 不可用/超时回退正则，敏感词→告警） |
 | `content_security` | 敏感信息泄漏 | 敏感信息命中（`type=sensitive_info`，命中原文/scope/来源 URL/递归深度见 `sensitive_info_hits` 明细表） |
 | `content_security` | 内容违规 | 关键词命中（`type=keyword_hit`，命中关键词/原文片段/位置/所属规则，敏感级触发告警） |
 | `content_security` | 篡改 | 内容完整性基线偏差（`type=content_integrity`，标题/正文关键区域/关键文案 Hash 变更，含变更前后对比） |

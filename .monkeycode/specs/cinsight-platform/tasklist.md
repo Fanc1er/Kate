@@ -141,6 +141,7 @@ Updated: 2026-08-19
 ### 2.2 引擎实现
 - [ ] 漏洞扫描引擎（POC + Fuzzing + 参数注入，context 30s 超时 + ants 并发）
 - [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息规则集提取 + 篡改基线）
+- [ ] 敏感词监测（内置敏感词库涉黄赌毒政正则匹配 + AI 文本分类增强/不可用超时回退正则 + 来源标记 regex/ai，type=sensitive_word，engine_switches.sensitive_word.enabled，R2.3-1）
 - [ ] 敏感信息规则集提取（rule_definitions 规则按 scope 分层匹配 request line/header/body，s_regex 过滤 + f_regex 提取，命中写 sensitive_info_hits + Bleve + findings 主命中；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证）
 - [ ] 递归扫描与资产发现（scan_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin；达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded）
 - [ ] 多端 UA 综合评估器（MultiUAAssessor：PC 随机 UA + 标准移动 UA + 微信内置浏览器 UA + 无头浏览器移动视口模拟四探针 + 基础/特征/场景三级加权评分 + SimHash DOM 相似度阈值 + SPA 空壳识别容错 + 结论分级与处置建议 + probe_failed 降权 + 各端快照证据链）
@@ -163,7 +164,7 @@ Updated: 2026-08-19
 ### 2.3 事件中心与漏洞管理
 - [ ] 事件列表 + 状态流转（待处理→处理中→已关闭→已归档）+ 事件详情接口（GET /api/v1/events/:id）
 - [ ] 发现处理链路（回传幂等→落 findings→降噪过滤→生成事件→漏洞聚合→告警生成→WS 广播，见 design「发现处理链路」）
-- [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规|敏感信息泄漏|篡改|暗链挂马|可用性异常（type=keyword_hit/content_integrity/external_link/dead_link 区分） / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞 / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
+- [ ] 引擎→事件类型映射表实现（vuln_scan→漏洞 / content_security→内容违规|敏感信息泄漏|篡改|暗链挂马|可用性异常（type=sensitive_word/keyword_hit/content_integrity/external_link/dead_link 区分） / hidden_link→暗链挂马|木马|篡改 / webshell→Webshell / phishing→钓鱼 / availability→可用性异常 / port_service→端口暴露 / dns_security→篡改|漏洞 / reputation→信誉异常 / intelligence→情报预警，见 design 发现处理链路映射表）
 - [ ] 降噪在事件生成时生效（白名单 IP/忽略类型/聚合窗口/风暴抑制，命中同时抑制告警与推送，规则变更不回溯）
 - [ ] 事件批量状态流转（POST /api/v1/events/batch）
 - [ ] 单事件状态流转（POST /api/v1/events/:id/status）
@@ -205,7 +206,7 @@ Updated: 2026-08-19
 ### 2.6 阶段 2 单元测试【必执行】
 - [ ] 引擎契约单元测试（10 引擎 mock 输入 → finding 输出）
 - [ ] 敏感信息规则提取单测（scope 分层命中/凭证规则/递归去重/静态文件过滤/深度上限）
-- [ ] 内容安全子能力单测（关键词规则匹配：关键词与正则两种模式/敏感级告警与普通级事件/禁用规则不匹配；内容完整性基线 Hash 比对与变更检出/变更前后对比；外链基线新增与移除/目标域名变更/恶意域名库命中与域名相似度；死链判定 4xx/5xx/连接失败/超时边界）
+- [ ] 内容安全子能力单测（敏感词库匹配：涉黄赌毒政命中/来源标记 regex 与 ai/AI 超时回退正则/敏感词触发告警；关键词规则匹配：关键词与正则两种模式/敏感级告警与普通级事件/禁用规则不匹配；内容完整性基线 Hash 比对与变更检出/变更前后对比；外链基线新增与移除/目标域名变更/恶意域名库命中与域名相似度；死链判定 4xx/5xx/连接失败/超时边界）
 - [ ] 发现处理链路单元测试（回传幂等 → 降噪过滤命中丢弃 → 事件生成 → 漏洞聚合首建/更新 last_seen_at → 告警生成按 severity 阈值与通知路由 → WS 广播）
 - [ ] AI 适配层单元测试（AI 可用→ai 来源 / AI 超时/429→regex 回退 / 熔断切换）
 - [ ] MultiUA 评估器单元测试（四探针抓取对比 / 三级加权评分 / 端差异化宕机 / 移动端定向投毒 / 微信 UA 单独放行 / SimHash 相似度>90% 不加分 / SPA 空壳不覆盖 / probe_failed 降权 / 结论分级）

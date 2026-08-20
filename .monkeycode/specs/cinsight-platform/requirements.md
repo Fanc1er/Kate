@@ -93,7 +93,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 **User Story:** AS 平台，I want 引擎发现按统一规则分流到事件/漏洞/告警，SO THAT 三类台账职责清晰、不重复处置。
 
 **Acceptance Criteria:**
-1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（涉黄赌毒政/AI 分类；`type=keyword_hit` 关键词命中）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）/篡改（`type=content_integrity` 内容完整性基线偏差）/暗链挂马（`type=external_link` 外链发现异常）/可用性异常（`type=dead_link` 死链命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染，子域名接管类进漏洞聚合）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
+1. Worker 回传的每条 finding 入库后，Master SHALL 按引擎类型与严重级别生成一条安全事件（`event_type` 取自 R5.3-2 的 12 类），记录来源资产、引擎、级别与证据。引擎→事件类型映射 SHALL 固定为：`vuln_scan`→漏洞、`content_security`→内容违规（涉黄赌毒政/AI 分类；`type=sensitive_word` 敏感词命中 / `type=keyword_hit` 关键词命中）/敏感信息泄漏（`type=sensitive_info` 敏感信息命中）/篡改（`type=content_integrity` 内容完整性基线偏差）/暗链挂马（`type=external_link` 外链发现异常）/可用性异常（`type=dead_link` 死链命中）、`hidden_link`→暗链挂马/木马/篡改、`webshell`→Webshell、`phishing`→钓鱼、`availability`→可用性异常、`port_service`→端口暴露、`dns_security`→篡改（DNS 劫持/污染，子域名接管类进漏洞聚合）、`reputation`→信誉异常、`intelligence`→情报预警（详表见 design「发现处理链路」）。
 2. 降噪规则 SHALL 在**事件生成时**生效（白名单 IP 目标不生成事件、忽略指定类型不生成、聚合时间窗合并同类、风暴抑制限流），命中规则的事件 SHALL 直接丢弃不落库；命中降噪规则的 finding SHALL 同时不生成告警、不触发通知推送（降噪在告警生成与推送之前拦截）；规则变更仅影响之后的事件生成，不回溯清理已生成事件。
 3. WHEN finding 属于漏洞类引擎（漏洞扫描/DNS 解析类等），系统 SHALL 按 `org_id + asset_id + 引擎 + 特征签名` 聚合：首次命中生成 `vulnerabilities` 记录，重复命中仅更新 `last_seen_at` 并刷新严重级别。
 4. WHEN finding 严重级别为 `high/critical` 或命中告警类型（可用性宕机、端口暴露、页面篡改、情报预警等），系统 SHALL 生成 `alerts` 记录（`resolved_at` 为空），并按通知路由（R5.13-6）推送。
@@ -107,7 +107,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R2.3 内容安全引擎
 
-1. WHEN 检测页面内容，引擎 SHALL 通过 AI 文本分类 + 关键词正则双判定识别涉黄/涉赌/涉毒/涉政内容。
+1. WHEN 启用敏感词监测（content_security 子能力，`engine_switches.sensitive_word.enabled`），引擎 SHALL 以内置敏感词库（涉黄/涉赌/涉毒/涉政等违禁词，可配置正则）匹配页面正文/HTML/标题，WHEN 命中，系统 SHALL 生成敏感词命中（finding `type=sensitive_word`，含命中词/原文片段/位置），判定来源 SHALL 标记 `regex`（敏感词库）或 `ai`（AI 文本分类增强，AI 不可用/超时/429 时自动回退正则，对齐 R5.5-4），归入"内容违规"事件类型并触发告警。
 2. WHEN 检测敏感信息，引擎 SHALL 基于可配置规则集（HaENet Rules.yml 风格）按 scope 分层提取并识别敏感信息：每条规则含 `group/name/f_regex/s_regex/scope/engine/sensitive` 字段，scope SHALL 支持 request line / request header / response header / response body 分层匹配；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证（AccessKey 等）等敏感数据与安全凭证，命中结果 SHALL 记录命中原文、scope、来源 URL 与递归深度（落 `sensitive_info_hits` 明细表，findings 记录主命中）。
 3. WHEN 监控页面篡改，引擎 SHALL 以标题、图片 Hash、正文 DOM 结构三维度建立基线，WHEN 偏离阈值超过设定值，系统 SHALL 生成篡改告警。
 4. WHEN 执行内容安全监测，引擎 SHALL 调用多端 UA 综合评估器（R2.12）：以随机 PC UA、标准移动 UA、微信内置浏览器 UA、无头浏览器移动视口模拟（移动 UA + 手机宽度视口）四探针抓取比对，WHEN 任一探针命中敏感词/敏感信息或与基线偏差超阈，系统 SHALL 将对应维度计入综合评分并输出端级结论（哪一端异常、异常类型）。
@@ -349,7 +349,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.5 内容安全监测
 
-1. 系统 SHALL 提供敏感内容列表（类型：涉黄/涉赌/涉毒/涉政，命中词句，AI 置信度），数据源为 `GET /api/v1/findings`（`engine=content_security&type=content_violation`，AI 置信度存 `extra.confidence`）。
+1. 系统 SHALL 提供敏感内容列表（类型：涉黄/涉赌/涉毒/涉政，命中词句，AI 置信度），数据源为 `GET /api/v1/findings`（`engine=content_security&type=content_violation`/`sensitive_word`，AI 置信度存 `extra.confidence`，判定来源 `ai`/`regex` 可筛选）。
 2. 系统 SHALL 提供敏感信息泄漏列表（类型：身份证/手机号/邮箱/AccessKey 等，按规则组展示敏感数据与安全凭证，含命中原文、scope、来源 URL、递归深度，凭证类命中高亮并可按敏感级别筛选），列表经 `GET /api/v1/findings`（`engine=content_security&type=sensitive_info`），命中明细（原文/scope/来源 URL/递归深度）经 `GET /api/v1/findings/:id` 返回 `sensitive_info_hits` 明细。
 3. 系统 SHALL 提供页面篡改告警（篡改维度：标题/图片/正文，变更前后对比）与截图缩略图展示。
 4. 系统 SHALL 提供 AI 内容分类服务适配层：endpoint/model/api_key 经环境注入（`CINSIGHT_AI_ENDPOINT`/`CINSIGHT_AI_MODEL`/`CINSIGHT_AI_API_KEY`，由管理员配置），失败回退内置敏感词正则引擎，判定结果 SHALL 标记来源 `ai` 或 `regex`。
