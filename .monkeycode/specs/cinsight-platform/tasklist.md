@@ -143,7 +143,7 @@ Updated: 2026-08-19
 - [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息规则集提取 + 篡改基线）
 - [ ] 敏感词监测（内置敏感词库涉黄赌毒政正则匹配 + AI 文本分类增强/不可用超时回退正则 + 来源标记 regex/ai，type=sensitive_word，engine_switches.sensitive_word.enabled，R2.3-1）
 - [ ] 敏感信息规则集提取（rule_definitions 规则按 scope 分层匹配 request line/header/body，s_regex 过滤 + f_regex 提取，命中写 sensitive_info_hits + Bleve + findings 主命中；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证）
-- [ ] 递归扫描与资产发现（scan_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin；达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded）
+- [ ] 递归扫描与资产发现（scan_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin/crawl_subpages（关闭时深度强制 1 仅测种子页）；达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded）
 - [ ] 多端 UA 综合评估器（MultiUAAssessor：PC 随机 UA + 标准移动 UA + 微信内置浏览器 UA + 无头浏览器移动视口模拟四探针 + 基础/特征/场景三级加权评分 + SimHash DOM 相似度阈值 + SPA 空壳识别容错 + 结论分级与处置建议 + probe_failed 降权 + 各端快照证据链）
 - [ ] 内容安全引擎接入 MultiUAAssessor（端级敏感词/敏感信息命中计入评分）
 - [ ] AI 内容分类适配层（AIAdapter：endpoint/model/key 环境注入 + 超时/429 失败回退正则 + 结果缓存 + gobreaker 熔断）
@@ -272,11 +272,12 @@ Updated: 2026-08-19
 - [ ] 部署验证：Docker 起服务 → 探活 /api/health → 建资产 → 下发任务全链路通过
 
 ### 3.4 报告中心全量
-- [ ] 策略模板完整 CRUD（GET/POST /api/v1/policies + PUT/DELETE /api/v1/policies/:id + 批量删除 POST /api/v1/policies/batch-delete；引擎开关/并发/超时/速率限制/递归扫描参数 + scenario 场景字段维护，engineer 读用于任务创建选模板）
+- [ ] 策略模板完整 CRUD（GET/POST /api/v1/policies + PUT/DELETE /api/v1/policies/:id + 批量删除 POST /api/v1/policies/batch-delete；引擎开关/并发/超时/速率限制/递归扫描参数（含 crawl_subpages 子页面监控开关）+ scenario 场景字段维护，engineer 读用于任务创建选模板）
 - [ ] 报告模板完整 CRUD（执行摘要/漏洞详情/内容安全/可用性统计/整改建议 + PUT/DELETE :id）
 - [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 时区 CINSIGHT_TIMEZONE 默认 Asia/Shanghai + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
 - [ ] Master CronScheduler 计划调度（按 cron_expr+计划时区定时生成 scan_tasks 入队分发；time_window 执行时间窗口窗口外跳过/顺延；paused/组织禁用/到期跳过触发；组织启用后恢复触发）
 - [ ] 策略模板复制（POST /api/v1/policies/:id/copy 深拷贝引擎开关）
+- [ ] 策略模板前端页（CRUD 表单：10 大引擎开关/并发/超时/速率限制/递归扫描参数（含 crawl_subpages 子页面监控开关）/scenario 场景选择/复制/批量删除，engineer 任务创建选模板）
 - [ ] 定时报告（模板 period/cron_expr+timezone 配置、Cron 生成周报/月报 + 时区 CINSIGHT_TIMEZONE + 异步生成进度条 + 完成通知；period 快捷周期 daily/weekly/monthly/quarterly/yearly 与 cron_expr 二选一，同时配置以 period 为准，服务端内置 Cron 映射）
 - [ ] 报告生成基于生成时刻数据快照（漏洞/发现/可用性时点固化，后续处置不影响已生成报告）
 - [ ] 报告截图合集导出（按资产/时间范围，format=screenshots 下载 ZIP）

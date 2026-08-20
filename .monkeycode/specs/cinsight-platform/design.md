@@ -680,6 +680,7 @@ erDiagram
         int concurrency_limit "单站点并发上限 2-32，默认 4"
         bool allow_static "是否抓取静态文件"
         bool same_origin "是否仅同域/同子域递归"
+        bool crawl_subpages "是否开启子页面监控，默认 true；关闭时递归深度强制 1（仅种子 URL 列表），内容子能力只作用于种子页面"
         int version "乐观锁版本，默认 1"
     }
     scan_tasks {
@@ -1084,7 +1085,7 @@ erDiagram
 
 **敏感信息命中表（sensitive_info_hits）**：`id, org_id, task_id, rule_id, group, name, matched_text, scope, url, depth, created_at`。由内容安全引擎在敏感信息监测时按 scope 分层提取写入，findings 记录主命中（`engine_name=content_security, type=sensitive_info`），本表存命中明细（原文/scope/来源 URL/递归深度）供列表与详情展示，同步入 Bleve 索引。
 
-**策略递归扫描字段（scan_policies）**：`scan_depth(1-5，默认 2)`、`concurrency_limit(单站点并发上限 2-32，默认 4)`、`allow_static(是否抓取静态文件)`、`same_origin(是否仅同域/同子域递归)`。内容安全引擎执行敏感信息监测时按策略递归抓取：URL 归一化去重、静态文件/无效链接（404/死链）过滤；已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）写入 `assets` 表（`url` 归一化 + `source_type` 来源类型标注，`source_type ∈ manual/js/css/image/video/subdomain/api_path`，手动创建的资产为 `manual`）；递归进度经 `GET /api/v1/tasks/:id/progress` 实时上报。**低速隐蔽模式（反封禁，R4.4-3）**：策略可启用 `stealth`（engine_switches JSON 内 `stealth.enabled`，或全局 `CINSIGHT_STEALTH_MODE=true`），启用后单目标并发强制 =1、请求伪造随机 UA 与 Referer 头，配合 `CINSIGHT_PROXY_URL`（HTTP/SOCKS5）代理出站，降低目标风控封禁概率。
+**策略递归扫描字段（scan_policies）**：`scan_depth(1-5，默认 2)`、`concurrency_limit(单站点并发上限 2-32，默认 4)`、`allow_static(是否抓取静态文件)`、`same_origin(是否仅同域/同子域递归)`、`crawl_subpages(是否开启子页面监控，默认 true；关闭时递归深度强制 1，仅测种子 URL 列表，内容子能力不作用于子页面、不执行子页面资产发现)`。内容安全引擎执行敏感信息监测时按策略递归抓取：URL 归一化去重、静态文件/无效链接（404/死链）过滤；已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）写入 `assets` 表（`url` 归一化 + `source_type` 来源类型标注，`source_type ∈ manual/js/css/image/video/subdomain/api_path`，手动创建的资产为 `manual`）；递归进度经 `GET /api/v1/tasks/:id/progress` 实时上报。**低速隐蔽模式（反封禁，R4.4-3）**：策略可启用 `stealth`（engine_switches JSON 内 `stealth.enabled`，或全局 `CINSIGHT_STEALTH_MODE=true`），启用后单目标并发强制 =1、请求伪造随机 UA 与 Referer 头，配合 `CINSIGHT_PROXY_URL`（HTTP/SOCKS5）代理出站，降低目标风控封禁概率。
 
 **策略模板场景预设（R5.10-1）**：`scan_policies.scenario ∈ daily/important/hw/custom`，决定创建模板时的默认引擎开关与强度参数，创建后参数可改：
 - `daily`（日常巡检，默认）：默认引擎参数（并发默认 4、递归 2、告警正常路由）。
