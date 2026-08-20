@@ -937,7 +937,10 @@ erDiagram
         int id PK
         int org_id FK
         int template_id FK
+        string name
         string title
+        string asset_ids "JSON 资产 ID 数组"
+        string period "JSON 覆盖时间范围"
         string format
         string status
         string file_path
@@ -1049,7 +1052,7 @@ erDiagram
 
 **报告模板表（report_templates）**：`id, org_id, name, sections(JSON，执行摘要/漏洞详情/内容安全/可用性统计/整改建议)，period(daily/weekly/monthly/quarterly/yearly，可空), cron_expr, timezone, enabled, updated_at`。定时方式二选一：`period` 快捷周期（日报/周报/月报/季报/年报，服务端内置 Cron 映射，如 `daily`→`0 0 * * *`、`weekly`→`0 0 * * 1`、`monthly`→`0 0 1 * *`、`quarterly`→`0 0 1 */3 *`、`yearly`→`0 0 1 1 *`）或自定义 `cron_expr`，二者至少其一（同时配置以 `period` 为准）；`cron_expr` 可空：设置后该模板启用定时报告，由 Master `CronScheduler` 按 `period`/`cron_expr`+`timezone`（默认 `CINSIGHT_TIMEZONE`）周期性生成 `reports`，调度语义与扫描计划一致（组织禁用/到期跳过触发）。
 
-**报告表（reports）**：`id, org_id, name, template_id FK, asset_ids(JSON), period(JSON), format(pdf/excel/screenshots), status(pending/generating/completed/failed), file_path, created_at`。生成异步执行，进度经 `GET /api/v1/reports/:id` 轮询。
+**报告表（reports）**：`id, org_id, name, template_id FK, title, asset_ids(JSON), period(JSON 覆盖时间范围), format(pdf/excel/screenshots), status(pending/generating/completed/failed), file_path, snapshot, created_at`。生成异步执行，进度经 `GET /api/v1/reports/:id` 轮询。
 
 **Webhook 配置表（webhooks）**：`id, org_id, name, url, secret_hash, events(JSON 订阅事件列表), enabled, last_status(success/failed), last_error, retry_count`。推送经 HMAC-SHA256 签名（`X-Webhook-Signature`），失败重试 3 次后 `last_status=failed` 落库标记。
 
