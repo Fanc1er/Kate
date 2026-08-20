@@ -363,6 +363,7 @@ type Finding struct {
 | 告警升级规则：写（CRUD） | - | ✓ | ✗ | ✗ |
 | 值守：读（班次/当前值班人） | ✓ | ✓ | ✓ | ✓ |
 | 值守：写（交接班） | - | ✓ | ✓ | ✗ |
+| 每日战报：读（列表/下载） | ✓ | ✓ | ✓ | ✓ |
 | 认证：login/forgot-password/reset-password | 公开 | 公开 | 公开 | 公开 |
 | 认证：refresh/change-password/select-org/logout/delete-account/me/data-export | 登录用户（依赖 JWT，无需角色判断） | | | |
 | WebSocket /ws/events | 登录用户（JWT + org 绑定，禁止跨组织订阅） | | | |
@@ -469,6 +470,8 @@ type Finding struct {
 | 场景 | POST | /api/v1/scenarios/:id/deactivate | org_admin | 停用场景 |
 | 值守 | GET | /api/v1/watch/shift | 全部角色 | 值守班次列表/当前值班人 |
 | 值守 | POST | /api/v1/watch/handover | org_admin/engineer | 交接班记录（交接时间/交接人/未处置告警与事件清单） |
+| 战报 | GET | /api/v1/war-reports | 全部角色 | 每日战报列表（按日期筛选，报告中心"战报"标签展示） |
+| 战报 | GET | /api/v1/war-reports/:id/download | 全部角色 | 战报导出下载（PDF/Excel，file_path 产物） |
 | 升级 | GET/POST | /api/v1/escalation-rules | org_admin | 告警升级规则（级别门槛/延迟时间/升级对象） |
 | 升级 | PUT/DELETE | /api/v1/escalation-rules/:id | org_admin | 升级规则编辑/删除 |
 | 成员 | GET/POST | /api/v1/members | org_admin | 成员列表/邀请 |

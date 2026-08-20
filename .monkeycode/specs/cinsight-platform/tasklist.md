@@ -281,7 +281,7 @@ Updated: 2026-08-19
 - [ ] 重点资产加强监控（assets.importance=high 标记；重保/护网期间其 critical/high 事件自动建告警并进入升级通道，R5.20-5）
 - [ ] 值守班次与交接（watch_shifts 表；GET /api/v1/watch/shift 班次列表/当前值班人；POST /api/v1/watch/handover 交接记录含未处置告警/事件清单；WebSocket 广播 watch.handover，R5.20-3）
 - [ ] 值守全屏视图（前端：实时事件流 + 告警处置入口 + 升级状态 + 战报入口，R5.20-3）
-- [ ] 每日战报（daily_war_reports 表；CronScheduler 按日 00:30 生成前一日数据快照：新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次；报告中心导出 + 推送通知渠道，R5.20-4）
+- [ ] 每日战报（daily_war_reports 表；CronScheduler 按日 00:30 生成前一日数据快照：新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次；GET /api/v1/war-reports 列表 + GET /api/v1/war-reports/:id/download 导出；推送通知渠道，R5.20-4）
 
 ### 3.5 前端 UX 基座（R5.19）
 - [ ] 全局 Toast + MessageBox 二次确认弹窗封装 + 全局错误边界组件（R5.19-1）
