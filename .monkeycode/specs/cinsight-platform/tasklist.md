@@ -16,7 +16,7 @@ Updated: 2026-08-19
 - [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
 - [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
 - [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
-- [ ] 全量业务表结构迁移（organizations/users/user_orgs/assets/vulnerabilities/alerts/findings/scan_tasks/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_items/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points/sensitive_info_hits/rule_definitions）
+- [ ] 全量业务表结构迁移（organizations/users/user_orgs/assets/vulnerabilities/alerts/findings/scan_tasks/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_items/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points/sensitive_info_hits/rule_definitions/escalation_rules/watch_shifts/daily_war_reports）
 
 ### 1.2 认证与 RBAC
 - [ ] organizations/users/user_orgs 表迁移
@@ -263,15 +263,25 @@ Updated: 2026-08-19
 - [ ] 部署验证：Docker 起服务 → 探活 /api/health → 建资产 → 下发任务全链路通过
 
 ### 3.4 报告中心全量
-- [ ] 策略模板完整 CRUD（GET/POST /api/v1/policies + PUT/DELETE /api/v1/policies/:id + 批量删除 POST /api/v1/policies/batch-delete；引擎开关/并发/超时/速率限制/递归扫描参数维护，engineer 读用于任务创建选模板）
+- [ ] 策略模板完整 CRUD（GET/POST /api/v1/policies + PUT/DELETE /api/v1/policies/:id + 批量删除 POST /api/v1/policies/batch-delete；引擎开关/并发/超时/速率限制/递归扫描参数 + scenario 场景字段维护，engineer 读用于任务创建选模板）
 - [ ] 报告模板完整 CRUD（执行摘要/漏洞详情/内容安全/可用性统计/整改建议 + PUT/DELETE :id）
 - [ ] Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口 + 时区 CINSIGHT_TIMEZONE 默认 Asia/Shanghai + 完整 CRUD PUT/DELETE :id + 启停开关 PATCH :id/status + 批量启停 batch-toggle）
 - [ ] Master CronScheduler 计划调度（按 cron_expr+计划时区定时生成 scan_tasks 入队分发；time_window 执行时间窗口窗口外跳过/顺延；paused/组织禁用/到期跳过触发；组织启用后恢复触发）
 - [ ] 策略模板复制（POST /api/v1/policies/:id/copy 深拷贝引擎开关）
-- [ ] 定时报告（模板 cron_expr+timezone 配置、Cron 生成周报/月报 + 时区 CINSIGHT_TIMEZONE + 异步生成进度条 + 完成通知）
+- [ ] 定时报告（模板 period/cron_expr+timezone 配置、Cron 生成周报/月报 + 时区 CINSIGHT_TIMEZONE + 异步生成进度条 + 完成通知；period 快捷周期 daily/weekly/monthly/quarterly/yearly 与 cron_expr 二选一，同时配置以 period 为准，服务端内置 Cron 映射）
 - [ ] 报告生成基于生成时刻数据快照（漏洞/发现/可用性时点固化，后续处置不影响已生成报告）
 - [ ] 报告截图合集导出（按资产/时间范围，format=screenshots 下载 ZIP）
 - [ ] 报告详情（GET /api/v1/reports/:id）+ 报告删除（DELETE /api/v1/reports/:id）
+
+### 3.4a 重保/护网专项（R5.20）
+- [ ] 扫描场景 CRUD（GET/POST /api/v1/scenarios + PUT/DELETE /api/v1/scenarios/:id；scenario=daily/important/hw/custom，策略模板绑定场景，复制模板时继承 scenario）
+- [ ] 场景预设参数：重保（important）全量开启 10 大引擎 + 递归 3 + 并发 8-16；护网（hw）任务并发优先/Worker 弹性伸缩/峰值 1000 可临时上调；自定义（custom）自由配置；场景切换仅影响之后下发任务
+- [ ] 场景激活/停用（POST /api/v1/scenarios/:id/activate|deactivate，org_admin；组织禁用/到期自动停用并停止相关定时计划）
+- [ ] 告警升级通道（escalation_rules 表 + 配置 CRUD：级别门槛/延迟时间/升级对象；critical/high 超时未确认逐级升级至 org_admin + 加急推送 + 审计 alert.escalate + WebSocket 广播 alert.escalated）
+- [ ] 重点资产加强监控（assets.importance=high 标记；重保/护网期间其 critical/high 事件自动建告警并进入升级通道）
+- [ ] 值守班次与交接（watch_shifts 表；GET /api/v1/watch/shift 班次列表/当前值班人；POST /api/v1/watch/handover 交接记录含未处置告警/事件清单；WebSocket 广播 watch.handover）
+- [ ] 值守全屏视图（前端：实时事件流 + 告警处置入口 + 升级状态 + 战报入口）
+- [ ] 每日战报（daily_war_reports 表；调度器按日生成当日数据快照：新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次；报告中心导出 + 推送通知渠道）
 
 ### 3.5 前端 UX 基座（R5.19）
 - [ ] 全局 Toast + MessageBox 二次确认弹窗封装 + 全局错误边界组件（R5.19-1）

@@ -382,7 +382,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 
 #### R5.10 任务调度与策略
 
-1. 系统 SHALL 提供策略模板（10 大引擎开关/扫描并发/超时/速率限制），完整 CRUD（`GET/POST /api/v1/policies`、`PUT/DELETE /api/v1/policies/:id`）、复制模板 `POST /api/v1/policies/:id/copy` 与批量删除 `POST /api/v1/policies/batch-delete`。
+1. 系统 SHALL 提供策略模板（10 大引擎开关/扫描并发/超时/速率限制/递归扫描参数），完整 CRUD（`GET/POST /api/v1/policies`、`PUT/DELETE /api/v1/policies/:id`）、复制模板 `POST /api/v1/policies/:id/copy` 与批量删除 `POST /api/v1/policies/batch-delete`。策略模板 SHALL 标注业务场景 `scenario`（`daily` 日常巡检 / `important` 重保 / `hw` 护网 / `custom` 自定义，默认 `daily`），场景 SHALL 决定默认引擎开关与强度参数预设：`daily` 低强度巡检（默认参数、告警正常路由）、`important` 重保期高强度监测（全引擎高频扫描 + 告警升级 + 每日战报，见 R5.20）、`hw` 护网期间临时高并发（全引擎 + 高并发 + 告警升级通道 + 值守模式，见 R5.20）、`custom` 由用户自由配置；场景可在创建时选择、创建后修改，复制模板时场景随深拷贝继承。
 2. 系统 SHALL 提供 Cron 定时计划（绑定资产分组 + 策略模板 + 时间窗口），完整 CRUD（`GET/POST /api/v1/scan-plans`、`PUT/DELETE /api/v1/scan-plans/:id`）、启停开关 `PATCH /api/v1/scan-plans/:id/status` 与批量启停 `POST /api/v1/scan-plans/batch-toggle`。Cron 表达式 SHALL 绑定明确时区（默认 `Asia/Shanghai`，可经 `CINSIGHT_TIMEZONE` 覆盖），服务端按该时区计算执行时间，前端创建/编辑时展示所选时区。
 3. 系统 SHALL 提供任务列表、任务详情 `GET /api/v1/tasks/:id`（状态/进度/执行日志/结果统计/Worker 分配）、停止 `POST /api/v1/tasks/:id/stop`（停止后任务状态置 `cancelled` 并标记 `stopped_by_user=true`，`cancelled` 表示用户主动中止、不参与失败重试）、失败重跑 `POST /api/v1/tasks/:id/rerun`、删除历史任务 `DELETE /api/v1/tasks/:id`、批量停止 `POST /api/v1/tasks/batch-stop` 与批量失败重跑 `POST /api/v1/tasks/batch-rerun`。
 4. 系统 SHALL 提供任务队列监控 `GET /api/v1/tasks/queue`（排队/处理中/已完成数量，Worker 分配状态）与断点续扫状态展示 `GET /api/v1/tasks/{id}/progress`。
@@ -393,7 +393,7 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 #### R5.11 报告中心
 
 1. 系统 SHALL 提供报告模板（执行摘要/漏洞详情/内容安全/可用性统计/整改建议），完整 CRUD（`GET/POST /api/v1/report-templates`、`PUT/DELETE /api/v1/report-templates/:id`）。
-2. 系统 SHALL 支持定时报告（Cron 生成周报/月报）：报告模板可配置 `cron_expr`（可空，设置后启用）与 `timezone`（默认 `Asia/Shanghai`，`CINSIGHT_TIMEZONE` 可覆盖），由 Master 调度器按 cron 周期性自动生成报告，调度语义与扫描计划一致（组织禁用/到期跳过触发）；Cron 执行时区 SHALL 与扫描计划一致。
+2. 系统 SHALL 支持定时报告（快捷周期 + Cron 自定义）：报告模板可配置 `period` 快捷周期（`daily/weekly/monthly/quarterly/yearly`，对应日报/周报/月报/季报/年报）或自定义 `cron_expr`（可空，设置后启用），二者 SHALL 至少配置其一（同时配置时以 `period` 为准）；`timezone`（默认 `Asia/Shanghai`，`CINSIGHT_TIMEZONE` 可覆盖）由 Master 调度器按周期/cron 周期性自动生成报告，调度语义与扫描计划一致（组织禁用/到期跳过触发）；Cron 执行时区 SHALL 与扫描计划一致。前端创建/编辑模板时 SHALL 提供日报/周报/月报/季报/年报快捷选择与自定义 Cron 两种方式，并展示所选时区。
 3. 系统 SHALL 支持报告导出（PDF 含水印/Excel 漏洞清单/按资产与时间范围导出截图合集），提供报告详情 `GET /api/v1/reports/:id`、删除 `DELETE /api/v1/reports/:id` 与异步生成进度通知。报告生成 SHALL 基于生成时刻的数据快照（漏洞/发现/可用性统计在生成时点固化），报告生成后的处置变更 SHALL 不改变已生成报告内容。
 
 #### R5.12 团队管理（仅 org_admin）
@@ -472,3 +472,15 @@ CInsight 是一个工业级 SaaS 多租户安全监测平台，采用 Master-Wor
 4. 系统 SHALL 提供图表基座：ECharts 统一配色、阈值配色（高危红/中危橙/低危黄/正常绿）、角色 Tag 颜色规范（super_admin 紫/org_admin 蓝/engineer 青/viewer 灰）。
 5. 系统 SHALL 提供通用详情抽屉基座（Req/Resp 分屏 + HTML 行号高亮 + 截图 tab + 下载 + 时间线），资产画像/漏洞证据/事件详情 SHALL 复用。
 6. 系统 SHALL 确保各业务页（资产/事件/告警/漏洞/任务/成员/策略/计划）批量操作与通用表格基座对齐。
+
+#### R5.20 重保与护网（HW）专项场景
+
+**User Story:** AS 安全团队，I want 在重保期/护网期间以高强度监测、告警升级与每日战报保障重点资产，SO THAT 关键时期攻击事件能被第一时间发现并闭环处置。
+
+**Acceptance Criteria:**
+1. 系统 SHALL 提供重保/护网场景策略预设（R5.10-1 的 `scenario=important/hw`）：重保预设 SHALL 全量开启 10 大引擎并提升监测频率（引擎默认全部启用、递归深度建议 3、单站并发建议 8-16），护网预设 SHALL 在重保基础上提高任务并发（Worker 弹性伸缩 + 峰值并发优先）并允许紧急提速；场景切换 SHALL 仅影响之后下发的任务，不追溯已执行任务。
+2. WHEN 处于重保/护网场景，系统 SHALL 提供告警升级通道：`critical/high` 告警 SHALL 经升级规则（`escalation_rules` 配置：级别门槛/升级对象/延迟时间，如 critical 未在 30 分钟内确认 SHALL 升级至 `org_admin` 并加急推送）逐级升级，升级动作 SHALL 写入审计日志并广播 WebSocket 提醒值守人员。
+3. 系统 SHALL 提供值守模式：WebSocket 值守通道（重保/护网期间前端 SHALL 提供全屏值守视图，实时事件流 + 告警处置入口 + 升级状态 + 战报入口），并支持 `GET /api/v1/watch/shift`（值守班次列表/当前值班人）与 `POST /api/v1/watch/handover`（交接班记录，记录交接时间/交接人/未处置告警与事件清单）。
+4. 系统 SHALL 提供每日战报：重保/护网期间由调度器按日自动生成 `daily_war_report`（当日新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次），经报告中心导出并推送至通知渠道（R5.13-5）；战报数据基于当日数据快照，次日生成不回溯。
+5. 系统 SHALL 在重保/护网场景下对指定重点资产启用加强监控：`importance=high` 标记资产 SHALL 纳入重保监测范围，其 `critical/high` 事件 SHALL 自动创建告警并进入升级通道（对齐 R2.1b-4）。
+6. 重保/护网场景启停 SHALL 由 `org_admin` 通过 `POST /api/v1/scenarios/{id}/activate` 与 `POST /api/v1/scenarios/{id}/deactivate` 控制，当前激活场景 SHALL 展示在平台/系统设置页并支持一键停用；场景激活期间组织禁用/到期 SHALL 自动停用并停止定时计划。

@@ -138,7 +138,7 @@ sequenceDiagram
 | Service | 业务逻辑层（脱敏/风暴抑制/证据校验） | `assetsService`, `evidenceService`... |
 | Repository | GORM/SQLite + BadgerDB 数据访问 | `assetRepo`, `taskRepo`, `eventRepo`, `kvRepo` |
 | TaskScheduler | 任务分发、超时对账、断点续扫状态 | `PullTask()`, `MarkProcessing()`, `AckResult()` |
-| CronScheduler | 按 scan_plans.cron_expr 定时生成 scan_tasks、按 report_templates.cron_expr 定时生成 reports（计划/模板绑定时区计算；paused/组织禁用/到期跳过触发，启用后恢复；计划 time_window 窗口外跳过触发） | `GenerateTasks()`, `Tick()` |
+| CronScheduler | 按 scan_plans.cron_expr 定时生成 scan_tasks、按 report_templates.period/cron_expr 定时生成 reports（计划/模板绑定时区计算；paused/组织禁用/到期跳过触发，启用后恢复；计划 time_window 窗口外跳过触发） | `GenerateTasks()`, `Tick()` |
 | WebSocketHub | 实时事件推送、指数退避重连 | `Broadcast(event)` |
 | BatchIndexer | Bleve 批量索引（5s/50 条） | `Enqueue(doc)`, `Flush()` |
 | AsyncPersist | 异步持久化通道（写入收敛单协程，BadgerDB 元数据 + 事件/审计落库） | `Enqueue(write)` |
@@ -456,6 +456,12 @@ type Finding struct {
 | 报告 | DELETE | /api/v1/reports/:id | org_admin | 删除报告 |
 | 报告 | GET/POST | /api/v1/report-templates | org_admin | 报告模板 |
 | 报告 | PUT/DELETE | /api/v1/report-templates/:id | org_admin | 报告模板编辑/删除 |
+| 场景 | GET/POST | /api/v1/scenarios | org_admin | 扫描场景列表/创建（重保/护网/日常/自定义） |
+| 场景 | PUT/DELETE | /api/v1/scenarios/:id | org_admin | 场景编辑/删除 |
+| 场景 | POST | /api/v1/scenarios/:id/activate | org_admin | 激活场景（重保/护网启用告警升级/值守/战报） |
+| 场景 | POST | /api/v1/scenarios/:id/deactivate | org_admin | 停用场景 |
+| 值守 | GET | /api/v1/watch/shift | 全部角色 | 值守班次列表/当前值班人 |
+| 值守 | POST | /api/v1/watch/handover | org_admin/engineer | 交接班记录（交接时间/交接人/未处置告警与事件清单） |
 | 成员 | GET/POST | /api/v1/members | org_admin | 成员列表/邀请 |
 | 成员 | POST | /api/v1/members/batch-invite | org_admin | 批量邀请（邮箱数组） |
 | 成员 | POST | /api/v1/members/batch-remove | org_admin | 批量移除成员 |
@@ -524,6 +530,8 @@ type Finding struct {
 - **加载反馈**：页面级骨架屏、按钮级 loading、分页加载 "加载中" 占位，避免白屏。
 - **时间展示**：相对时间（"5 分钟前"）+ 悬浮完整时间；状态色统一（高危红/中危橙/低危黄/正常绿）。
 - **键盘可达**：弹窗 Esc 关闭、Enter 提交，Tab 顺序合理。
+- **值守全屏视图（R5.20-3）**：重保/护网场景激活期间提供全屏值守页面 `/watch`：实时事件流（WebSocket `alert.escalated / event.new` 滚动 + 未读角标）、告警处置入口（确认/关闭/静默）、升级状态看板、每日战报入口；值班班次与交接（`GET /api/v1/watch/shift`、`POST /api/v1/watch/handover`）在页面顶栏展示当前值班人与交接按钮。
+- **场景状态展示（R5.20-6）**：当前激活场景在平台顶部导航与系统设置页展示（场景 Tag + 一键停用），非重保/护网激活时隐藏值守入口。
 
 ### WebSocket 协议（/api/v1/ws/events）
 
@@ -596,6 +604,9 @@ erDiagram
     assets ||--o{ availability_points : records
     assets ||--o{ trend_points : records
     vulnerabilities ||--o{ tickets : tracked
+    organizations ||--o{ escalation_rules : owns
+    organizations ||--o{ watch_shifts : owns
+    organizations ||--o{ daily_war_reports : owns
 
     organizations {
         int id PK
@@ -646,6 +657,7 @@ erDiagram
         int id PK
         int org_id FK
         string name
+        string scenario "业务场景 daily/important/hw/custom，默认 daily（决定引擎/强度预设，见策略模板场景预设段）"
         string engine_switches "JSON（含 multi_ua.enabled / ua_sets / weights 等评估参数）"
         int concurrency
         int timeout "任务级超时上限(分钟)，默认 60"
@@ -905,6 +917,7 @@ erDiagram
         int org_id FK
         string name
         string sections
+        string period "快捷周期 daily/weekly/monthly/quarterly/yearly，可空；与 cron_expr 至少其一（同时配置以 period 为准）"
         string cron_expr "可空，设置后启用定时报告"
         string timezone "默认 CINSIGHT_TIMEZONE"
         bool enabled
@@ -948,13 +961,40 @@ erDiagram
         float value
         datetime sampled_at
     }
+    escalation_rules {
+        int id PK
+        int org_id FK
+        string name
+        string trigger "级别门槛 critical/high + 延迟时间(分钟)，如 critical-30"
+        string escalate_to "升级对象 org_admin / 值班组"
+        bool enabled
+        int version "乐观锁版本，默认 1"
+    }
+    watch_shifts {
+        int id PK
+        int org_id FK
+        string start_time
+        string end_time
+        string on_duty "值班人"
+        string handover_note "交接记录，可空"
+        string status "active/ended"
+        datetime created_at
+    }
+    daily_war_reports {
+        int id PK
+        int org_id FK
+        date report_date
+        string summary "当日新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次"
+        string file_path "导出产物路径（PDF/Excel）"
+        datetime created_at
+    }
 ```
 
 ### 关键表字段补充
 
 **user_orgs 约束**：`user_orgs` 表不允许 `is_super_admin` 用户插入；平台超管通过全局 `org_id=0` 查询平台数据。
 
-**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询参数为 `operator`（映射 `username` 列，操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end），与 R5.13-11 一致。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。审计覆盖范围：登录/登出、资产增删改与批量、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎回传不审计，批量操作逐条记录。action 取值统一为 `<resource>.<verb>`（如 `auth.login / auth.logout / auth.delete_account / asset.create / asset.update / asset.delete / task.start / task.stop / event.acknowledge / alert.silence / vuln.ignore / ticket.assign / member.invite / member.remove / rule.update / channel.update / token.create / webhook.create / org.disable`），resource_type 取资源名（asset/task/event/alert/vuln/ticket/member/policy/plan/rule/whitelist/channel/route/token/webhook/org）。
+**审计日志表（audit_logs）**：`id, org_id, user_id, username, action, resource_type, resource_id, before_value, after_value, ip, user_agent, created_at`。禁止 update/delete，仅可 insert/select。筛选查询参数为 `operator`（映射 `username` 列，操作人）、`action`（操作类型）、`resource_type`（资源类型）、`created_at` 时间范围（start/end），与 R5.13-11 一致。ip 与 user_agent 在请求中间件统一捕获写入，不依赖前端上报。审计覆盖范围：登录/登出、资产增删改与批量、任务发起/停止/删除、事件/告警/漏洞/工单处置、成员与权限变更、策略/计划/规则/白名单/通知渠道/通知路由/API Token/Webhook 等配置变更；读操作与 Worker 引擎回传不审计，批量操作逐条记录。action 取值统一为 `<resource>.<verb>`（如 `auth.login / auth.logout / auth.delete_account / asset.create / asset.update / asset.delete / task.start / task.stop / event.acknowledge / alert.silence / alert.escalate / vuln.ignore / ticket.assign / member.invite / member.remove / rule.update / channel.update / token.create / webhook.create / org.disable / scenario.activate / scenario.deactivate / watch.handover`），resource_type 取资源名（asset/task/event/alert/vuln/ticket/member/policy/plan/rule/whitelist/channel/route/token/webhook/org/scenario/watch）。
 
 **API Token 表（api_tokens）**：`id, org_id, name, token_hash, scopes(JSON), status(active/disabled), expires_at, last_used_at`。scopes 取值为 RBAC 权限码（`src/config/permissions.ts` 清单，如 `asset:read`、`event:write`、`evidence:upload`）的子集，创建时勾选；请求校验时接口所需权限码必须是 token scopes 子集，token 无对应 scope 返回 2101 `SCOPE_DENIED`。scopes 随创建固定，修改需撤销重建。`status=disabled` 临时停用（`PATCH /api/v1/api-tokens/:id/status`），校验时拒绝，恢复为 `active` 后继续生效；撤销走 `DELETE /api/v1/api-tokens/:id`。
 
@@ -968,6 +1008,13 @@ erDiagram
 
 **告警处置语义**：`PATCH /alerts/:id` 三态——`acknowledged`（确认，纳入处置跟踪）、`closed`（关闭，`resolved_at` 写入）、`silenced`（静默：抑制该资产同类新告警的通知推送与重新告警，告警记录保留可查；经再次 `PATCH` 可恢复为 open）。静默针对单资产维度的持续抑制，区别于 `noise_rules` 的全局/类型级过滤：静默由用户在告警中心按需操作，降噪规则由 org_admin 配置。
 
+**重保/护网（HW）专项（R5.20）**：
+- **告警升级通道**：`escalation_rules`（`id, org_id, name, trigger(级别门槛+延迟时间，如 critical-30), escalate_to(org_admin/值班组), enabled, version`）配置升级规则。处于 `scenario=important/hw` 时，`critical/high` 告警超过延迟时间仍未确认 SHALL 逐级升级：升级目标写入告警 `extra.escalated` 并加急推送（通知路由 `*` 通配兜底），升级动作写审计日志（`alert.escalate`）并广播 WebSocket 值守通道。
+- **值守模式**：`watch_shifts`（`id, org_id, start_time, end_time, on_duty, handover_note, status(active/ended), created_at`）记录班次与交接。值守期间前端提供全屏值守视图（实时事件流 + 告警处置 + 升级状态 + 战报入口）；交接班经 `POST /api/v1/watch/handover` 记录交接人与未处置告警/事件清单。
+- **每日战报**：`daily_war_reports`（`id, org_id, report_date, summary, file_path, created_at`）由调度器在重保/护网期间按日生成（当日数据快照：新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次），可经报告中心导出并推送通知渠道；次日生成不回溯当日。
+- **重点资产加强监控**：`assets.importance=high` 标记资产纳入重保范围，其 `critical/high` 事件自动创建告警并进入升级通道。
+- **场景启停**：`org_admin` 经 `POST /api/v1/scenarios/{id}/activate|deactivate` 控制场景激活；组织禁用/到期自动停用并停止相关定时计划。
+
 **资产分组**：`assets.group_name` 为字符串标签（自由填写，批量改分组 `batch-group` 覆盖），无独立分组实体；资产列表分组筛选下拉按 `distinct(group_name)` + 计数生成；定时计划按 `asset_group_name` 精确匹配资产集合。
 
 **定时计划表（scan_plans）**：`id, org_id, name, policy_id FK, asset_group_name, cron_expr, timezone, time_window, status(enabled/paused), last_run_at`。Cron 按 `timezone`（默认 `CINSIGHT_TIMEZONE`）计算执行时间；`time_window`（JSON，如 `{"start":"02:00","end":"06:00"}`，可空）限定计划触发后的执行时间窗口，窗口外触发的任务顺延至窗口内或跳过（见 CronScheduler）；暂停/启用经 `PATCH /:id/status` 切换。
@@ -976,7 +1023,7 @@ erDiagram
 
 **情报订阅表（intel_subscriptions）**：`id, org_id, source(cve/cnvd/cnnvd), enabled, last_sync_at`，`unique(org_id, source)`。
 
-**报告模板表（report_templates）**：`id, org_id, name, sections(JSON，执行摘要/漏洞详情/内容安全/可用性统计/整改建议)，cron_expr, timezone, enabled, updated_at`。`cron_expr` 可空：设置后该模板启用定时报告，由 Master `CronScheduler` 按 `cron_expr`+`timezone`（默认 `CINSIGHT_TIMEZONE`）周期性生成 `reports`，调度语义与扫描计划一致（组织禁用/到期跳过触发）。
+**报告模板表（report_templates）**：`id, org_id, name, sections(JSON，执行摘要/漏洞详情/内容安全/可用性统计/整改建议)，period(daily/weekly/monthly/quarterly/yearly，可空), cron_expr, timezone, enabled, updated_at`。定时方式二选一：`period` 快捷周期（日报/周报/月报/季报/年报，服务端内置 Cron 映射，如 `daily`→`0 0 * * *`、`weekly`→`0 0 * * 1`、`monthly`→`0 0 1 * *`、`quarterly`→`0 0 1 */3 *`、`yearly`→`0 0 1 1 *`）或自定义 `cron_expr`，二者至少其一（同时配置以 `period` 为准）；`cron_expr` 可空：设置后该模板启用定时报告，由 Master `CronScheduler` 按 `period`/`cron_expr`+`timezone`（默认 `CINSIGHT_TIMEZONE`）周期性生成 `reports`，调度语义与扫描计划一致（组织禁用/到期跳过触发）。
 
 **报告表（reports）**：`id, org_id, name, template_id FK, asset_ids(JSON), period(JSON), format(pdf/excel/screenshots), status(pending/generating/completed/failed), file_path, created_at`。生成异步执行，进度经 `GET /api/v1/reports/:id` 轮询。
 
@@ -1001,6 +1048,13 @@ erDiagram
 **敏感信息命中表（sensitive_info_hits）**：`id, org_id, task_id, rule_id, group, name, matched_text, scope, url, depth, created_at`。由内容安全引擎在敏感信息监测时按 scope 分层提取写入，findings 记录主命中（`engine_name=content_security, type=sensitive_info`），本表存命中明细（原文/scope/来源 URL/递归深度）供列表与详情展示，同步入 Bleve 索引。
 
 **策略递归扫描字段（scan_policies）**：`scan_depth(1-5，默认 2)`、`concurrency_limit(单站点并发上限 2-32，默认 4)`、`allow_static(是否抓取静态文件)`、`same_origin(是否仅同域/同子域递归)`。内容安全引擎执行敏感信息监测时按策略递归抓取：URL 归一化去重、静态文件/无效链接（404/死链）过滤；已发现资产（JS/CSS/图片/音视频资源、子域名、接口路径）写入 `assets` 表（`url` 归一化 + `source_type` 来源类型标注，`source_type ∈ manual/js/css/image/video/subdomain/api_path`，手动创建的资产为 `manual`）；递归进度经 `GET /api/v1/tasks/:id/progress` 实时上报。**低速隐蔽模式（反封禁，R4.4-3）**：策略可启用 `stealth`（engine_switches JSON 内 `stealth.enabled`，或全局 `CINSIGHT_STEALTH_MODE=true`），启用后单目标并发强制 =1、请求伪造随机 UA 与 Referer 头，配合 `CINSIGHT_PROXY_URL`（HTTP/SOCKS5）代理出站，降低目标风控封禁概率。
+
+**策略模板场景预设（R5.10-1）**：`scan_policies.scenario ∈ daily/important/hw/custom`，决定创建模板时的默认引擎开关与强度参数，创建后参数可改：
+- `daily`（日常巡检，默认）：默认引擎参数（并发默认 4、递归 2、告警正常路由）。
+- `important`（重保）：全量开启 10 大引擎，推荐递归深度 3、单站并发 8-16、任务并发放宽；`critical/high` 告警进入升级通道（`escalation_rules`）。
+- `hw`（护网）：在重保基础上任务并发优先（Worker 弹性伸缩、峰值 1000 任务并发可临时上调）、告警升级通道 + 值守模式 + 每日战报。
+- `custom`：用户自由配置，不做预设覆盖。
+场景切换仅影响之后下发的任务，不追溯已执行任务；复制模板时 `scenario` 随深拷贝继承。
 
 ### 字段类型与约束规范
 
@@ -1030,6 +1084,9 @@ erDiagram
 | api_tokens | `idx_token_org` | Token 查询 |
 | intel_items | `idx_intel_source_sev`（source, severity）, `idx_intel_id`（唯一：source, intel_id） | 情报列表筛选/编号检索 |
 | worker_nodes | `idx_worker_org` | 节点管理 |
+| escalation_rules | `idx_escalation_org` | 升级规则按组织查询 |
+| watch_shifts | `idx_shift_org_status`（org_id, status） | 值守班次列表/当前值班人 |
+| daily_war_reports | `idx_war_report_org_date`（org_id, report_date） | 每日战报按组织/日期查询 |
 | audit_logs | `idx_audit_org_created`, `idx_audit_org_user`, `idx_audit_org_action`（org_id, username/action, created_at） | 审计筛选/查询 |
 
 ### 迁移策略
@@ -1037,7 +1094,7 @@ erDiagram
 - 使用 GORM `AutoMigrate` 初始建表 + 版本化迁移表 `schema_migrations`（version, applied_at）。
 - 每次变更新增迁移函数（`up/down`），按版本号顺序执行，重复执行幂等。
 - 开发环境 `AutoMigrate` 一键同步；生产环境执行显式迁移命令 `master migrate --to={version}`。
-- 种子数据：启动时自动写入 `super_admin` 默认账户（首次初始化密码随机生成并打印一次）、初始策略模板、初始 POC/敏感词/木马特征库。首次启动需完成 `super_admin` 引导初始化（可通过 `--init-super-admin` 或首启向导），未初始化前平台管理功能禁用。
+- 种子数据：启动时自动写入 `super_admin` 默认账户（首次初始化密码随机生成并打印一次）、初始策略模板、初始 POC/敏感词/木马特征库、场景预设模板（`scenario=daily/important/hw/custom` 各一，含对应引擎开关与强度参数）。首次启动需完成 `super_admin` 引导初始化（可通过 `--init-super-admin` 或首启向导），未初始化前平台管理功能禁用。
 
 ### SQLite 连接与 WAL 配置
 
@@ -1199,6 +1256,8 @@ src/
 - Master 处理：幂等去重 → 落 findings → 降噪过滤 → 生成事件 → 漏洞聚合 → 告警生成 → WS 广播（见「发现处理链路」）。
 
 **Webhook 订阅事件枚举**（`webhooks.events` JSON 存储下列事件名数组，事件发生时按订阅过滤推送）：`finding.critical / finding.high / finding.medium`、`vulnerability.new / vulnerability.closed`、`event.new / event.processing / event.closed`、`alert.new / alert.acknowledged / alert.closed`、`task.completed / task.failed`、`intel.high`。
+
+**WebSocket 广播事件**（所有角色订阅，供前端实时刷新与值守视图）：`alert.new / alert.escalated / event.new / finding.new / task.progress / watch.handover`。其中 `alert.escalated`（告警升级）与 `watch.handover`（交接班）仅在重保/护网场景激活期间触发广播。
 
 ### 发现处理链路（finding → 事件/漏洞/告警）
 
