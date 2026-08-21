@@ -2,6 +2,7 @@ package routes
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -99,6 +100,18 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		}
 		response.OK(c, response.Page{List: list, Total: total})
 	})
+	e.GET("/:id", func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		detail, err := d.Triage.GetEventDetail(orgID(c), id)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, detail)
+	})
 	e.PUT("/:id/status", d.Security.RequireWrite(), func(c *gin.Context) {
 		id, ok := parseID(c)
 		if !ok {
@@ -117,6 +130,26 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		}
 		response.OK(c, nil)
 	})
+	e.POST("/batch/status", d.Security.RequireWrite(), func(c *gin.Context) {
+		var req struct {
+			Ids    []int64 `json:"ids"`
+			Status string  `json:"status"`
+		}
+		if !bindJSON(c, &req) {
+			return
+		}
+		if len(req.Ids) == 0 || len(req.Ids) > 500 {
+			response.FailMsg(c, errs.CodeValidationFailed, "ids 需 1-500 条")
+			return
+		}
+		uid, uname, ip, ua := meta(c)
+		m, err := d.Triage.BatchUpdateEventStatus(orgID(c), req.Ids, req.Status, uid, uname, ip, ua)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, m)
+	})
 
 	// ---------- alerts ----------
 	a := rg.Group("/alerts")
@@ -129,6 +162,18 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		}
 		response.OK(c, response.Page{List: list, Total: total})
 	})
+	a.GET("/:id", func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		detail, err := d.Triage.GetAlertDetail(orgID(c), id)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, detail)
+	})
 	a.POST("/:id/resolve", d.Security.RequireWrite(), func(c *gin.Context) {
 		id, ok := parseID(c)
 		if !ok {
@@ -140,6 +185,25 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		response.OK(c, nil)
+	})
+	a.POST("/batch/resolve", d.Security.RequireWrite(), func(c *gin.Context) {
+		var req struct {
+			Ids []int64 `json:"ids"`
+		}
+		if !bindJSON(c, &req) {
+			return
+		}
+		if len(req.Ids) == 0 || len(req.Ids) > 500 {
+			response.FailMsg(c, errs.CodeValidationFailed, "ids 需 1-500 条")
+			return
+		}
+		uid, uname, ip, ua := meta(c)
+		m, err := d.Triage.BatchResolveAlert(orgID(c), req.Ids, uid, uname, ip, ua)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, m)
 	})
 
 	// ---------- vulnerabilities ----------
@@ -177,5 +241,128 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		response.OK(c, evs)
+	})
+
+	// ---------- tickets ----------
+	t := rg.Group("/tickets")
+	t.GET("", func(c *gin.Context) {
+		p, ps := page(c)
+		list, total, err := d.Triage.ListTickets(orgID(c), c.Query("status"), c.Query("source"), p, ps)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, response.Page{List: list, Total: total})
+	})
+	t.GET("/sources", func(c *gin.Context) {
+		m, err := d.Triage.ListTicketSources(orgID(c))
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, m)
+	})
+	t.POST("", d.Security.RequireWrite(), func(c *gin.Context) {
+		var req struct {
+			EventID  int64      `json:"event_id"`
+			VulnID   int64      `json:"vuln_id"`
+			Assignee string     `json:"assignee"`
+			Notes    string     `json:"notes"`
+			DueAt    *time.Time `json:"due_at"`
+		}
+		if !bindJSON(c, &req) {
+			return
+		}
+		uid, uname, ip, ua := meta(c)
+		tk, err := d.Triage.CreateTicket(orgID(c), req.EventID, req.VulnID, req.Assignee, req.Notes, req.DueAt, uid, uname, ip, ua)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, tk)
+	})
+	t.GET("/:id", func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		detail, err := d.Triage.GetTicketDetail(orgID(c), id)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, detail)
+	})
+	t.PUT("/:id/status", d.Security.RequireWrite(), func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		var req struct {
+			Status  string `json:"status"`
+			Version int    `json:"version"`
+		}
+		if !bindJSON(c, &req) {
+			return
+		}
+		uid, uname, ip, ua := meta(c)
+		tk, err := d.Triage.UpdateTicketStatus(orgID(c), id, req.Status, req.Version, uid, uname, ip, ua)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, tk)
+	})
+	t.PUT("/:id/assign", d.Security.RequireWrite(), func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		var req struct {
+			Assignee string `json:"assignee"`
+			Version  int    `json:"version"`
+		}
+		if !bindJSON(c, &req) {
+			return
+		}
+		uid, uname, ip, ua := meta(c)
+		tk, err := d.Triage.AssignTicket(orgID(c), id, req.Assignee, req.Version, uid, uname, ip, ua)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, tk)
+	})
+	t.POST("/batch/status", d.Security.RequireWrite(), func(c *gin.Context) {
+		var req struct {
+			Ids    []int64 `json:"ids"`
+			Status string  `json:"status"`
+		}
+		if !bindJSON(c, &req) {
+			return
+		}
+		if len(req.Ids) == 0 || len(req.Ids) > 500 {
+			response.FailMsg(c, errs.CodeValidationFailed, "ids 需 1-500 条")
+			return
+		}
+		uid, uname, ip, ua := meta(c)
+		m, err := d.Triage.BatchUpdateTicketStatus(orgID(c), req.Ids, req.Status, uid, uname, ip, ua)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, m)
+	})
+	t.DELETE("/:id", d.Security.RequireWrite(), func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		uid, uname, ip, ua := meta(c)
+		if err := d.Triage.DeleteTicket(orgID(c), id, uid, uname, ip, ua); err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, nil)
 	})
 }

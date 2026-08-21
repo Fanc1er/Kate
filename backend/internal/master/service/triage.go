@@ -176,6 +176,42 @@ func (s *TriageService) UpdateEventStatus(orgID, id int64, status string, userID
 	return nil
 }
 
+// GetEventDetail 事件详情（主记录 + 关联 findings + 关联工单）。
+func (s *TriageService) GetEventDetail(orgID, id int64) (map[string]any, error) {
+	var ev models.Event
+	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&ev).Error; err != nil {
+		return nil, err
+	}
+	detail := map[string]any{"event": ev}
+	var fIDs []int64
+	_ = json.Unmarshal([]byte(ev.FindingIDs), &fIDs)
+	if len(fIDs) > 0 {
+		var findings []models.Finding
+		s.DB.Where("id IN ? AND org_id = ?", fIDs, orgID).Find(&findings)
+		detail["findings"] = findings
+	}
+	ticketIDs, err := s.EventTicketIDs(orgID, id)
+	if err == nil && len(ticketIDs) > 0 {
+		var tickets []models.Ticket
+		s.DB.Where("id IN ? AND org_id = ?", ticketIDs, orgID).Find(&tickets)
+		detail["tickets"] = tickets
+	}
+	return detail, nil
+}
+
+// BatchUpdateEventStatus 批量事件状态流转（返回逐条结果）。
+func (s *TriageService) BatchUpdateEventStatus(orgID int64, ids []int64, status string, userID int64, username, ip, ua string) (map[string]any, error) {
+	var success, failed []int64
+	for _, id := range ids {
+		if err := s.UpdateEventStatus(orgID, id, status, userID, username, ip, ua); err != nil {
+			failed = append(failed, id)
+		} else {
+			success = append(success, id)
+		}
+	}
+	return map[string]any{"success": success, "failed": failed}, nil
+}
+
 // ---------- Alerts ----------
 
 // ListAlerts 告警列表。
@@ -198,6 +234,22 @@ func (s *TriageService) ListAlerts(orgID int64, status, alertType string, page, 
 	return list, total, nil
 }
 
+// GetAlertDetail 告警详情（含关联 finding）。
+func (s *TriageService) GetAlertDetail(orgID, id int64) (map[string]any, error) {
+	var a models.Alert
+	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&a).Error; err != nil {
+		return nil, err
+	}
+	detail := map[string]any{"alert": a}
+	if a.FindingID > 0 {
+		var f models.Finding
+		if err := s.DB.Where("id = ? AND org_id = ?", a.FindingID, orgID).First(&f).Error; err == nil {
+			detail["finding"] = f
+		}
+	}
+	return detail, nil
+}
+
 // ResolveAlert 关闭告警。
 func (s *TriageService) ResolveAlert(orgID, id int64, userID int64, username, ip, ua string) error {
 	var a models.Alert
@@ -212,6 +264,19 @@ func (s *TriageService) ResolveAlert(orgID, id int64, userID int64, username, ip
 		s.Audit.Write(orgID, userID, username, "alert.resolve", "alert", fmt.Sprint(id), a.Status, "resolved", ip, ua)
 	}
 	return nil
+}
+
+// BatchResolveAlert 批量关闭告警。
+func (s *TriageService) BatchResolveAlert(orgID int64, ids []int64, userID int64, username, ip, ua string) (map[string]any, error) {
+	var success, failed []int64
+	for _, id := range ids {
+		if err := s.ResolveAlert(orgID, id, userID, username, ip, ua); err != nil {
+			failed = append(failed, id)
+		} else {
+			success = append(success, id)
+		}
+	}
+	return map[string]any{"success": success, "failed": failed}, nil
 }
 
 // ---------- Vulnerabilities ----------
