@@ -43,6 +43,7 @@ type FindingListParams struct {
 	Status     string
 	Severity   string
 	EngineName string
+	Type       string
 	AssetID    int64
 	TaskID     int64
 	Keyword    string
@@ -61,6 +62,9 @@ func (s *TriageService) ListFindings(orgID int64, p FindingListParams) ([]models
 	}
 	if p.EngineName != "" {
 		q = q.Where("engine_name = ?", p.EngineName)
+	}
+	if p.Type != "" {
+		q = q.Where("type = ?", p.Type)
 	}
 	if p.AssetID > 0 {
 		q = q.Where("asset_id = ?", p.AssetID)
@@ -120,7 +124,15 @@ func (s *TriageService) GetFindingDetail(orgID, id int64) (map[string]any, error
 	if len(evIDs) > 0 {
 		s.DB.Where("id IN ? AND org_id = ?", evIDs, orgID).Find(&evs)
 	}
-	return map[string]any{"finding": f, "evidence": evs}, nil
+	detail := map[string]any{"finding": f, "evidence": evs}
+	// type=sensitive_info 返回命中明细（sensitive_info_hits 表按 task+url 关联）。
+	if f.Type == "sensitive_info" {
+		var hits []models.SensitiveInfoHit
+		s.DB.Where("org_id = ? AND task_id = ? AND url = ?", orgID, f.TaskID, f.URL).
+			Order("id DESC").Limit(50).Find(&hits)
+		detail["sensitive_info_hits"] = hits
+	}
+	return detail, nil
 }
 
 // ---------- Events ----------

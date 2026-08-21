@@ -90,6 +90,12 @@ export const ORG_ROUTES: AppRoute[] = [
     meta: { title: '发现', requiresOrg: true },
   },
   {
+    path: '/content-security',
+    name: 'content-security',
+    component: () => import('../views/event/ContentSecurityView.vue'),
+    meta: { title: '内容安全', requiresOrg: true },
+  },
+  {
     path: '/reports',
     name: 'reports',
     component: () => import('../views/report/ReportView.vue'),
@@ -123,6 +129,7 @@ export const MENU: MenuItem[] = [
   { title: '告警', path: '/alerts', roles: ['super_admin', 'org_admin', 'engineer', 'viewer'] },
   { title: '漏洞', path: '/vulnerabilities', roles: ['super_admin', 'org_admin', 'engineer', 'viewer'] },
   { title: '发现', path: '/findings', roles: ['super_admin', 'org_admin', 'engineer', 'viewer'] },
+  { title: '内容安全', path: '/content-security', roles: ['super_admin', 'org_admin', 'engineer', 'viewer'] },
   { title: '报告', path: '/reports', roles: ['super_admin', 'org_admin', 'engineer'] },
   { title: '策略模板', path: '/policy', roles: ['org_admin', 'engineer'] },
   { title: '团队', path: '/team', roles: ['org_admin'] },

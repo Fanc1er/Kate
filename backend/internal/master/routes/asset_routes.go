@@ -20,7 +20,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		pageSize := utils.ParsePageSize(c.Query("page_size"))
 		list, total, err := d.Asset.List(
 			orgID(c), c.Query("keyword"), c.Query("group_name"), c.Query("importance"), c.Query("status"),
-			page, pageSize,
+			c.Query("source_type"), page, pageSize,
 		)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))

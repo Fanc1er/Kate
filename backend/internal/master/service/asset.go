@@ -145,7 +145,7 @@ func (s *AssetService) Delete(orgID, id int64, userID int64, username, ip, ua st
 }
 
 // List 资产列表（模糊搜索/分组/重要程度/状态筛选 + 分页）。
-func (s *AssetService) List(orgID int64, keyword, group, importance, status string, page, pageSize int) ([]models.Asset, int64, error) {
+func (s *AssetService) List(orgID int64, keyword, group, importance, status, sourceType string, page, pageSize int) ([]models.Asset, int64, error) {
 	q := s.guard(orgID).Scoped(&models.Asset{}).Where("status <> ?", models.StatusDeleted)
 	if keyword != "" {
 		like := "%" + keyword + "%"
@@ -159,6 +159,9 @@ func (s *AssetService) List(orgID int64, keyword, group, importance, status stri
 	}
 	if status != "" {
 		q = q.Where("status = ?", status)
+	}
+	if sourceType != "" {
+		q = q.Where("source_type = ?", sourceType)
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

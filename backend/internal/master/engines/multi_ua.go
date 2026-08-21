@@ -3,9 +3,19 @@ package engines
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
+	"io"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
+)
+
+var (
+	reScriptBlock = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
+	reStyleBlock  = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
 )
 
 const (
@@ -35,6 +45,11 @@ type ProbeResult struct {
 	FinalURL     string   `json:"final_url"`
 	Title        string   `json:"title"`
 	Size         int      `json:"size"`
+	DOMFingerprint string `json:"dom_fingerprint,omitempty"` // DOM 结构指纹（SimHash）
+	TextLen      int      `json:"text_len"`                  // 可见文本长度（SPA 空壳识别）
+	Links        []string `json:"links,omitempty"`           // 页外链集合
+	SensitiveHits []string `json:"sensitive_hits,omitempty"` // 端级敏感词命中
+	SensitiveInfoHits []string `json:"sensitive_info_hits,omitempty"` // 端级敏感信息命中
 }
 
 // MultiUAResult 综合评估结果。
@@ -46,6 +61,12 @@ type MultiUAResult struct {
 	EndDiff      []string      `json:"end_diff,omitempty"`
 	EndDown      []string      `json:"end_down,omitempty"`
 	SPASuspected bool          `json:"spa_suspected"`
+	// 三级评分明细（基础/特征/场景）。
+	BaseScore   int `json:"base_score"`
+	FeatureScore int `json:"feature_score"`
+	ScenarioScore int `json:"scenario_score"`
+	// SimHash 端间 DOM 相似度（0~100），>90 视为一致。
+	DOMSimilarity int `json:"dom_similarity"`
 }
 
 // MultiUAAssessor 多端 UA 综合评估器：四探针抓取 + 端间可用性一致性判定。
@@ -129,7 +150,7 @@ func (e *MultiUAAssessor) Assess(ctx context.Context, target string, timeout tim
 	}
 	wg.Wait()
 
-	res.Score, res.Level, res.Suggestion = e.evaluate(&res)
+	res.BaseScore, res.FeatureScore, res.ScenarioScore, res.Score, res.Level, res.Suggestion = e.evaluate(&res)
 	return res
 }
 
@@ -170,11 +191,164 @@ func (e *MultiUAAssessor) probe(ctx context.Context, target string, p UAProbe, t
 	out.StatusCode = r.StatusCode
 	out.RedirectChain = len(out.Redirects)
 	out.FinalURL = r.Request.URL.String()
+	// 抓取 body 用于 DOM 指纹/文本长度/外链提取（限制 2MB 防内存）。
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+	bodyStr := string(body)
+	out.Size = len(body)
+	out.Title = extractTitle(bodyStr)
+	out.DOMFingerprint = domFingerprint(bodyStr)
+	visible := extractVisibleText(bodyStr)
+	out.TextLen = len([]rune(visible))
+	out.Links = extractPageLinks(bodyStr, target)
+	// 端级内容安全监测：敏感词 / 敏感信息命中计入评分。
+	out.SensitiveHits = matchSensitiveWords(target, visible)
+	out.SensitiveInfoHits = matchSensitiveInfo(target, visible)
 	return out
 }
 
-// evaluate 输出综合评估：检测端间状态码/延迟不一致与端差异化宕机。
-func (e *MultiUAAssessor) evaluate(res *MultiUAResult) (score int, level, suggestion string) {
+// extractVisibleText 提取可见文本（去除 script/style/标签）。
+func extractVisibleText(html string) string {
+	noScript := reScriptBlock.ReplaceAllString(html, " ")
+	noStyle := reStyleBlock.ReplaceAllString(noScript, " ")
+	text := regexp.MustCompile(`(?s)<[^>]+>`).ReplaceAllString(noStyle, " ")
+	return strings.TrimSpace(text)
+}
+
+// matchSensitiveWords 端级敏感词命中（复用 SensitiveWordEngine 词库）。
+func matchSensitiveWords(source, text string) []string {
+	sw := NewSensitiveWordEngine()
+	findings := sw.Match(source, "", text, nil)
+	var out []string
+	for _, f := range findings {
+		if w, ok := f.Extra["word"].(string); ok && w != "" {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// matchSensitiveInfo 端级敏感信息命中（复用 SensitiveInfoEngine 规则集）。
+func matchSensitiveInfo(source, text string) []string {
+	si := NewSensitiveInfoEngine()
+	_, hits := si.Match(source, map[string]string{"body": text})
+	var out []string
+	for _, h := range hits {
+		out = append(out, h.Group+":"+h.Name)
+	}
+	return out
+}
+
+// extractTitle 提取 <title> 内容。
+func extractTitle(html string) string {
+	re := regexp.MustCompile(`(?is)<title[^>]*>([^<]*)</title>`)
+	m := re.FindStringSubmatch(html)
+	if len(m) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(m[1])
+}
+
+// domFingerprint 计算 DOM 结构 SimHash 指纹：标签序列 → 64bit 哈希。
+func domFingerprint(html string) string {
+	reTag := regexp.MustCompile(`(?is)<\/?([a-zA-Z][a-zA-Z0-9]*)`)
+	tags := reTag.FindAllStringSubmatch(html, -1)
+	// 取前 200 个标签作为指纹输入。
+	tagSeq := make([]string, 0, len(tags))
+	for i, m := range tags {
+		if i >= 200 {
+			break
+		}
+		if len(m) > 1 {
+			tagSeq = append(tagSeq, m[1])
+		}
+	}
+	if len(tagSeq) == 0 {
+		return ""
+	}
+	// SimHash：每标签 hash 贡献位向量加权。
+	v := make([]int, 64)
+	for _, tag := range tagSeq {
+		h := fnv.New64a()
+		h.Write([]byte(tag))
+		hv := h.Sum64()
+		for i := 0; i < 64; i++ {
+			bit := (hv >> uint(i)) & 1
+			if bit == 1 {
+				v[i]++
+			} else {
+				v[i]--
+			}
+		}
+	}
+	var fp uint64
+	for i := 0; i < 64; i++ {
+		if v[i] > 0 {
+			fp |= 1 << uint(i)
+		}
+	}
+	return fmt.Sprintf("%016x", fp)
+}
+
+// simHashDistance 两 SimHash 十六进制串的汉明距离。
+func simHashDistance(a, b string) int {
+	if a == "" || b == "" {
+		return -1
+	}
+	var ai, bi uint64
+	fmt.Sscanf(a, "%016x", &ai)
+	fmt.Sscanf(b, "%016x", &bi)
+	return popcount(ai ^ bi)
+}
+
+func popcount(x uint64) int {
+	c := 0
+	for x != 0 {
+		x &= x - 1
+		c++
+	}
+	return c
+}
+
+// extractPageLinks 提取页面出站链接（外部域），用于各端外链集合对比。
+func extractPageLinks(html, base string) []string {
+	re := regexp.MustCompile(`(?is)<a\s+[^>]*href\s*=\s*["']([^"']+)["']`)
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range re.FindAllStringSubmatch(html, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		ref, err := url.Parse(strings.TrimSpace(m[1]))
+		if err != nil {
+			continue
+		}
+		resolved := baseURL.ResolveReference(ref)
+		if !resolved.IsAbs() || resolved.Host == "" {
+			continue
+		}
+		if strings.EqualFold(resolved.Host, baseURL.Host) {
+			continue
+		}
+		if seen[resolved.String()] {
+			continue
+		}
+		seen[resolved.String()] = true
+		out = append(out, resolved.String())
+	}
+	if len(out) > 10 {
+		out = out[:10]
+	}
+	return out
+}
+
+// evaluate 输出三级加权综合评估：
+// 基础分（可用性/状态码一致性）+ 特征分（SPA 空壳/DOM 结构异常/独有外链）+ 场景分（端差异化宕机/定向投毒）。
+// probe_failed 单端失败降权（不整体判宕），SimHash>90% 视为 DOM 一致不加分。
+func (e *MultiUAAssessor) evaluate(res *MultiUAResult) (baseScore, featureScore, scenarioScore, score int, level, suggestion string) {
 	var okProbes []ProbeResult
 	var failed []string
 	for _, pr := range res.Probes {
@@ -216,26 +390,75 @@ func (e *MultiUAAssessor) evaluate(res *MultiUAResult) (score int, level, sugges
 			res.EndDiff = append(res.EndDiff, "延迟差异过大")
 		}
 	}
-	// 计分：每端差异 +15，宕机端 +30（多端宕机再加重），SPA 降权。
-	score = 0
-	if len(res.EndDown) > 0 {
-		score += 30 * len(res.EndDown)
+	// SimHash DOM 相似度：取前两个成功探针比对。
+	res.DOMSimilarity = 100
+	if len(okProbes) >= 2 {
+		d := simHashDistance(okProbes[0].DOMFingerprint, okProbes[1].DOMFingerprint)
+		if d >= 0 {
+			res.DOMSimilarity = 100 - d*100/64
+		}
 	}
-	score += 15 * len(res.EndDiff)
+	// SPA 空壳识别：成功探针文本极短（<20 字符）但存在 DOM 结构（JS 渲染壳）。
+	spaLike := 0
+	for _, pr := range okProbes {
+		if pr.TextLen < 20 && pr.DOMFingerprint != "" {
+			spaLike++
+		}
+	}
+	if spaLike >= len(okProbes)/2 && len(okProbes) > 0 {
+		res.SPASuspected = true
+	}
+
+	// 三级评分（风险分，0=无风险）。
+	baseScore = 0
+	// 基础分：全端失败 100；部分端失败降权（每端 +20，上限 60）。
+	if len(failed) == len(res.Probes) && len(res.Probes) > 0 {
+		baseScore = 100
+		res.EndDown = []string{"all"}
+	} else {
+		baseScore = 20 * len(failed)
+		if baseScore > 60 {
+			baseScore = 60
+		}
+	}
+	// 特征分：SPA 空壳 +15（待复核），DOM 相似度低 +10（结构差异），端级敏感词/敏感信息命中 +25/端。
+	featureScore = 0
+	if res.SPASuspected {
+		featureScore += 15
+	}
+	if res.DOMSimilarity < 90 {
+		featureScore += 10
+	}
+	for _, pr := range okProbes {
+		if len(pr.SensitiveHits) > 0 || len(pr.SensitiveInfoHits) > 0 {
+			featureScore += 25
+		}
+	}
+	// 场景分：端差异化宕机 +30/端，移动端定向投毒（mobile/wechat/mobile_viewport 失败）加重。
+	scenarioScore = 0
+	for _, dn := range res.EndDown {
+		scenarioScore += 30
+		if dn == "mobile" || dn == "wechat" || dn == "mobile_viewport" {
+			scenarioScore += 10 // 移动端定向投毒加重
+		}
+	}
+	scenarioScore += 15 * len(res.EndDiff)
+
+	score = baseScore + featureScore + scenarioScore
 	if score > 100 {
 		score = 100
 	}
 	switch {
 	case score >= 85:
-		level, suggestion = "严重", "多端差异化宕机，立即排查端侧拦截/降级并处置"
+		level, suggestion = "严重", "多端差异化宕机或移动端定向投毒，立即排查端侧拦截/降级并处置"
 	case score >= 60:
 		level, suggestion = "高危", "端间可用性不一致，生成告警并排查"
 	case score >= 30:
-		level, suggestion = "可疑", "端间存在差异，待人工复核"
+		level, suggestion = "可疑", "端间存在差异或 SPA 结构异常，待人工复核"
 	default:
 		level, suggestion = "正常", "各端一致，仅记录"
 	}
-	return score, level, suggestion
+	return baseScore, featureScore, scenarioScore, score, level, suggestion
 }
 
 func joinProbes(names []string) string {

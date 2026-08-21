@@ -18,6 +18,7 @@ export interface Finding {
   line_no?: number
   confidence: number
   evidence_ids?: string
+  extra?: string
   status: string
   created_at: string
 }

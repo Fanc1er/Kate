@@ -184,11 +184,25 @@ func (s *WorkerService) PullTask(orgID int64, workerID string) (map[string]any, 
 			})
 		}
 	}
+	// 域名规则：白名单 + 恶意域名库随任务下发（外链发现评估用）。
+	domainRules := []map[string]any{}
+	{
+		var defs []models.RuleDefinition
+		s.DB.Where("org_id IN (0, ?) AND kind IN ? AND loaded = ?", orgID, []string{"domain_whitelist", "malicious_domain"}, true).
+			Order("id ASC").Find(&defs)
+		for _, d := range defs {
+			domainRules = append(domainRules, map[string]any{
+				"kind": d.Kind, "name": d.Name,
+				"pattern": d.FRegex, "sensitive": d.Sensitive,
+			})
+		}
+	}
 	return map[string]any{
 		"task":   task,
 		"policy": policy,
 		"asset":  asset,
 		"keyword_rules": keywordRules,
+		"domain_rules":  domainRules,
 		"recursion": map[string]any{
 			"scan_depth":        policy.ScanDepth,
 			"concurrency_limit": policy.ConcurrencyLimit,
@@ -311,6 +325,11 @@ func (s *WorkerService) ReportResult(orgID int64, result *WorkerResult) (map[str
 			s.processContentIntegrity(orgID, task, result.ResultID, wf)
 			continue
 		}
+		// 外链清单：维护外链基线，新增/移除/可疑由 processExternalLink 比对处理。
+		if wf.EngineName == "content_security" && wf.Type == "external_link" {
+			s.processExternalLink(orgID, task, result.ResultID, wf)
+			continue
+		}
 		// 顶层证据未内嵌在 finding 时，回退到 result.Evidence（全量证据链）。
 		if len(wf.InlineEvidence) == 0 && len(result.Evidence) > 0 {
 			wf.InlineEvidence = result.Evidence
@@ -390,6 +409,10 @@ func (s *WorkerService) processFinding(orgID, taskID, assetID int64, resultID st
 	}
 	// 降噪过滤（简化：无规则命中即放行）。
 	if s.isNoisy(orgID, wf.URL, wf.EngineName) {
+		return nil
+	}
+	// 多端 UA 正常评估报告（info）不入事件，避免扫描噪音；仅异常（high/medium）生成事件。
+	if wf.Type == "multi_ua_evaluation" && sev == "info" {
 		return nil
 	}
 	// 生成事件。
@@ -537,6 +560,186 @@ func (s *WorkerService) processContentIntegrity(orgID int64, task models.ScanTas
 	}
 }
 
+// extLinkItem 外链清单项（与 worker external_link 结构对应）。
+type extLinkItem struct {
+	URL              string `json:"url"`
+	Type             string `json:"type"`
+	Domain           string `json:"domain"`
+	Suspicious       bool   `json:"suspicious"`
+	SuspiciousReason string `json:"suspicious_reason,omitempty"`
+}
+
+// processExternalLink 外链发现基线维护：资产页面外链清单建立/比对，
+// 检测新增/移除/目标域名变更/可疑外链，生成 external_link finding 与暗链挂马事件。
+func (s *WorkerService) processExternalLink(orgID int64, task models.ScanTask, resultID string, wf WorkerFinding) {
+	rawLinks, ok := wf.Extra["external_links"].([]any)
+	if !ok {
+		return
+	}
+	var links []extLinkItem
+	cur := map[string]extLinkItem{}
+	for _, item := range rawLinks {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		e := extLinkItem{}
+		e.URL, _ = m["url"].(string)
+		e.Type, _ = m["type"].(string)
+		e.Domain, _ = m["domain"].(string)
+		e.Suspicious, _ = m["suspicious"].(bool)
+		e.SuspiciousReason, _ = m["suspicious_reason"].(string)
+		if e.URL == "" {
+			continue
+		}
+		links = append(links, e)
+		cur[e.URL] = e
+	}
+	now := time.Now()
+	// 资产信息（来源页展示）。
+	var asset models.Asset
+	if err := s.DB.Where("id = ? AND org_id = ?", task.AssetID, orgID).First(&asset).Error; err != nil {
+		asset = models.Asset{ID: task.AssetID, Name: fmt.Sprint(task.AssetID)}
+	}
+	var bl models.ExternalLinkBaseline
+	err := s.DB.Where("org_id = ? AND asset_id = ? AND url = ?", orgID, asset.ID, wf.URL).First(&bl).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 首次采集：建立基线。
+		s.DB.Create(&models.ExternalLinkBaseline{
+			OrgID: orgID, AssetID: asset.ID, URL: wf.URL,
+			Links: mustJSON(links), FirstSeenAt: now, LastSeenAt: now,
+		})
+		// 首次即发现可疑外链也生成 finding（无需等待变更）。
+		if s.emitSuspiciousExternalLink(orgID, task, resultID, asset, links) {
+			return
+		}
+		return
+	}
+	if err != nil {
+		return
+	}
+	// 比对基线。
+	var oldLinks []extLinkItem
+	_ = json.Unmarshal([]byte(bl.Links), &oldLinks)
+	oldSet := map[string]extLinkItem{}
+	for _, l := range oldLinks {
+		oldSet[l.URL] = l
+	}
+	added, removed, changed := []extLinkItem{}, []extLinkItem{}, []extLinkItem{}
+	for _, l := range links {
+		o, existed := oldSet[l.URL]
+		if !existed {
+			added = append(added, l)
+		} else if o.Domain != l.Domain {
+			// 同 URL 目标域名变更（重定向/篡改）。
+			changed = append(changed, l)
+		}
+	}
+	for _, l := range oldLinks {
+		if _, existed := cur[l.URL]; !existed {
+			removed = append(removed, l)
+		}
+	}
+	// 更新基线。
+	s.DB.Model(&bl).Updates(map[string]any{
+		"links": mustJSON(links), "last_seen_at": now,
+	})
+	if len(added) == 0 && len(removed) == 0 && len(changed) == 0 {
+		// 无结构变更，仅检查可疑外链。
+		if s.emitSuspiciousExternalLink(orgID, task, resultID, asset, links) {
+			return
+		}
+		return
+	}
+	// 有变更：生成 finding + 事件。
+	s.DB.Model(&bl).Updates(map[string]any{"changed_at": now, "changed_count": bl.ChangedCount + 1})
+	dims := []string{}
+	if len(added) > 0 {
+		dims = append(dims, fmt.Sprintf("新增 %d 条", len(added)))
+	}
+	if len(removed) > 0 {
+		dims = append(dims, fmt.Sprintf("移除 %d 条", len(removed)))
+	}
+	if len(changed) > 0 {
+		dims = append(dims, fmt.Sprintf("目标域名变更 %d 条", len(changed)))
+	}
+	finding := &models.Finding{
+		OrgID: orgID, TaskID: task.ID, AssetID: asset.ID, ResultID: resultID,
+		EngineName: "content_security", Type: "external_link", Severity: "medium",
+		Title:       "外链变更: " + asset.Name,
+		Description: "资产「" + asset.Name + "」外链清单发生变化: " + strings.Join(dims, "、"),
+		URL:         wf.URL, Confidence: 0.9, Status: "open",
+		Extra: mustJSON(map[string]any{
+			"added": added, "removed": removed, "changed": changed,
+			"link_tampered": len(changed) > 0,
+			"changed_at":    now.Format(time.RFC3339),
+		}),
+	}
+	if err := s.DB.Create(finding).Error; err != nil {
+		return
+	}
+	s.createIntegrityEvent(orgID, asset.ID, finding, "暗链挂马", "外链变更", now)
+}
+
+// emitSuspiciousExternalLink 检测可疑外链（恶意域名/相似度），命中生成 high finding + 暗链挂马事件。
+func (s *WorkerService) emitSuspiciousExternalLink(orgID int64, task models.ScanTask, resultID string, asset models.Asset, links []extLinkItem) bool {
+	var suspicious []extLinkItem
+	for _, l := range links {
+		if l.Suspicious {
+			suspicious = append(suspicious, l)
+		}
+	}
+	if len(suspicious) == 0 {
+		return false
+	}
+	now := time.Now()
+	names := []string{}
+	for _, l := range suspicious {
+		names = append(names, l.URL)
+	}
+	finding := &models.Finding{
+		OrgID: orgID, TaskID: task.ID, AssetID: asset.ID, ResultID: resultID,
+		EngineName: "content_security", Type: "external_link", Severity: "high",
+		Title:       "可疑外链: " + asset.Name,
+		Description: "资产「" + asset.Name + "」页面存在 " + fmt.Sprint(len(suspicious)) + " 条可疑外链（恶意域名库命中/域名相似度）: " + truncateText(strings.Join(names, ", "), 200),
+		URL:         suspicious[0].URL, Confidence: 0.95, Status: "open",
+		Extra: mustJSON(map[string]any{
+			"suspicious_links": suspicious, "link_tampered": true,
+			"detected_at": now.Format(time.RFC3339),
+		}),
+	}
+	if err := s.DB.Create(finding).Error; err != nil {
+		return false
+	}
+	s.createIntegrityEvent(orgID, asset.ID, finding, "暗链挂马", "可疑外链", now)
+	return true
+}
+
+// createIntegrityEvent 生成事件 + WS 广播（外链/篡改通用）。
+func (s *WorkerService) createIntegrityEvent(orgID, assetID int64, finding *models.Finding, eventType, title string, now time.Time) {
+	event := &models.Event{
+		OrgID: orgID, AssetID: assetID, FindingIDs: fmt.Sprint(finding.ID),
+		EngineName: "content_security", EventType: eventType, Title: title,
+		Severity: finding.Severity, URL: finding.URL, Content: finding.Description,
+		Status: "pending",
+	}
+	if err := s.DB.Create(event).Error; err == nil {
+		s.Hub.Broadcast(orgID, map[string]any{
+			"type": "event.new", "data": map[string]any{"event_id": event.ID, "title": title, "severity": finding.Severity},
+		})
+	}
+	alert := &models.Alert{
+		OrgID: orgID, AssetID: assetID, FindingID: finding.ID,
+		AlertType: "tamper", Severity: finding.Severity, Title: finding.Title,
+		Content: finding.Description, Status: "open",
+	}
+	if err := s.DB.Create(alert).Error; err == nil {
+		s.Hub.Broadcast(orgID, map[string]any{
+			"type": "alert.new", "data": map[string]any{"alert_id": alert.ID, "title": finding.Title, "severity": finding.Severity},
+		})
+	}
+}
+
 // mustJSON 序列化任意值为 JSON 字符串，失败返回空对象。
 func mustJSON(v any) string {
 	b, err := json.Marshal(v)
@@ -544,6 +747,15 @@ func mustJSON(v any) string {
 		return "{}"
 	}
 	return string(b)
+}
+
+// truncateText 按 rune 截断字符串（超长加省略号）。
+func truncateText(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 // aggregateVuln 按 org+asset+engine+签名 聚合并入 vulnerabilities。
@@ -625,6 +837,8 @@ func mapEvent(engine, findingType, severity string) (eventType, title string) {
 		switch findingType {
 		case "sensitive_info":
 			return "敏感信息泄漏", "敏感信息泄漏"
+		case "content_violation":
+			return "内容违规", "AI 分类内容违规"
 		case "content_integrity":
 			return "篡改", "页面篡改"
 		case "external_link":
@@ -633,6 +847,8 @@ func mapEvent(engine, findingType, severity string) (eventType, title string) {
 			return "可用性异常", "死链命中"
 		case "keyword_hit":
 			return "内容违规", "关键词命中"
+		case "image_ocr":
+			return "内容违规", "图片 OCR 识别命中"
 		default:
 			return "内容违规", "内容违规"
 		}

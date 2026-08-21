@@ -10,6 +10,7 @@ export interface Asset {
   risk_level: string
   tech_stack?: string
   icp?: string
+  source_type?: string
   created_at: string
   updated_at: string
 }
@@ -36,7 +37,7 @@ export interface AssetGroup {
   count: number
 }
 
-export function listAssets(params: PageQuery & { keyword?: string; group_name?: string; status?: string }): Promise<PageResult<Asset>> {
+export function listAssets(params: PageQuery & { keyword?: string; group_name?: string; status?: string; source_type?: string }): Promise<PageResult<Asset>> {
   return get('/assets', params)
 }
 

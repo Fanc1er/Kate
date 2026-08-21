@@ -235,3 +235,138 @@ func TestPersistDiscoveredAssetsDedup(t *testing.T) {
 		t.Fatalf("应写入 1 个新资产（去重）+ 1 个已有, got %d", count)
 	}
 }
+
+func TestExternalLinkBaselineFirst(t *testing.T) {
+	gdb := newTestDB(t)
+	assessor := NewResultAssessor(gdb)
+	taskSvc := NewTaskService(gdb, nil, assessor)
+	s := NewWorkerService(gdb, taskSvc, nil, NewHub(), 10)
+
+	asset := models.Asset{OrgID: 1, URL: "https://example.com", Name: "官网", Importance: "high"}
+	if err := gdb.Create(&asset).Error; err != nil {
+		t.Fatalf("create asset: %v", err)
+	}
+	task := models.ScanTask{OrgID: 1, AssetID: asset.ID, PolicyID: 1, Status: models.StatusProcessing}
+	if err := gdb.Create(&task).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	org := models.Organization{Name: "org", Plan: "free", MaxAssets: 100}
+	if err := gdb.Create(&org).Error; err != nil {
+		t.Fatalf("create org: %v", err)
+	}
+
+	links := []any{
+		map[string]any{"url": "https://partner.com/x", "type": "third_party_domain", "domain": "partner.com", "suspicious": false},
+		map[string]any{"url": "https://cdn.example.net/lib.js", "type": "external_resource", "domain": "example.net", "suspicious": false},
+	}
+	s.processExternalLink(org.ID, task, "res-1", WorkerFinding{
+		EngineName: "content_security", Type: "external_link", URL: asset.URL,
+		Extra: map[string]any{"external_links": links},
+	})
+
+	var bl models.ExternalLinkBaseline
+	if err := gdb.Where("org_id = ? AND asset_id = ?", org.ID, asset.ID).First(&bl).Error; err != nil {
+		t.Fatalf("应建立外链基线: %v", err)
+	}
+	if bl.Links == "" {
+		t.Fatal("基线应记录外链清单")
+	}
+	// 首次无变更不产生 finding。
+	var findCnt int64
+	gdb.Model(&models.Finding{}).Where("org_id = ?", org.ID).Count(&findCnt)
+	if findCnt != 0 {
+		t.Fatalf("首次采集不应产生 finding, got %d", findCnt)
+	}
+}
+
+func TestExternalLinkBaselineChange(t *testing.T) {
+	gdb := newTestDB(t)
+	assessor := NewResultAssessor(gdb)
+	taskSvc := NewTaskService(gdb, nil, assessor)
+	s := NewWorkerService(gdb, taskSvc, nil, NewHub(), 10)
+
+	asset := models.Asset{OrgID: 1, URL: "https://example.com", Name: "官网", Importance: "high"}
+	if err := gdb.Create(&asset).Error; err != nil {
+		t.Fatalf("create asset: %v", err)
+	}
+	task := models.ScanTask{OrgID: 1, AssetID: asset.ID, PolicyID: 1, Status: models.StatusProcessing}
+	if err := gdb.Create(&task).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	org := models.Organization{Name: "org", Plan: "free", MaxAssets: 100}
+	if err := gdb.Create(&org).Error; err != nil {
+		t.Fatalf("create org: %v", err)
+	}
+
+	// 首次：1 条外链。
+	s.processExternalLink(org.ID, task, "res-1", WorkerFinding{
+		EngineName: "content_security", Type: "external_link", URL: asset.URL,
+		Extra: map[string]any{"external_links": []any{
+			map[string]any{"url": "https://partner.com/x", "type": "third_party_domain", "domain": "partner.com", "suspicious": false},
+		}},
+	})
+	// 第二次：新增 1 条 + 移除原 1 条。
+	s.processExternalLink(org.ID, task, "res-2", WorkerFinding{
+		EngineName: "content_security", Type: "external_link", URL: asset.URL,
+		Extra: map[string]any{"external_links": []any{
+			map[string]any{"url": "https://evil.net/y", "type": "third_party_domain", "domain": "evil.net", "suspicious": true, "suspicious_reason": "malicious_domain:evil.net"},
+		}},
+	})
+
+	var find models.Finding
+	if err := gdb.Where("org_id = ? AND type = ?", org.ID, "external_link").Order("id ASC").First(&find).Error; err != nil {
+		t.Fatalf("变更应产生 finding: %v", err)
+	}
+	var extra map[string]any
+	_ = json.Unmarshal([]byte(find.Extra), &extra)
+	added, _ := extra["added"].([]any)
+	removed, _ := extra["removed"].([]any)
+	if len(added) != 1 || len(removed) != 1 {
+		t.Fatalf("应检出新增 1 + 移除 1, got added=%d removed=%d", len(added), len(removed))
+	}
+	// 事件（暗链挂马）。
+	var evt models.Event
+	if err := gdb.Where("org_id = ? AND event_type = ?", org.ID, "暗链挂马").First(&evt).Error; err != nil {
+		t.Fatalf("应生成暗链挂马事件: %v", err)
+	}
+}
+
+func TestExternalLinkBaselineSuspicious(t *testing.T) {
+	gdb := newTestDB(t)
+	assessor := NewResultAssessor(gdb)
+	taskSvc := NewTaskService(gdb, nil, assessor)
+	s := NewWorkerService(gdb, taskSvc, nil, NewHub(), 10)
+
+	asset := models.Asset{OrgID: 1, URL: "https://example.com", Name: "官网", Importance: "high"}
+	if err := gdb.Create(&asset).Error; err != nil {
+		t.Fatalf("create asset: %v", err)
+	}
+	task := models.ScanTask{OrgID: 1, AssetID: asset.ID, PolicyID: 1, Status: models.StatusProcessing}
+	if err := gdb.Create(&task).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	org := models.Organization{Name: "org", Plan: "free", MaxAssets: 100}
+	if err := gdb.Create(&org).Error; err != nil {
+		t.Fatalf("create org: %v", err)
+	}
+
+	// 首次采集即含可疑外链 → 生成 high finding。
+	s.processExternalLink(org.ID, task, "res-1", WorkerFinding{
+		EngineName: "content_security", Type: "external_link", URL: asset.URL,
+		Extra: map[string]any{"external_links": []any{
+			map[string]any{"url": "https://evil.com/x", "type": "third_party_domain", "domain": "evil.com", "suspicious": true, "suspicious_reason": "malicious_domain:evil.com"},
+		}},
+	})
+
+	var find models.Finding
+	if err := gdb.Where("org_id = ? AND type = ?", org.ID, "external_link").First(&find).Error; err != nil {
+		t.Fatalf("可疑外链应产生 finding: %v", err)
+	}
+	if find.Severity != "high" {
+		t.Fatalf("可疑外链 severity 应为 high, got %s", find.Severity)
+	}
+	var evt models.Event
+	if err := gdb.Where("org_id = ? AND event_type = ?", org.ID, "暗链挂马").First(&evt).Error; err != nil {
+		t.Fatalf("应生成暗链挂马事件: %v", err)
+	}
+}

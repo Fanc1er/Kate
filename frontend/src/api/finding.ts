@@ -44,3 +44,14 @@ export function getEvidenceFile(id: number): Promise<Blob> {
 export function getVulnEvidence(vulnId: number): Promise<EvidenceMeta[]> {
   return get(`/vulnerabilities/${vulnId}/evidence`)
 }
+
+// 解析 finding.extra JSON（安全访问）。
+export function parseExtra(extra: string): Record<string, unknown> {
+  if (!extra) return {}
+  try {
+    const obj = JSON.parse(extra)
+    return typeof obj === 'object' && obj !== null ? obj : {}
+  } catch {
+    return {}
+  }
+}

@@ -32,7 +32,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 	f.GET("", func(c *gin.Context) {
 		p := service.FindingListParams{
 			Status: c.Query("status"), Severity: c.Query("severity"), EngineName: c.Query("engine_name"),
-			Keyword: c.Query("keyword"),
+			Type: c.Query("type"), Keyword: c.Query("keyword"),
 		}
 		p.Page, p.PageSize = page(c)
 		if v, err := strconv.ParseInt(c.Query("asset_id"), 10, 64); err == nil {

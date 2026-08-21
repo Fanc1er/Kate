@@ -37,6 +37,10 @@ type Config struct {
 	SMTPPassword    string
 	SMTPFrom        string
 	MailCodeTTL     time.Duration // 邮件验证码有效期
+	// LLM 配置（AI 文本分类，用户自行提供端点与 Key；未配置时回退正则）。
+	LLMBaseURL string // CINSIGHT_LLM_BASE_URL
+	LLMAPIKey  string // CINSIGHT_LLM_API_KEY
+	LLMModel   string // CINSIGHT_LLM_MODEL
 }
 
 // Load 读取环境变量构建 Config。
@@ -70,6 +74,9 @@ func Load() *Config {
 		SMTPPassword:    os.Getenv("CINSIGHT_SMTP_PASSWORD"),
 		SMTPFrom:        os.Getenv("CINSIGHT_SMTP_FROM"),
 		MailCodeTTL:     getDuration("CINSIGHT_MAIL_CODE_TTL", 5*time.Minute),
+		LLMBaseURL:      os.Getenv("CINSIGHT_LLM_BASE_URL"),
+		LLMAPIKey:       os.Getenv("CINSIGHT_LLM_API_KEY"),
+		LLMModel:        getEnv("CINSIGHT_LLM_MODEL", "deepseek-chat"),
 	}
 }
 

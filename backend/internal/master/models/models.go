@@ -563,3 +563,18 @@ type ContentBaseline struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
+
+// ExternalLinkBaseline 外链发现基线：资产页面的外链清单（JSON），比对新增/移除/目标域名变更。
+type ExternalLinkBaseline struct {
+	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	OrgID       int64     `gorm:"index:idx_elb_org_asset;not null" json:"org_id"`
+	AssetID     int64     `gorm:"index:idx_elb_org_asset;not null" json:"asset_id"`
+	URL         string    `gorm:"size:1024;not null" json:"url"`
+	Links       string    `gorm:"type:text" json:"links"` // JSON: [{"url","type","domain"}]
+	FirstSeenAt time.Time `json:"first_seen_at"`
+	LastSeenAt  time.Time `json:"last_seen_at"`
+	ChangedAt   *time.Time `json:"changed_at"`
+	ChangedCount int      `gorm:"default:0" json:"changed_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

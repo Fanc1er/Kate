@@ -156,6 +156,7 @@ func (w *worker) pullAndRun() {
 			EngineSwitches map[string]any   `json:"engine_switches"`
 			Engines        []string        `json:"engines"`
 			KeywordRules   []keywordRule   `json:"keyword_rules"`
+			DomainRules    []domainRule    `json:"domain_rules"`
 			Recursion      map[string]any  `json:"recursion"`
 		} `json:"data"`
 	}
@@ -172,6 +173,7 @@ func (w *worker) pullAndRun() {
 	}
 	resp.Data.Policy.Engines = resp.Data.Engines
 	resp.Data.Policy.KeywordRules = resp.Data.KeywordRules
+	resp.Data.Policy.DomainRules = resp.Data.DomainRules
 	if avail, ok := resp.Data.EngineSwitches["availability"].(map[string]any); ok {
 		if fc, ok := avail["fail_count"].(float64); ok && fc > 0 {
 			resp.Data.Policy.FailCount = int(fc)
@@ -347,21 +349,41 @@ func (w *worker) execute(ctx context.Context, t *taskPayload, p *policyPayload, 
 		assessor := engines.NewMultiUAAssessor()
 		assessor.SlowThresholdMS = slowThreshold
 		uaRes := assessor.Assess(ctx, a.URL, 30*time.Second)
-		if len(uaRes.EndDown) > 0 {
+		// 评估详情写入 finding Extra（GET /api/v1/findings/:id 展示 extra.multi_ua）。
+		uaExtra := map[string]any{
+			"probes": uaRes.Probes, "score": uaRes.Score,
+			"base_score": uaRes.BaseScore, "feature_score": uaRes.FeatureScore, "scenario_score": uaRes.ScenarioScore,
+			"level": uaRes.Level, "suggestion": uaRes.Suggestion,
+			"end_down": uaRes.EndDown, "end_diff": uaRes.EndDiff,
+			"spa_suspected": uaRes.SPASuspected, "dom_similarity": uaRes.DOMSimilarity,
+		}
+		if len(uaRes.EndDown) > 0 || len(uaRes.EndDiff) > 0 {
+			// 异常：生成 finding。
+			sev := engines.SeverityMedium
+			title := "端间状态码/延迟不一致"
+			desc := fmt.Sprintf("各探针状态码或响应时间存在差异（%s）", strings.Join(uaRes.EndDiff, ","))
+			if len(uaRes.EndDown) > 0 {
+				sev = engines.SeverityHigh
+				title = "端差异化宕机: " + strings.Join(uaRes.EndDown, ",")
+				desc = fmt.Sprintf("部分探针可用性异常（%s），其余端正常，疑似端差异化宕机/移动端拦截",
+					strings.Join(uaRes.EndDown, ","))
+			}
 			result.Findings = append(result.Findings, findingPayload{
-				EngineName: "multi_ua", Type: "multi_ua_availability", Severity: "high",
-				Title: "端差异化宕机: " + strings.Join(uaRes.EndDown, ","),
-				Description: fmt.Sprintf("部分探针可用性异常（%s），其余端正常，疑似端差异化宕机/移动端拦截",
-					strings.Join(uaRes.EndDown, ",")),
+				EngineName: "multi_ua", Type: "multi_ua_availability", Severity: sev,
+				Title: title, Description: desc,
 				URL: a.URL, Confidence: 0.85,
+				Extra: map[string]any{"multi_ua": uaExtra},
 			})
-		} else if len(uaRes.EndDiff) > 0 {
+		} else {
+			// 各端一致：info 记录评估报告（含评分/SPA/DOM 相似度），供前端展示。
+			extra := map[string]any{"multi_ua": uaExtra}
+			if uaRes.SPASuspected {
+				extra["spa_suspected"] = true
+			}
 			result.Findings = append(result.Findings, findingPayload{
-				EngineName: "multi_ua", Type: "multi_ua_availability", Severity: "medium",
-				Title: "端间状态码/延迟不一致",
-				Description: fmt.Sprintf("各探针状态码或响应时间存在差异（%s）",
-					strings.Join(uaRes.EndDiff, ",")),
-				URL: a.URL, Confidence: 0.7,
+				EngineName: "multi_ua", Type: "multi_ua_evaluation", Severity: engines.SeverityInfo,
+				Title: "多端 UA 综合评估", Description: "各端一致，评估分 " + fmt.Sprint(uaRes.Score) + "（" + uaRes.Level + "）",
+				URL: a.URL, Confidence: 0.95, Extra: extra,
 			})
 		}
 		result.Metrics["multi_ua"] = map[string]any{
@@ -520,6 +542,11 @@ func runContentEngines(ctx context.Context, pageURL string, body []byte, p *poli
 		}
 	}
 
+	// AI 文本分类（content_violation）：配置了 LLM 时对正文分类，未配置静默。
+	if p.engineEnabled("ai_classify") {
+		out = append(out, runAIClassify(ctx, pageURL, body)...)
+	}
+
 	// 敏感信息监测（sensitive_info）：按 scope 分层匹配 request line/header/body。
 	if p.engineEnabled("sensitive_info") {
 		eng := engines.NewSensitiveInfoEngine()
@@ -616,6 +643,35 @@ func runContentEngines(ctx context.Context, pageURL string, body []byte, p *poli
 				},
 			})
 		}
+	}
+
+	// 图片内容 OCR 识别（image_ocr）：页面图片 tesseract OCR，识别文本复核敏感词/提取 URL。
+	if p.engineEnabled("image_ocr") {
+		results := runImageOCR(ctx, pageURL, html, nil)
+		out = append(out, composeImageOCRFinding(pageURL, results)...)
+	}
+
+	// 外链发现（external_link）：解析页面全部外链，白名单过滤 + 恶意域名库命中 + 域名相似度检测，
+	// 清单回传 Master 维护基线，新增/移除/域名变更时由 Master 生成 finding。
+	if p.engineEnabled("external_link") {
+		links := evaluateExternalLinks(extractExternalLinks(pageURL, html), pageHostOf(pageURL), p.DomainRules)
+		suspicious := 0
+		for _, l := range links {
+			if l.Suspicious {
+				suspicious++
+			}
+		}
+		out = append(out, findingPayload{
+			EngineName: "content_security", Type: "external_link", Severity: engines.SeverityInfo,
+			Title:       "外链清单",
+			Description: fmt.Sprintf("页面外链清单（共 %d 条，可疑 %d 条）", len(links), suspicious),
+			URL:         pageURL, Confidence: 0.99,
+			Extra: map[string]any{
+				"external_links":   links,
+				"external_link_count": len(links),
+				"suspicious_count": suspicious,
+			},
+		})
 	}
 
 	// 内容完整性指纹（content_integrity）：计算标题/正文/HTML 三通道 Hash 回传，
@@ -819,6 +875,7 @@ type policyPayload struct {
 	EnableEvidence  bool     `json:"enable_evidence"`
 	Engines         []string `json:"engines"`
 	KeywordRules    []keywordRule `json:"keyword_rules"`
+	DomainRules     []domainRule  `json:"domain_rules"`
 
 	// 递归扫描配置（随任务下发）。
 	ScanDepth        int  `json:"-"`

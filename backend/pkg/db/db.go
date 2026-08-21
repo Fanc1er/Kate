@@ -87,6 +87,7 @@ func Migrate(gdb *gorm.DB) error {
 		&models.Scenario{},
 		&models.SOPTemplate{},
 		&models.ContentBaseline{},
+		&models.ExternalLinkBaseline{},
 	); err != nil {
 		return fmt.Errorf("automigrate: %w", err)
 	}

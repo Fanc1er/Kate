@@ -140,15 +140,15 @@ Updated: 2026-08-20
 
 ### 2.2 引擎实现
 - [ ] 漏洞扫描引擎（POC + Fuzzing + 参数注入，context 30s 超时 + ants 并发）
-- [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息规则集提取 + 篡改基线 + 外链发现含友链/引用篡改检出 link_tampered + 图片 OCR 识别 image_ocr（Worker 集成 tesseract，超时降级跳过，识别文本复核敏感词/AI 分类/URL 提取））
+- [x] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息规则集提取 + 篡改基线 + 外链发现含友链/引用篡改检出 link_tampered + 图片 OCR 识别 image_ocr（Worker 集成 tesseract，超时降级跳过，识别文本复核敏感词/AI 分类/URL 提取））
 - [x] 敏感词监测（内置敏感词库涉黄赌毒政正则匹配 + AI 文本分类增强/不可用超时回退正则 + 来源标记 regex/ai，type=sensitive_word，engine_switches.sensitive_word.enabled，R2.3-1）（engines.SensitiveWordEngine + worker 接线，7 单测；regex 来源与白名单剔除已完成，AI 文本分类增强项未实现）
 - [x] 敏感信息规则集提取（rule_definitions 规则按 scope 分层匹配 request line/header/body，s_regex 过滤 + f_regex 提取，命中写 sensitive_info_hits + Bleve + findings 主命中；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证）（engines.SensitiveInfoEngine 内置 7 类规则 + s_regex/f_regex 支持 + scope 分层，7 单测；worker runContentEngines 按 scope 采样 request line/header/response header/body 匹配，finding.Extra.sensitive_info_hits 回传；Master persistSensitiveInfoHits 落 sensitive_info_hits 明细，sensitive_info_hits_test.go 3 用例；Bleve 索引未实现）
 - [x] 递归扫描与资产发现（scan_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin/crawl_subpages（关闭时深度强制 1 仅测种子页）；达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded）
 - [ ] 多端 UA 综合评估器（MultiUAAssessor：PC 随机 UA + 标准移动 UA + 微信内置浏览器 UA + 无头浏览器移动视口模拟四探针 + 基础/特征/场景三级加权评分 + SimHash DOM 相似度阈值 + SPA 空壳识别容错 + 结论分级与处置建议 + probe_failed 降权 + 各端快照证据链）
-- [ ] 内容安全引擎接入 MultiUAAssessor（端级敏感词/敏感信息命中计入评分）
+- [x] 内容安全引擎接入 MultiUAAssessor（端级敏感词/敏感信息命中计入评分）
 - [ ] AI 内容分类适配层（AIAdapter：endpoint/model/key 环境注入 + 超时/429 失败回退正则 + 结果缓存 + gobreaker 熔断）
 - [x] 内容完整性持续监测（重点资产 importance=high 的标题/正文关键区域/关键文案 Hash 基线建立与维护 + 按计划任务周期比对 + 变更前后对比与变更维度，type=content_integrity，对齐 R2.3-6/R5.20-5）
-- [ ] 外链发现监测（页面外链解析：外部资源/出站链接/第三方域名 + 外链清单基线 + 新增/移除/目标域名变更/恶意域名库命中与域名相似度检测，type=external_link，R2.3-7）
+- [x] 外链发现监测（页面外链解析：外部资源/出站链接/第三方域名 + 外链清单基线 + 新增/移除/目标域名变更/恶意域名库命中与域名相似度检测，type=external_link，R2.3-7）
 - [x] 死链监测（内链+外链健康度校验：4xx/5xx/连接失败/超时，记录死链 URL/来源页面/状态码/响应时间，type=dead_link，R2.3-8）（engines.DeadLinkEngine + worker 接线，6 单测，响应时间 ms 记录于 extra.elapsed_ms）
 - [x] 关键词监测（rule_definitions.kind=keyword 关键词/正则规则匹配，覆盖正文/HTML 源码/URL，敏感级告警/普通级事件，type=keyword_hit，R2.3-9）
 - [ ] 暗链挂马引擎（检测器子单元：关键字整词匹配 + HTML 双通道[正则 URL 打分/DOM 结构 script/frame/link/form] + JS 高危函数与混淆手法/信息熵 + CSS 隐藏手法与危险链接 + 隐藏手法专项[零宽/同色/出屏/实体编码] + 自定义规则逐条匹配 + 无头浏览器动态检测[运行时样式判隐藏/动态链接打分，复用 R3.2b 组件] + 双 UA 对比）
@@ -185,10 +185,10 @@ Updated: 2026-08-20
 - [ ] 漏洞管理前端页（等级/状态/引擎筛选 + 详情 + 证据链抽屉 + 批量生成工单/复测/忽略）
 - [ ] 工单前端页（列表/详情/状态流转/SOP 挂载/复测归档）
 - [ ] 告警风暴抑制（单资产每小时 5 条上限）
-- [ ] findings 查询接口（GET /api/v1/findings 列表：engine/type/severity/status/asset_id 筛选分页；GET /api/v1/findings/:id 详情：主记录 + 关联证据 + 命中明细，type=sensitive_info 返回 sensitive_info_hits、type=multi_ua 返回 extra.multi_ua，支撑 R5.5/R5.6/R5.7 列表页）
+- [x] findings 查询接口（GET /api/v1/findings 列表：engine/type/severity/status/asset_id 筛选分页；GET /api/v1/findings/:id 详情：主记录 + 关联证据 + 命中明细，type=sensitive_info 返回 sensitive_info_hits、type=multi_ua 返回 extra.multi_ua，支撑 R5.5/R5.6/R5.7 列表页）
 
 ### 2.4 引擎相关前端模块
-- [ ] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示 + 内容完整性 tab：重点资产基线/变更记录/变更前后对比 + 外链发现 tab：外链列表/变更标记/可疑标记/友链引用篡改标记 + 死链 tab：死链列表/状态码/筛选统计 + 关键词命中 tab：命中词/原文/规则/敏感级别 + 图片 OCR tab：图片 URL/识别文本/置信度/判定来源）
+- [x] 内容安全监测页（敏感内容/信息泄漏/篡改对比 + 截图缩略图 + 多端 UA 评估结果对比明细/评分/端级异常定位 + 敏感信息规则集管理视图 group/name/scope/sensitive 启用禁用 + 资产发现结果展示 JS/CSS/图片/音视频/子域名/接口路径 + 递归扫描进度展示 + 内容完整性 tab：重点资产基线/变更记录/变更前后对比 + 外链发现 tab：外链列表/变更标记/可疑标记/友链引用篡改标记 + 死链 tab：死链列表/状态码/筛选统计 + 关键词命中 tab：命中词/原文/规则/敏感级别 + 图片 OCR tab：图片 URL/识别文本/置信度/判定来源）
 - [ ] 暗链木马页（暗链列表/木马列表含检测维度来源标注 + 双 UA 对比 + 双 UA 触发接口 POST /api/v1/assets/:id/dual-ua）
 - [ ] Webshell 与钓鱼页（Webshell 列表：检测路径/特征码/文件内容片段 + 钓鱼列表：仿冒目标/域名相似度/证书异常）
 - [ ] 可用性网络页（12h 点阵图绿/红竖线 + HTTP/DNS/TCP/PING 四维度切换 + 24h 时序折线 + DNS/端口记录 + 多端 UA 可用性对比与端差异化异常展示 + 官网/活动关键资产四维持续监测视图：网站打不开/DNS 解析异常/服务不稳定/网络连通异常/访问状态变化五类异常记录与状态变更对比）
