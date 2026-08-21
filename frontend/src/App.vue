@@ -1,41 +1,50 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import type { HealthResponse } from './api'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from './stores/auth'
+import Toast from './components/Toast.vue'
+import { registerToast, type ToastExpose } from './utils/toast'
 
-const api = ref<HealthResponse | null>(null)
-const error = ref('')
+const router = useRouter()
+const auth = useAuthStore()
+const toastRef = ref<InstanceType<typeof Toast> | null>(null)
 
 onMounted(async () => {
-  try {
-    api.value = await fetch('/api/health').then((r) => r.json())
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+  registerToast(toastRef.value as unknown as ToastExpose)
+  if (auth.isLoggedIn && !auth.user) {
+    try {
+      await auth.fetchMe()
+    } catch {
+      await auth.logout()
+      router.replace('/login')
+    }
   }
 })
 </script>
 
 <template>
-  <main>
-    <h1>Kate</h1>
-    <p v-if="api">{{ api.name }} · {{ api.status }}</p>
-    <p v-else-if="error" class="error">后端连接失败：{{ error }}</p>
-    <p v-else>正在连接后端…</p>
-  </main>
+  <router-view />
+  <Toast ref="toastRef" />
 </template>
 
 <style>
-body {
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#app {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #0f172a;
-  color: #e2e8f0;
+  padding: 0;
+  height: 100%;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  background: #f5f7fa;
+  color: #333;
 }
-main {
-  max-width: 640px;
-  margin: 10vh auto;
-  padding: 0 1rem;
-}
-.error {
-  color: #f87171;
+a {
+  color: inherit;
+  text-decoration: none;
 }
 </style>

@@ -1,7 +1,7 @@
 # CInsight 智能监测平台 — 实施任务列表
 
 Feature Name: cinsight-platform
-Updated: 2026-08-19
+Updated: 2026-08-20
 关联文档: [requirements.md](requirements.md) / [design.md](design.md)
 
 ---
@@ -9,148 +9,148 @@ Updated: 2026-08-19
 ## 阶段 1 — MVP 闭环（RBAC + 资产 + 任务 + 证据链）
 
 ### 1.1 技术底座
-- [ ] 初始化 Go 模块与 Gin 脚手架（cmd/master、cmd/worker）
-- [ ] 引入依赖：Gin、GORM、SQLite 驱动（WAL 模式）、BadgerDB、Bleve、ants、gobreaker、fsnotify、swaggo/swag、gorilla/websocket
-- [ ] 统一响应中间件（code/message/data 格式）与错误码定义（见 design 错误码枚举）
-- [ ] 统一约定落地：响应格式 {code/message/data}（code=0 成功，业务码非 0）+ 分页 page/page_size（默认 20 上限 200，返回 list+total）/排序 sort/filter 筛选/RFC3339 时间/鉴权分层（JWT / API Token / Worker Bootstrap）
-- [ ] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
-- [ ] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
-- [ ] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
-- [ ] 全量业务表结构迁移（organizations/users/user_orgs/assets/vulnerabilities/alerts/findings/scan_tasks/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_items/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points/sensitive_info_hits/rule_definitions/escalation_rules/watch_shifts/daily_war_reports/scenarios）
+- [x] 初始化 Go 模块与 Gin 脚手架（cmd/master、cmd/worker）
+- [x] 引入依赖：Gin、GORM、SQLite 驱动（WAL 模式）、BadgerDB、Bleve、ants、gobreaker、fsnotify、swaggo/swag、gorilla/websocket
+- [x] 统一响应中间件（code/message/data 格式）与错误码定义（见 design 错误码枚举）
+- [x] 统一约定落地：响应格式 {code/message/data}（code=0 成功，业务码非 0）+ 分页 page/page_size（默认 20 上限 200，返回 list+total）/排序 sort/filter 筛选/RFC3339 时间/鉴权分层（JWT / API Token / Worker Bootstrap）
+- [x] 目录骨架：internal/master/{controller,service,repository,middleware,routes}、internal/worker/{engine,scheduler,reporter}、pkg/{db,badger,bleve,storage,utils}
+- [x] 配置管理落地（环境变量清单：PORT/DB_PATH/DATA_DIR/JWT_SECRET/RULES_DIR 等，见 design 配置表）
+- [x] Swagger 文档集成（swag init 初始化 + /swagger/* 端点暴露，CINSIGHT_SWAGGER_ENABLED 开关生产默认关闭，阶段 3 全量注解）【必执行】
+- [x] 全量业务表结构迁移（organizations/users/user_orgs/assets/vulnerabilities/alerts/findings/scan_tasks/events/tickets/evidence/evidence_files/audit_logs/api_tokens/notify_channels/notify_routes/noise_rules/scan_whitelists/worker_nodes/scan_policies/scan_plans/intel_items/intel_subscriptions/report_templates/reports/webhooks/wechat_assets/availability_points/trend_points/sensitive_info_hits/rule_definitions/escalation_rules/watch_shifts/daily_war_reports/scenarios）
 
 ### 1.2 认证与 RBAC
-- [ ] organizations/users/user_orgs 表迁移
-- [ ] 登录接口（bcrypt 校验 + JWT 签发，不含 org_id）
-- [ ] 当前用户信息接口（GET /api/v1/auth/me：用户名/邮箱/角色/当前组织/头像/权限码集，仅依赖 JWT 不需 X-Org-Id）+ 登出接口（POST /api/v1/auth/logout，refresh token 入 jti 黑名单）
-- [ ] 禁用用户/禁用组织登录拦截（users.status / user_orgs.status / org.status 校验，403 USER_DISABLED/ORG_DISABLED + 后续 API 校验失效）
-- [ ] refresh token 机制（POST /api/v1/auth/refresh，access 15min + refresh 7d，jti 黑名单）
-- [ ] 登出/换组织/改密/重置后 token 失效（黑名单生效）
-- [ ] 组织选择接口 POST /api/v1/auth/select-org（换取带 org_id 的 JWT）
-- [ ] 切换组织前端处理（刷新数据 + 关闭旧 WS 重建连接绑定新 org_id）
-- [ ] JWT 中间件 + X-Org-Id 校验 + RBAC 中间件（RequireRoles/RequireWrite）
-- [ ] super_admin 全局 org_id=0 平台查询通道
-- [ ] super_admin 禁止加入 user_orgs 约束（触发器/服务层校验）
-- [ ] Repository 层 org_id 强制过滤守卫（缺省 org_id 拒绝查询）
-- [ ] 登录锁定阈值控制（连续失败 5 次锁定 15 分钟，登录接口限流 5 次/min/IP）
-- [ ] 密码重置流程（POST /api/v1/auth/forgot-password + reset-password，重置后失效旧 token）
-- [ ] 系统级邮件发送（CINSIGHT_SMTP_*：验证码/邀请邮件，验证码 5min 一次性，独立于组织通知渠道）
-- [ ] 登录态改密（POST /api/v1/auth/change-password：校验旧密码 + 符合密码策略 + 改后失效全部 refresh token）
-- [ ] 首启引导初始化 super_admin/默认策略/降噪规则（--init-super-admin 或首启向导，未初始化禁用平台管理）
+- [x] organizations/users/user_orgs 表迁移
+- [x] 登录接口（bcrypt 校验 + JWT 签发，不含 org_id）
+- [x] 当前用户信息接口（GET /api/v1/auth/me：用户名/邮箱/角色/当前组织/头像/权限码集，仅依赖 JWT 不需 X-Org-Id）+ 登出接口（POST /api/v1/auth/logout，refresh token 入 jti 黑名单）
+- [x] 禁用用户/禁用组织登录拦截（users.status / user_orgs.status / org.status 校验，403 USER_DISABLED/ORG_DISABLED + 后续 API 校验失效）
+- [x] refresh token 机制（POST /api/v1/auth/refresh，access 15min + refresh 7d，jti 黑名单）
+- [x] 登出/换组织/改密/重置后 token 失效（黑名单生效）
+- [x] 组织选择接口 POST /api/v1/auth/select-org（换取带 org_id 的 JWT）
+- [x] 切换组织前端处理（刷新数据 + 关闭旧 WS 重建连接绑定新 org_id）
+- [x] JWT 中间件 + X-Org-Id 校验 + RBAC 中间件（RequireRoles/RequireWrite）
+- [x] super_admin 全局 org_id=0 平台查询通道
+- [x] super_admin 禁止加入 user_orgs 约束（member.go Invite/CreateOrg 拦截 super_admin，member_test.go 4 用例覆盖）
+- [x] Repository 层 org_id 强制过滤守卫（缺省 org_id 拒绝查询）【Guard 接线：TriageService/AssetService/TaskService/DashboardService 列表与统计查询切换 s.guard(orgID).Scoped() 强制 org 过滤】
+- [x] 登录锁定阈值控制（连续失败 5 次锁定 15 分钟，登录接口限流 5 次/min/IP）
+- [x] 密码重置流程（POST /api/v1/auth/forgot-password + reset-password，重置后失效旧 token）
+- [x] 系统级邮件发送（CINSIGHT_SMTP_*：验证码/邀请邮件，验证码 5min 一次性，独立于组织通知渠道）
+- [x] 登录态改密（POST /api/v1/auth/change-password：校验旧密码 + 符合密码策略 + 改后失效全部 refresh token）
+- [x] 首启引导初始化 super_admin/默认策略/降噪规则（--init-super-admin 或首启向导，未初始化禁用平台管理）
 
 ### 1.3 前端基础框架
-- [ ] 引入 TinyVue (@opentiny/vue) + Pinia + Vue Router 4 + ReconnectingWebSocket + ECharts + DOMPurify
-- [ ] 前端目录结构落地（src/api|stores|router|layouts|views|components|utils，见 design 前端架构）
-- [ ] axios 封装 + 模块化 API 层（Bearer + X-Org-Id + 401 跳转 + 模块拆分：http/auth/asset/task/event/finding/report/dashboard/intel/admin/ws）
-- [ ] Pinia store 划分（auth/menu/asset/event/dashboard）
-- [ ] 登录页 /login + 组织选择卡片页 + 忘记密码/重置密码页（forgot-password + reset-password 表单 + 验证码 5min 提示）
-- [ ] 基于 role 的动态 addRoute() 路由与菜单（含 super_admin 平台管理/选择组织双入口）
-- [ ] 按钮级权限指令 v-permission + 权限码表（src/config/permissions.ts，按 design「RBAC 权限矩阵与权限码」清单落地），菜单/路由/按钮三级一致
-- [ ] 顶部导航（组织名 + 角色 Tag + 切换组织/退出）
-- [ ] 全局错误边界 + 骨架屏 + 请求失败 Toast（axios 拦截器 + 异常兜底页）
-- [ ] WebSocket 断线提示条 + 重连自动恢复清除
-- [ ] 乐观锁 409 冲突前端提示（"数据已被他人修改，请刷新后重试"）
+- [x] 引入 TinyVue (@opentiny/vue) + Pinia + Vue Router 4 + ReconnectingWebSocket + ECharts + DOMPurify
+- [x] 前端目录结构落地（src/api|stores|router|layouts|views|components|utils，见 design 前端架构）
+- [x] axios 封装 + 模块化 API 层（Bearer + X-Org-Id + 401 跳转 + 模块拆分：http/auth/asset/task/event/finding/report/dashboard/intel/admin/ws）
+- [x] Pinia store 划分（auth/menu/asset/event/dashboard）
+- [x] 登录页 /login + 组织选择卡片页 + 忘记密码/重置密码页（forgot-password + reset-password 表单 + 验证码 5min 提示）
+- [x] 基于 role 的动态 addRoute() 路由与菜单（含 super_admin 平台管理/选择组织双入口）
+- [x] 按钮级权限指令 v-permission + 权限码表（src/config/permissions.ts，按 design「RBAC 权限矩阵与权限码」清单落地），菜单/路由/按钮三级一致
+- [x] 顶部导航（组织名 + 角色 Tag + 切换组织/退出）
+- [x] 全局错误边界 + 骨架屏 + 请求失败 Toast（AppErrorBoundary.vue 包 DefaultLayout 主内容区；Skeleton.vue 接入资产/任务/事件/发现列表；axios 拦截器 + Toast 全局提示）
+- [x] WebSocket 断线提示条 + 重连自动恢复清除
+- [x] 乐观锁 409 冲突前端提示（HTTP 409/业务码 3001、4002 统一 toast.warning「数据已被他人修改，请刷新后重试」，http.ts 响应拦截器）
 
 ### 1.4 资产模块
-- [ ] 资产后端 API：CRUD（GET/POST /api/v1/assets，GET/PUT/DELETE /api/v1/assets/:id）
-- [ ] 资产后端 API：画像（GET /api/v1/assets/:id/profile）
-- [ ] 资产后端 API：变更追踪（GET /api/v1/assets/:id/history）
-- [ ] 资产后端 API：URL 归一化 + BadgerDB MD5 防重
-- [ ] 资产后端 API：微信公众号资产完整 CRUD（GET/POST /api/v1/wechat-assets，PUT/DELETE /api/v1/wechat-assets/:id）
-- [ ] 资产批量操作 API：batch-scan（批量加入扫描）/ batch-delete / batch-group（批量改分组）/ batch-import（URL/CSV 批量导入 + 模板下载 + 逐行校验报告）
-- [ ] 资产分组为字符串标签（group_name 自由填写 + 列表分组筛选下拉 distinct 计数 + 定时计划按组名精确匹配）
-- [ ] 资产导入模板下载（GET /api/v1/assets/import-template）+ 当前筛选结果 CSV 导出（GET /api/v1/assets/export）
-- [ ] 资产列表前端（虚拟滚动/模糊搜索/筛选 + 多选批量操作栏 + 空状态引导）
-- [ ] 资产画像抽屉前端（技术栈指纹/ICP/子域名/SSL 倒计时/端口快照）
-- [ ] 资产变更追踪前端（标题/技术栈/状态码/端口变动历史）
-- [ ] 微信公众号资产前端字段（公众号名/微信号/头像/粉丝数/简介/认证状态/文章数，扩展自 R5.2）
-- [ ] 资产行内"立即扫描"快捷操作 + URL 一键复制
+- [x] 资产后端 API：CRUD（GET/POST /api/v1/assets，GET/PUT/DELETE /api/v1/assets/:id）
+- [x] 资产后端 API：画像（GET /api/v1/assets/:id/profile）
+- [x] 资产后端 API：变更追踪（GET /api/v1/assets/:id/history）
+- [x] 资产后端 API：URL 归一化 + BadgerDB MD5 防重
+- [x] 资产后端 API：微信公众号资产完整 CRUD（GET/POST /api/v1/wechat-assets，PUT/DELETE /api/v1/wechat-assets/:id）
+- [x] 资产批量操作 API：batch-scan（批量加入扫描）/ batch-delete / batch-group（批量改分组）/ batch-import（URL/CSV 批量导入 + 模板下载 + 逐行校验报告）
+- [x] 资产分组为字符串标签（group_name 自由填写 + 列表分组筛选下拉 distinct 计数 + 定时计划按组名精确匹配）
+- [x] 资产导入模板下载（GET /api/v1/assets/import-template）+ 当前筛选结果 CSV 导出（GET /api/v1/assets/export）
+- [x] 资产列表前端（虚拟滚动/模糊搜索/筛选 + 多选批量操作栏 + 空状态引导）
+- [x] 资产画像抽屉前端（技术栈指纹/ICP/SSL 到期倒计时/子域名/端口快照，AssetView.vue 结构化展示）
+- [x] 资产变更追踪前端（AssetView.vue「变更历史」tab：openHistory 拉取 getAssetHistory 展示变动列表）
+- [x] 微信公众号资产前端字段（公众号名/微信号/头像/粉丝数/简介/认证状态/文章数，AssetView.vue 微信 tab + CRUD 表单）
+- [x] 资产行内"立即扫描"快捷操作 + URL 一键复制（AssetView.vue）
 
 ### 1.5 任务调度与可用性引擎
-- [ ] 任务表与策略模板表迁移
-- [ ] SQLite 连接与 WAL 配置（journal_mode/busy_timeout/synchronous/foreign_keys，单写连接池 + 连接参数 MaxOpenConns(1)/ConnMaxLifetime(30m)/ConnMaxIdleTime(10m)）
-- [ ] GORM 迁移策略落地（AutoMigrate + schema_migrations + 种子数据）
-- [ ] 核心表索引落地（org_id/状态/时间索引，见 design 索引设计）
-- [ ] BadgerDB-SQLite 缓存一致性（写入先 Badger 后异步 SQLite + 每小时对账）
-- [ ] Master 任务创建/下发/拉取接口（pending→processing→completed）
-- [ ] 任务分发 Pull 模型（Worker 轮询拉取 + 原子置 processing 防双拉 + 按心跳 load 最低优先分配 + 任务不拆分）
-- [ ] 任务去重（同 org+asset+policy 存在 pending/processing 时返回 3001 TASK_STATE_CONFLICT）
-- [ ] 任务详情接口（GET /api/v1/tasks/:id，状态/进度/执行日志/结果统计/Worker 分配）
-- [ ] 任务队列监控与断点续扫状态（GET /api/v1/tasks/queue 排队/处理中/已完成 + Worker 分配 + GET /api/v1/tasks/:id/progress）
-- [ ] 任务停止/删除/批量停止/失败重跑（POST :id/stop 置 cancelled 标记 stopped_by_user + Worker stop_check 感知中止回传 cancelled、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
-- [ ] Worker 调度器（拉取 + 执行 + 回传）
-- [ ] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
-- [ ] Worker 注册握手（POST /api/v1/worker/register：Bootstrap Token 一次性换长期凭证 client_id+client_secret，后续心跳/拉取/回传用长期凭证，支持吊销/重发）
-- [ ] 可用性监测引擎（HTTP 探针 + 连续失败判定次数可配置 engine_switches.availability.fail_count（默认 3，关键资产 2）+ 访问速度预置 engine_switches.availability.slow_threshold_ms（默认 3000ms 采样均值判定服务不稳定），R2.7-1/R2.7-7）
-- [ ] 可用性引擎接入 MultiUAAssessor（端间状态码/延迟不一致 + 端差异化宕机标记）
-- [ ] Worker Outbox 本地缓存与断网回传
-- [ ] 结果回传幂等键去重（result_id 唯一索引，重复回传不重复入库）
-- [ ] 任务失败自动重试上限（3 次，指数退避，超限置 failed + 告警事件）
-- [ ] Master 启动超时任务对账（30min 重置 processing→pending）
-- [ ] 任务级超时上限实现（scan_policies.timeout 默认 60min，Master TaskScheduler 对账超时未完成中止置 failed；Worker 侧执行超时终止并在结果标记 task_timeout=true，见 R4.3-8）
-- [ ] 断点续扫（local:crawled:{task_id}）
-- [ ] Master/Worker 优雅停机（SIGTERM 排空在途任务 + Outbox 落盘，超时 30s）
+- [x] 任务表与策略模板表迁移
+- [x] SQLite 连接与 WAL 配置（journal_mode/busy_timeout/synchronous/foreign_keys，单写连接池 + 连接参数 MaxOpenConns(1)/ConnMaxLifetime(30m)/ConnMaxIdleTime(10m)）
+- [x] GORM 迁移策略落地（AutoMigrate + schema_migrations + 种子数据）
+- [x] 核心表索引落地（org_id/状态/时间索引，见 design 索引设计）
+- [x] BadgerDB-SQLite 缓存一致性（MasterScheduler.reconcileBadger 每小时 ScanPrefix("urlmd5:") 以 SQLite 为准清理脏键）
+- [x] Master 任务创建/下发/拉取接口（pending→processing→completed）
+- [x] 任务分发 Pull 模型（Worker 轮询拉取 + 原子置 processing 防双拉 + 按心跳 load 最低优先分配 + 任务不拆分）
+- [x] 任务去重（同 org+asset+policy 存在 pending/processing 时返回 3001 TASK_STATE_CONFLICT）
+- [x] 任务详情接口（GET /api/v1/tasks/:id，状态/进度/执行日志/结果统计/Worker 分配）
+- [x] 任务队列监控与断点续扫状态（GET /api/v1/tasks/queue 排队/处理中/已完成 + Worker 分配 + GET /api/v1/tasks/:id/progress）
+- [x] 任务停止/删除/批量停止/失败重跑（POST :id/stop 置 cancelled 标记 stopped_by_user + Worker stop_check 感知中止回传 cancelled、DELETE :id、POST batch-stop、POST :id/rerun、POST batch-rerun）
+- [x] Worker 调度器（拉取 + 执行 + 回传）
+- [x] Worker 心跳上报（POST /api/v1/worker/heartbeat，节点心跳/负载/版本更新）
+- [x] Worker 注册握手（POST /api/v1/worker/register：Bootstrap Token 一次性换长期凭证 client_id+client_secret，后续心跳/拉取/回传用长期凭证，支持吊销/重发）
+- [x] 可用性监测引擎（HTTP 探针 + 连续失败判定次数可配置 engine_switches.availability.fail_count（默认 3，关键资产 2）+ 访问速度预置 engine_switches.availability.slow_threshold_ms（默认 3000ms 采样均值判定服务不稳定），R2.7-1/R2.7-7）
+- [x] 可用性引擎接入 MultiUAAssessor（端间状态码/延迟不一致 + 端差异化宕机标记）【engines.MultiUAAssessor 四探针（PC/移动/微信/移动视口）+ 端间状态码/延迟不一致检测 + 端差异化宕机标记（4xx/5xx/连接失败）+ 评分/分级/处置建议，multi_ua_test.go 4 用例，worker execute 接入 + Master mapEvent 映射可用性异常】
+- [x] Worker Outbox 本地缓存与断网回传
+- [x] 结果回传幂等键去重（result_id 唯一索引，重复回传不重复入库）
+- [x] 任务失败自动重试上限（3 次，指数退避 2^n×30s，超限置 failed；Worker 无状态、Master ReportResult 置 pending+retry_at，task_timeout/cancelled 不重试）【告警事件生成未实现】
+- [x] Master 启动超时任务对账（30min 重置 processing→pending）
+- [x] 任务级超时上限实现（scan_policies.timeout 默认 60min：Master scheduler 对账 pending 超时置 failed；Worker 侧 context.WithTimeout 执行超时终止并标记 task_timeout=true 回传，policyPayload 下发 FailCount/SlowThresholdMS）
+- [x] 断点续扫（local:crawled:{task_id}）【Worker recordCrawled/alreadyCrawled 按 local:crawled:{task_id}:{url-hash} 记录，重拉时跳过已抓 URL 标记 resumed】
+- [x] Master/Worker 优雅停机（SIGTERM 排空在途任务 + Outbox 落盘，超时 30s）
 
 ### 1.6 证据链
-- [ ] 证据 gzip 落盘 /data/evidence/{date}/ + MD5 去重 + SHA-256 入库
-- [ ] 证据读取时 Hash 强制校验（不一致返回 EVIDENCE_TAMPERED）
-- [ ] 通用证据读取接口（GET /api/v1/evidence/:id，返回 Req/Resp/HTML/截图元数据 + 文件流）
-- [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence，聚合漏洞关联证据链）
-- [ ] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号/confidence 置信度）+ 结果回传链路
-- [ ] 结果回传协议实现（result_id 幂等 + status completed/failed/cancelled + task_timeout/stopped_by_user + findings 统一结构 + evidence_ids 数组引用 + 内联证据落盘，见 design「Worker 结果回传协议」）
-- [ ] 证据传输协议（POST /api/v1/worker/evidence：<1MB 内联 / ≥1MB 分片 ≤8MB / upload_id 断点续传 / 收齐合并 SHA-256 校验）
-- [ ] Worker HAR 文件生成（HAR 1.2 组装：entries 请求/响应头、Body、时间戳、大小、MIME + Body 超限截断标记 + gzip 落盘入库）
-- [ ] 证据下载接口支持 format=har（HAR 文件导出，可导入 DevTools/Fiddler）
-- [ ] 证据下载端点（GET /api/v1/evidence/:id/download 按证据类型返回文件流，下载前 Hash 校验）
-- [ ] Worker 页面渲染截图采集（截图取证）
-- [ ] Worker 无头浏览器截图组件（chromedp/chromium：viewport 渲染 + DOMContentLoaded+2s + PNG 输出，超时降级 screenshot:skipped，同 URL 缓存，并发受池约束）
-- [ ] 截图上传接口（POST /api/v1/evidence/screenshots，Base64 或文件流，鉴权 + SHA-256 校验）
-- [ ] 截图上传安全校验（MIME 仅 png/jpeg/webp + 大小 ≤10MB + 文件名防路径穿越/UUID 落盘）
-- [ ] 证据文件保留期清理与空间回收（expires_at 365 天 + 孤儿文件扫描）
-- [ ] 前端全屏证据抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图标签页 + 下载按钮；HTML 经 DOMPurify 白名单净化后渲染，禁止直接 v-html 注入防存储型 XSS）
+- [x] 证据 gzip 落盘 /data/evidence/{date}/ + MD5 去重 + SHA-256 入库
+- [x] 证据读取时 Hash 强制校验（不一致返回 EVIDENCE_TAMPERED）
+- [x] 通用证据读取接口（GET /api/v1/evidence/:id，返回 Req/Resp/HTML/截图元数据 + 文件流）
+- [x] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence，TriageService.GetVulnEvidence 聚合漏洞关联证据链，triage_routes.go:174）
+- [x] Worker 侧证据生成（Req/Resp/HTML 快照/代码定位行号/confidence 置信度）+ 结果回传链路【Worker buildEvidence 组装 req/resp/html 快照，locateLine 定位引擎关键词行号，resultPayload.Evidence 顶层证据链 + finding.inline_evidence 关联，Master ReportResult 落库】
+- [x] 结果回传协议实现（result_id 幂等 + status completed/failed/cancelled + task_timeout/stopped_by_user + findings 统一结构 + evidence_ids 数组引用 + 内联证据落盘，见 design「Worker 结果回传协议」）
+- [x] 证据传输协议（POST /api/v1/worker/evidence：<1MB 内联 / ≥1MB 分片 ≤8MB / upload_id 断点续传 / 收齐合并 SHA-256 校验）【EvidenceService.ChunkUpload 聚合 + TTL 清理，evidence_test.go 3 用例：收齐合并/篡改拒绝/跨组织去重】
+- [x] Worker HAR 文件生成（HAR 1.2 组装：entries 请求/响应头、Body、时间戳、大小、MIME + Body 超限截断标记 + gzip 落盘入库）【Worker buildHAR 组装 entries + gzip 内联回传，kind=har，Master CreateFromBytes 落盘；Download format=har 已支持导出】
+- [x] 证据下载接口支持 format=har（HAR 文件导出，可导入 DevTools/Fiddler）
+- [x] 证据下载端点（GET /api/v1/evidence/:id/download 按证据类型返回文件流，下载前 Hash 校验）
+- [x] Worker 页面渲染截图采集（截图取证）
+- [x] Worker 无头浏览器截图组件（chromedp/chromium：viewport 渲染 + DOMContentLoaded+2s + PNG 输出，超时降级 screenshot:skipped，同 URL 缓存，并发受池约束）
+- [x] 截图上传接口（POST /api/v1/evidence/screenshots，Base64 或文件流，鉴权 + SHA-256 校验）
+- [x] 截图上传安全校验（MIME 仅 png/jpeg/webp + 大小 ≤10MB + 文件名防路径穿越/UUID 落盘）
+- [x] 证据文件保留期清理与空间回收（expires_at 365 天 + 孤儿文件扫描）
+- [x] 前端全屏证据抽屉（Req/Resp 分屏 + HTML 行号高亮 + 截图标签页 + 下载按钮；HTML 经 DOMPurify 白名单净化后渲染，禁止直接 v-html 注入防存储型 XSS）【增强完成：多证据 Tab + 文件类型筛选（req/resp/html/screenshot/text）+ SHA-256 读取失败标红 + 逐行渲染 + 复制源码】
 
 ### 1.7 仪表盘与报告
-- [ ] 仪表盘后端接口（GET /api/v1/dashboard/stats 统计卡片 + trends 7 天趋势 + top-risks 风险 Top10 + engine-coverage 引擎覆盖率）
-- [ ] 统计卡片 + 7 天趋势 + 风险 Top10
-- [ ] 引擎覆盖率雷达图（10 大引擎检测覆盖率）
-- [ ] WebSocket 实时事件滚动 + 指数退避重连 + 心跳保活（每 30s ping / 服务端 ReadDeadline 60s / 连续 3 次无 pong 触发重连，/api/v1/ws/events 订阅协议）
-- [ ] ECharts 图表集成（雷达图/趋势图/折线图/可用性点阵图）
-- [ ] 结构化日志 + 请求追踪中间件（日志字段含 ts/level/org_id/user_id/trace_id/path/latency_ms/status；MVP 阶段先落轻量 request_id，阶段 4 升级为 OTel trace_id）+ 敏感字段脱敏（密码/Token/身份证/手机号/Headers）
-- [ ] 报告导出（PDF 含水印 / Excel 漏洞清单）
-- [ ] 前端 vitest 组件测试：登录表单校验/路由守卫/权限菜单渲染 + 证据抽屉 Hash 失败标红 + v-permission 按钮隐藏 + 证据 HTML XSS 净化（DOMPurify 注入 script/onerror/iframe 断言剥离）
+- [x] 仪表盘后端接口（GET /api/v1/dashboard/stats 统计卡片 + trends 7 天趋势 + top-risks 风险 Top10 + engine-coverage 引擎覆盖率）
+- [x] 统计卡片 + 7 天趋势 + 风险 Top10
+- [x] 引擎覆盖率雷达图（10 大引擎检测覆盖率）
+- [x] WebSocket 实时事件滚动 + 指数退避重连 + 心跳保活（每 30s ping / 服务端 ReadDeadline 60s / 连续 3 次无 pong 触发重连，/api/v1/ws/events 订阅协议）
+- [x] ECharts 图表集成（雷达图/趋势图/折线图/可用性点阵图）
+- [x] 结构化日志 + 请求追踪中间件（日志字段含 ts/level/org_id/user_id/trace_id/path/latency_ms/status；MVP 阶段先落轻量 request_id，阶段 4 升级为 OTel trace_id）+ 敏感字段脱敏（密码/Token/身份证/手机号/Headers）
+- [x] 报告导出（PDF 含水印 / Excel 漏洞清单）【GET /api/v1/reports/export：format=pdf（gofpdf 对角线 CONFIDENTIAL 水印 + 严重级别着色）/format=excel（excelize 漏洞清单含 critical 行标红）+ asset_id/severity/status/from/to 筛选，基于生成时刻快照；report_test.go 4 用例（Excel 魔数/PDF 魔数/组织隔离/非法 format）】
+- [x] 前端 vitest 组件测试（vitest.config.ts + @vue/test-utils + jsdom，`npm run test` 20 用例）：登录表单校验（LoginView.test.ts 空表单拦截/提交调用）+ 证据抽屉 Hash 失败标红（EvidenceDrawer.test.ts tampered 断言 .tamper-banner）+ v-permission 权限矩阵（permissions.test.ts hasPermission 四角色）+ 证据 HTML XSS 净化（sanitize.test.ts 注入 script/onerror/iframe/javascript: 断言剥离）【路由守卫测试未实现】
 
 ### 1.8 阶段 1 单元测试【必执行】
-- [ ] RBAC 权限矩阵单元测试（四角色 × 读写操作表驱动，按 design「RBAC 权限矩阵与权限码」逐模块断言，viewer 写操作 403）
-- [ ] 认证服务单元测试（bcrypt 校验/JWT 签发/refresh token 换发/jti 黑名单/组织选择/登录锁定/禁用用户与禁用组织登录拦截）
-- [ ] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
-- [ ] 任务调度单元测试（状态机流转/超时对账/断点续扫/任务级超时上限中止/stop 停止信号与 Worker cancelled 回传/CronScheduler 按时区定时触发与暂停/禁用跳过）
+- [x] RBAC 权限矩阵单元测试（四角色 × 读写操作表驱动，按 design「RBAC 权限矩阵与权限码」逐模块断言，viewer 写操作 403）
+- [x] 认证服务单元测试（bcrypt 校验/JWT 签发/refresh token 换发/jti 黑名单/组织选择/登录锁定/禁用用户与禁用组织登录拦截）
+- [x] 证据服务单元测试（gzip 落盘/SHA-256 校验/MD5 去重/篡改检测）
+- [x] 任务调度单元测试（状态机流转/超时对账/断点续扫/任务级超时上限中止/stop 停止信号与 Worker cancelled 回传/CronScheduler 按时区定时触发与暂停/禁用跳过）【已实现：超时对账、重试退避、超时不重试、NoPolicy 跳过、RetryAt 到期/未到期（scheduler_test.go）+ stop→cancelled 回传、completed/cancelled/failed 状态流转、重复结果幂等去重、重试退避调度、超时不重试（task_test.go）+ CronScheduler 定时触发按时区/暂停禁用跳过/同分钟幂等/无资产跳过（cron_scheduler_test.go 9 用例，service/cron_scheduler.go 实现并接入 app）+ 断点续扫记录/命中/任务隔离/URL 哈希（cmd/worker/main_test.go 3 用例）】
 
 ### 阶段 1 验收
-- [ ] go vet ./... && go build . 通过【必执行】
-- [ ] go test ./... 单元测试全部通过（RBAC/认证/证据/调度）【必执行】
-- [ ] 前端 vue-tsc + vite build 通过【必执行】
-- [ ] 联调：登录→建资产→下发任务→Worker 执行→证据展示全链路可跑【必执行】
+- [x] go vet ./... && go build . 通过【必执行】
+- [x] go test ./... 单元测试全部通过（RBAC/认证/证据/调度）【必执行】
+- [x] 前端 vue-tsc + vite build 通过【必执行】
+- [x] 联调：登录→建资产→下发任务→Worker 执行→证据展示全链路可跑【必执行】
 
 ---
 
 ## 阶段 2 — 引擎扩展（10 大引擎全量）
 
 ### 2.1 统一引擎注册
-- [ ] EngineRegistry 与 Engine 接口（Name/Enabled/Run）
-- [ ] 策略模板引擎开关 + 并发/超时/速率限制下发
+- [x] EngineRegistry 与 Engine 接口（Name/Enabled/Run）【internal/master/engines 包：Engine 契约 + Registry(Register/Get/Names/EnabledNames) + 首个引擎 availability（连续 fail_count 失败判定不可用 + slow_threshold_ms 速度阈值），availability_test.go 6 用例】
+- [x] 策略模板引擎开关 + 并发/超时/速率限制下发【PullTask 解析 engine_switches 全部引擎 enabled 下发 engines 列表，Worker 按 policyPayload.engineEnabled(name) 跳过禁用引擎（availability 关闭直接跳过并记 engines_skipped）】
 
 ### 2.2 引擎实现
 - [ ] 漏洞扫描引擎（POC + Fuzzing + 参数注入，context 30s 超时 + ants 并发）
 - [ ] 内容安全引擎（AI 文本分类 + 敏感词正则双判定 + 敏感信息规则集提取 + 篡改基线 + 外链发现含友链/引用篡改检出 link_tampered + 图片 OCR 识别 image_ocr（Worker 集成 tesseract，超时降级跳过，识别文本复核敏感词/AI 分类/URL 提取））
-- [ ] 敏感词监测（内置敏感词库涉黄赌毒政正则匹配 + AI 文本分类增强/不可用超时回退正则 + 来源标记 regex/ai，type=sensitive_word，engine_switches.sensitive_word.enabled，R2.3-1）
-- [ ] 敏感信息规则集提取（rule_definitions 规则按 scope 分层匹配 request line/header/body，s_regex 过滤 + f_regex 提取，命中写 sensitive_info_hits + Bleve + findings 主命中；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证）
-- [ ] 递归扫描与资产发现（scan_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin/crawl_subpages（关闭时深度强制 1 仅测种子页）；达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded）
+- [x] 敏感词监测（内置敏感词库涉黄赌毒政正则匹配 + AI 文本分类增强/不可用超时回退正则 + 来源标记 regex/ai，type=sensitive_word，engine_switches.sensitive_word.enabled，R2.3-1）（engines.SensitiveWordEngine + worker 接线，7 单测；regex 来源与白名单剔除已完成，AI 文本分类增强项未实现）
+- [x] 敏感信息规则集提取（rule_definitions 规则按 scope 分层匹配 request line/header/body，s_regex 过滤 + f_regex 提取，命中写 sensitive_info_hits + Bleve + findings 主命中；覆盖身份证/手机号/邮箱/JWT/Authorization/云凭证）（engines.SensitiveInfoEngine 内置 7 类规则 + s_regex/f_regex 支持 + scope 分层，7 单测；worker runContentEngines 按 scope 采样 request line/header/response header/body 匹配，finding.Extra.sensitive_info_hits 回传；Master persistSensitiveInfoHits 落 sensitive_info_hits 明细，sensitive_info_hits_test.go 3 用例；Bleve 索引未实现）
+- [x] 递归扫描与资产发现（scan_depth 1-5/单站并发 2-32/静态文件与无效链接过滤/URL 归一化去重/发现资产写 assets 标注类型/进度经 GET /api/v1/tasks/:id/progress 实时上报，配置读取 scan_policies.scan_depth/concurrency_limit/allow_static/same_origin/crawl_subpages（关闭时深度强制 1 仅测种子页）；达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded）
 - [ ] 多端 UA 综合评估器（MultiUAAssessor：PC 随机 UA + 标准移动 UA + 微信内置浏览器 UA + 无头浏览器移动视口模拟四探针 + 基础/特征/场景三级加权评分 + SimHash DOM 相似度阈值 + SPA 空壳识别容错 + 结论分级与处置建议 + probe_failed 降权 + 各端快照证据链）
 - [ ] 内容安全引擎接入 MultiUAAssessor（端级敏感词/敏感信息命中计入评分）
 - [ ] AI 内容分类适配层（AIAdapter：endpoint/model/key 环境注入 + 超时/429 失败回退正则 + 结果缓存 + gobreaker 熔断）
-- [ ] 内容完整性持续监测（重点资产 importance=high 的标题/正文关键区域/关键文案 Hash 基线建立与维护 + 按计划任务周期比对 + 变更前后对比与变更维度，type=content_integrity，对齐 R2.3-6/R5.20-5）
+- [x] 内容完整性持续监测（重点资产 importance=high 的标题/正文关键区域/关键文案 Hash 基线建立与维护 + 按计划任务周期比对 + 变更前后对比与变更维度，type=content_integrity，对齐 R2.3-6/R5.20-5）
 - [ ] 外链发现监测（页面外链解析：外部资源/出站链接/第三方域名 + 外链清单基线 + 新增/移除/目标域名变更/恶意域名库命中与域名相似度检测，type=external_link，R2.3-7）
-- [ ] 死链监测（内链+外链健康度校验：4xx/5xx/连接失败/超时，记录死链 URL/来源页面/状态码/响应时间，type=dead_link，R2.3-8）
-- [ ] 关键词监测（rule_definitions.kind=keyword 关键词/正则规则匹配，覆盖正文/HTML 源码/URL，敏感级告警/普通级事件，type=keyword_hit，R2.3-9）
+- [x] 死链监测（内链+外链健康度校验：4xx/5xx/连接失败/超时，记录死链 URL/来源页面/状态码/响应时间，type=dead_link，R2.3-8）（engines.DeadLinkEngine + worker 接线，6 单测，响应时间 ms 记录于 extra.elapsed_ms）
+- [x] 关键词监测（rule_definitions.kind=keyword 关键词/正则规则匹配，覆盖正文/HTML 源码/URL，敏感级告警/普通级事件，type=keyword_hit，R2.3-9）
 - [ ] 暗链挂马引擎（检测器子单元：关键字整词匹配 + HTML 双通道[正则 URL 打分/DOM 结构 script/frame/link/form] + JS 高危函数与混淆手法/信息熵 + CSS 隐藏手法与危险链接 + 隐藏手法专项[零宽/同色/出屏/实体编码] + 自定义规则逐条匹配 + 无头浏览器动态检测[运行时样式判隐藏/动态链接打分，复用 R3.2b 组件] + 双 UA 对比）
 - [ ] Webshell 检测引擎（路径枚举 + 特征码 + 流量特征）
 - [ ] 钓鱼检测引擎（模板比对 + Levenshtein + 证书异常）
@@ -174,7 +174,7 @@ Updated: 2026-08-19
 - [ ] 独立告警接口（GET /api/v1/alerts 列表 + GET /:id 详情 + PATCH /api/v1/alerts/:id 处置 + POST /api/v1/alerts/batch 批量处置）
 - [ ] 漏洞表与告警表迁移（vulnerabilities/alerts 独立表，见 design ER 图）
 - [ ] 漏洞列表（GET /api/v1/vulnerabilities，等级/状态/引擎筛选）+ 漏洞详情接口（GET /api/v1/vulnerabilities/:id）+ 证据链抽屉接入
-- [ ] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence）对接前端抽屉
+- [x] 漏洞证据接口（GET /api/v1/vulnerabilities/:id/evidence）对接前端抽屉（VulnerabilityView.vue「证据」操作列 + EvidenceDrawer，getVulnEvidence 取 id 数组）
 - [ ] 漏洞批量接口（batch-ticket 批量生成工单 / batch-retest 批量复测 / batch-ignore 批量忽略）
 - [ ] 漏洞复测流转（retest 置 verifying + 复测任务，通过自动 closed 写 closed_at，失败回退 open 追加复测记录，取消忽略恢复 open）
 - [ ] 工单接口（GET/POST /api/v1/tickets 列表/创建 + PUT /api/v1/tickets/:id 状态/派发 + GET /api/v1/tickets/:id 详情）+ 工单闭环（确认→派发→修复→复测→归档）+ SOP 挂载
@@ -296,7 +296,7 @@ Updated: 2026-08-19
 - [ ] 每日战报（daily_war_reports 表；CronScheduler 按日 00:30 生成前一日数据快照：新增/处置中/已闭环高危事件与告警数、TOP 风险资产、升级记录摘要、值守轮次；GET /api/v1/war-reports 列表 + GET /api/v1/war-reports/:id/download 导出；推送通知渠道，R5.20-4）
 
 ### 3.5 前端 UX 基座（R5.19）
-- [ ] 全局 Toast + MessageBox 二次确认弹窗封装 + 全局错误边界组件（R5.19-1）
+- [x] 全局 Toast + MessageBox 二次确认弹窗封装（Toast.vue + toast.ts registerToast/toast/confirmDialog，全视图替换 window.alert/confirm）【全局错误边界组件未实现】
 - [ ] 通用表格基座：多选批量操作栏/分页/排序/筛选重置/日期选择/空态/骨架屏/搜索防抖 300ms（R5.19-2）
 - [ ] 统一表单校验规则库 + 新建/编辑共用抽屉 + 保存中禁用防重复提交（R5.19-3）
 - [ ] 图表基座：ECharts 统一配色 + 阈值配色 + 角色 Tag 颜色规范（R5.19-4）

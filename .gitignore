@@ -6,6 +6,7 @@ frontend/dist/
 # Go
 backend/bin/
 backend/kate-backend
+backend/worker
 
 # Editor / OS
 .vscode/
