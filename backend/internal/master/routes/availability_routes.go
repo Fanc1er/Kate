@@ -15,7 +15,7 @@ func registerAvailability(rg *gin.RouterGroup, d *Deps) {
 	g.GET("/list", func(c *gin.Context) {
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-		m, err := d.Availability.List(c.Query("keyword"), c.Query("status"), c.Query("status_code_group"), page, pageSize)
+		m, err := d.Availability.List(c.Query("keyword"), c.Query("status"), c.Query("status_code_group"), page, pageSize, c.Query("sort"), c.Query("sort_order"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return

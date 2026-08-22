@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import {
   getAvailabilityList,
   getAvailabilityTimeseries,
@@ -13,6 +13,7 @@ import {
   type WhitelistRule,
 } from '../../api/availability'
 import { formatTime } from '../../utils/format'
+import { toast } from '../../utils/toast'
 import Skeleton from '../../components/Skeleton.vue'
 import EChart from '../../components/EChart.vue'
 import WorkerTopology from './WorkerTopology.vue'
@@ -26,11 +27,10 @@ const keyword = ref('')
 const statusFilter = ref('')
 const codeGroupFilter = ref('')
 const page = reactive({ page: 1, page_size: 20 })
+const sortField = ref('')
+const sortOrder = ref<'asc' | 'desc'>('asc')
 
 const selected = ref<number[]>([])
-
-const toast = ref('')
-let toastTimer: number | undefined
 
 const statusOptions: { value: AvailabilityStatus; label: string }[] = [
   { value: 'normal', label: '正常' },
@@ -38,6 +38,7 @@ const statusOptions: { value: AvailabilityStatus; label: string }[] = [
   { value: 'unknown', label: '未知' },
 ]
 const codeGroupOptions = ['2xx', '3xx', '4xx', '5xx']
+const pageSizeOptions = [10, 20, 50, 100]
 
 const detailOpen = ref(false)
 const detailItem = ref<AvailabilityItem | null>(null)
@@ -49,14 +50,20 @@ const whitelistRules = ref<WhitelistRule[]>([])
 const whitelistLoading = ref(false)
 const wlForm = reactive({ kind: 'domain', value: '', remark: '' })
 
+const confirmState = ref<{ message: string; onConfirm: () => Promise<void> } | null>(null)
+
 let debounceTimer: number | undefined
 
-function showToast(msg: string): void {
-  toast.value = msg
-  window.clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => {
-    toast.value = ''
-  }, 2500)
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    if (confirmState.value) {
+      confirmState.value = null
+    } else if (detailOpen.value) {
+      closeDetail()
+    } else if (whitelistOpen.value) {
+      whitelistOpen.value = false
+    }
+  }
 }
 
 async function load(): Promise<void> {
@@ -68,6 +75,8 @@ async function load(): Promise<void> {
       keyword: keyword.value || undefined,
       status: statusFilter.value || undefined,
       status_code_group: codeGroupFilter.value || undefined,
+      sort: sortField.value || undefined,
+      sort_order: sortField.value ? sortOrder.value : undefined,
     })
     list.value = res.list
     total.value = res.total
@@ -148,23 +157,31 @@ function clearSelection(): void {
 
 async function batchReprobe(): Promise<void> {
   if (selected.value.length === 0) return
-  await reprobe(selected.value)
-  showToast(`已下发 ${selected.value.length} 个重新探测任务`)
-  clearSelection()
+  try {
+    await reprobe(selected.value)
+    toast.success(`已下发 ${selected.value.length} 个重新探测任务`)
+    clearSelection()
+  } catch {
+    /* 全局拦截器已提示 */
+  }
 }
 
 async function batchWhitelist(): Promise<void> {
   if (selected.value.length === 0) return
   const targets = list.value.filter((i) => selected.value.includes(i.asset_id))
   let n = 0
-  for (const t of targets) {
-    const host = hostOf(t.url)
-    if (!host) continue
-    await addWhitelist('domain', host, '')
-    n += 1
+  try {
+    for (const t of targets) {
+      const host = hostOf(t.url)
+      if (!host) continue
+      await addWhitelist('domain', host, '')
+      n += 1
+    }
+    toast.success(`已加入 ${n} 条白名单规则`)
+    clearSelection()
+  } catch {
+    /* 全局拦截器已提示 */
   }
-  showToast(`已加入 ${n} 条白名单规则`)
-  clearSelection()
 }
 
 function hostOf(url: string): string {
@@ -222,8 +239,12 @@ const detailChartOption = computed<Record<string, unknown>>(() => {
 })
 
 async function reprobeRow(item: AvailabilityItem): Promise<void> {
-  await reprobe([item.asset_id])
-  showToast(`已下发 ${item.name || item.url} 重新探测任务`)
+  try {
+    await reprobe([item.asset_id])
+    toast.success(`已下发 ${item.name || item.url} 重新探测任务`)
+  } catch {
+    /* 全局拦截器已提示 */
+  }
 }
 
 function openWhitelistForm(item?: AvailabilityItem): void {
@@ -245,20 +266,62 @@ async function loadWhitelist(): Promise<void> {
 
 async function submitWhitelist(): Promise<void> {
   if (!wlForm.value.trim()) return
-  await addWhitelist(wlForm.kind, wlForm.value.trim(), wlForm.remark.trim())
-  showToast('已加入白名单')
-  wlForm.value = ''
-  wlForm.remark = ''
-  void loadWhitelist()
+  try {
+    await addWhitelist(wlForm.kind, wlForm.value.trim(), wlForm.remark.trim())
+    toast.success('已加入白名单')
+    wlForm.value = ''
+    wlForm.remark = ''
+    void loadWhitelist()
+  } catch {
+    /* 全局拦截器已提示 */
+  }
 }
 
-async function deleteWhitelist(rule: WhitelistRule): Promise<void> {
-  await removeWhitelist(rule.id)
-  showToast('已删除白名单规则')
-  void loadWhitelist()
+function requestDeleteWhitelist(rule: WhitelistRule): void {
+  confirmState.value = {
+    message: `确定删除白名单规则「${rule.value}」吗？`,
+    onConfirm: async () => {
+      await removeWhitelist(rule.id)
+      toast.success('已删除白名单规则')
+      confirmState.value = null
+      void loadWhitelist()
+    },
+  }
 }
 
-onMounted(() => void load())
+function toggleSort(field: string): void {
+  if (sortField.value !== field) {
+    sortField.value = field
+    sortOrder.value = 'asc'
+  } else if (sortOrder.value === 'asc') {
+    sortOrder.value = 'desc'
+  } else {
+    sortField.value = ''
+    sortOrder.value = 'asc'
+  }
+  page.page = 1
+  void load()
+}
+
+function changePageSize(size: number): void {
+  page.page_size = size
+  page.page = 1
+  void load()
+}
+
+function sortIndicator(field: string): string {
+  if (sortField.value !== field) return ''
+  return sortOrder.value === 'asc' ? '↑' : '↓'
+}
+
+onMounted(() => {
+  void load()
+  window.addEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
@@ -320,12 +383,12 @@ onMounted(() => void load())
                 <th class="check-col">
                   <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" />
                 </th>
-                <th>站点名</th>
-                <th>URL</th>
-                <th>状态</th>
-                <th>状态码</th>
-                <th>响应耗时</th>
-                <th>最后探测时间</th>
+                <th class="sortable" @click="toggleSort('name')">站点名 <span class="sort-ind">{{ sortIndicator('name') }}</span></th>
+                <th class="sortable" @click="toggleSort('url')">URL <span class="sort-ind">{{ sortIndicator('url') }}</span></th>
+                <th class="sortable" @click="toggleSort('availability_status')">状态 <span class="sort-ind">{{ sortIndicator('availability_status') }}</span></th>
+                <th class="sortable" @click="toggleSort('status_code')">状态码 <span class="sort-ind">{{ sortIndicator('status_code') }}</span></th>
+                <th class="sortable" @click="toggleSort('response_ms')">响应耗时 <span class="sort-ind">{{ sortIndicator('response_ms') }}</span></th>
+                <th class="sortable" @click="toggleSort('sampled_at')">最后探测时间 <span class="sort-ind">{{ sortIndicator('sampled_at') }}</span></th>
                 <th>24h 趋势</th>
                 <th>操作</th>
               </tr>
@@ -372,6 +435,13 @@ onMounted(() => void load())
 
       <div class="pager">
         <span>共 {{ total }} 条</span>
+        <span class="page-size">
+          每页
+          <select class="input" :value="page.page_size" @change="changePageSize(Number(($event.target as HTMLSelectElement).value))">
+            <option v-for="s in pageSizeOptions" :key="s" :value="s">{{ s }}</option>
+          </select>
+          条
+        </span>
         <button class="btn" :disabled="page.page <= 1" @click="page.page--; load()">上一页</button>
         <span>{{ page.page }}</span>
         <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
@@ -432,13 +502,21 @@ onMounted(() => void load())
             <span class="wl-kind">{{ r.kind }}</span>
             <span class="wl-value mono">{{ r.value }}</span>
             <span class="wl-remark">{{ r.remark }}</span>
-            <button class="btn-mini danger" @click="deleteWhitelist(r)">删除</button>
+            <button class="btn-mini danger" @click="requestDeleteWhitelist(r)">删除</button>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-if="toast" class="toast">{{ toast }}</div>
+    <div v-if="confirmState" class="modal-mask" @click.self="confirmState = null">
+      <div class="modal confirm-modal">
+        <div class="confirm-text">{{ confirmState.message }}</div>
+        <div class="confirm-actions">
+          <button class="btn" @click="confirmState = null">取消</button>
+          <button class="btn danger" @click="confirmState.onConfirm()">确定删除</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -786,16 +864,42 @@ onMounted(() => void load())
   white-space: nowrap;
   color: var(--color-text-tertiary);
 }
-.toast {
-  position: fixed;
-  top: 72px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--color-text-primary);
+.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.sortable:hover {
+  color: var(--color-brand);
+}
+.sort-ind {
+  color: var(--color-brand);
+  font-size: 12px;
+}
+.page-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.page-size .input {
+  height: 30px;
+  padding: 0 6px;
+}
+.btn.danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
   color: #fff;
-  border-radius: var(--radius-md);
-  padding: 10px 18px;
-  font-size: 13px;
-  z-index: 1200;
+}
+.confirm-modal {
+  width: 400px;
+}
+.confirm-text {
+  font-size: 14px;
+  color: var(--color-text-primary);
+  line-height: 1.6;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -76,9 +77,10 @@ type AvailabilityItem struct {
 	Sparkline   []int      `json:"sparkline"`           // 最近 24h 响应耗时序列（升序）
 }
 
-// List 站点可用性列表：聚合最新时序点，支持关键词/状态/状态码分组筛选与分页。
+// List 站点可用性列表：聚合最新时序点，支持关键词/状态/状态码分组筛选、排序与分页。
 // 状态码分组：2xx/3xx/4xx/5xx（按首位匹配）。status：normal/abnormal/unknown。
-func (s *AvailabilityService) List(keyword, status, statusCodeGroup string, page, pageSize int) (map[string]any, error) {
+// sortField：name/url/status_code/response_ms/sampled_at/availability_status；sortOrder：asc/desc。
+func (s *AvailabilityService) List(keyword, status, statusCodeGroup string, page, pageSize int, sortField, sortOrder string) (map[string]any, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -182,6 +184,8 @@ func (s *AvailabilityService) List(keyword, status, statusCodeGroup string, page
 		items = append(items, item)
 	}
 
+	sortItems(items, sortField, sortOrder)
+
 	total := len(items)
 	start := (page - 1) * pageSize
 	if start > total {
@@ -192,6 +196,46 @@ func (s *AvailabilityService) List(keyword, status, statusCodeGroup string, page
 		end = total
 	}
 	return map[string]any{"list": items[start:end], "total": total}, nil
+}
+
+// sortItems 按字段对可用性列表排序，仅白名单字段生效，其余保持不变（稳定排序）。
+func sortItems(items []AvailabilityItem, field, order string) {
+	if field == "" {
+		return
+	}
+	desc := order == "desc"
+	var less func(i, j int) bool
+	switch field {
+	case "name":
+		less = func(i, j int) bool { return items[i].Name < items[j].Name }
+	case "url":
+		less = func(i, j int) bool { return items[i].URL < items[j].URL }
+	case "status_code":
+		less = func(i, j int) bool { return items[i].StatusCode < items[j].StatusCode }
+	case "response_ms":
+		less = func(i, j int) bool { return items[i].ResponseMs < items[j].ResponseMs }
+	case "availability_status":
+		less = func(i, j int) bool { return items[i].Status < items[j].Status }
+	case "sampled_at":
+		less = func(i, j int) bool {
+			return sampledAtOf(items[i]).Before(sampledAtOf(items[j]))
+		}
+	default:
+		return
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if desc {
+			return less(j, i)
+		}
+		return less(i, j)
+	})
+}
+
+func sampledAtOf(it AvailabilityItem) time.Time {
+	if it.SampledAt == nil {
+		return time.Time{}
+	}
+	return *it.SampledAt
 }
 
 // Timeseries 单资产可用性时序（默认最近 24h，按采样时间升序）。

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import EChart from '../../components/EChart.vue'
+import CountUp from '../../components/CountUp.vue'
 import { getStats, getTrends, getTopRisks, getEngineCoverage } from '../../api/dashboard'
 import type { DashboardStats, TopRisk } from '../../api/dashboard'
 import { eventStream } from '../../api/ws'
@@ -82,7 +83,8 @@ onBeforeUnmount(() => {
       <div v-for="c in cards" :key="c.key" class="card">
         <div class="card-label">{{ c.label }}</div>
         <div class="card-value">
-          {{ stats ? String((stats as Record<string, number>)[c.key] ?? 0) : '–' }}
+          <CountUp v-if="stats" :value="Number((stats as Record<string, number>)[c.key] ?? 0)" />
+          <span v-else>–</span>
         </div>
       </div>
     </div>

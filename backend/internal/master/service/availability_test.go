@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Fanc1er/Kate/backend/internal/master/models"
 )
@@ -50,6 +51,56 @@ func TestAvailabilityWhitelistLifecycle(t *testing.T) {
 	}
 	if len(list) != 0 {
 		t.Fatalf("expected 0 rules after remove, got %d", len(list))
+	}
+}
+
+func TestAvailabilityListSort(t *testing.T) {
+	gdb := newTestDB(t)
+	now := time.Now()
+	assets := []models.Asset{
+		{Name: "bravo", URL: "https://b.com", Status: "active"},
+		{Name: "alpha", URL: "https://a.com", Status: "active"},
+		{Name: "charlie", URL: "https://c.com", Status: "active"},
+	}
+	for i := range assets {
+		if err := gdb.Create(&assets[i]).Error; err != nil {
+			t.Fatalf("create asset: %v", err)
+		}
+	}
+	points := []models.AvailabilityPoint{
+		{AssetID: assets[0].ID, Engine: "availability", StatusCode: 500, ResponseMs: 300, SampledAt: now},
+		{AssetID: assets[1].ID, Engine: "availability", StatusCode: 200, ResponseMs: 100, SampledAt: now.Add(-time.Hour)},
+		{AssetID: assets[2].ID, Engine: "availability", StatusCode: 200, ResponseMs: 200, SampledAt: now.Add(time.Hour)},
+	}
+	for i := range points {
+		if err := gdb.Create(&points[i]).Error; err != nil {
+			t.Fatalf("create point: %v", err)
+		}
+	}
+
+	s := NewAvailabilityService(gdb, nil)
+
+	names := func(field, order string) []string {
+		m, err := s.List("", "", "", 1, 20, field, order)
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		list := m["list"].([]AvailabilityItem)
+		out := make([]string, len(list))
+		for i, it := range list {
+			out[i] = it.Name
+		}
+		return out
+	}
+
+	if got := names("name", "asc"); len(got) != 3 || got[0] != "alpha" || got[2] != "charlie" {
+		t.Fatalf("name asc order wrong: %v", got)
+	}
+	if got := names("response_ms", "desc"); len(got) != 3 || got[0] != "bravo" {
+		t.Fatalf("response_ms desc order wrong: %v", got)
+	}
+	if got := names("sampled_at", "desc"); len(got) != 3 || got[0] != "charlie" {
+		t.Fatalf("sampled_at desc order wrong: %v", got)
 	}
 }
 

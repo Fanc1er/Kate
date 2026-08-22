@@ -48,6 +48,8 @@ export interface AvailabilityListParams {
   keyword?: string
   status?: string
   status_code_group?: string
+  sort?: string
+  sort_order?: string
   page?: number
   page_size?: number
 }
@@ -57,6 +59,8 @@ export function getAvailabilityList(params: AvailabilityListParams): Promise<Ava
     keyword: params.keyword,
     status: params.status,
     status_code_group: params.status_code_group,
+    sort: params.sort,
+    sort_order: params.sort_order,
     page: params.page,
     page_size: params.page_size,
   })
