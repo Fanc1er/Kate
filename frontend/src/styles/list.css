@@ -87,4 +87,54 @@
   border-radius: var(--radius-md);
   padding: 8px;
   min-height: 200px;
+  overflow-x: auto;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .list-main {
+    gap: 12px;
+  }
+  
+  .toolbar {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  
+  .filter-input {
+    width: 100%;
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .spacer {
+    display: none;
+  }
+  
+  .table-wrap {
+    padding: 4px;
+  }
+  
+  .table {
+    font-size: 13px;
+    min-width: 600px;
+  }
+  
+  .table th,
+  .table td {
+    padding: 8px 6px;
+  }
+  
+  .pager {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  
+  .pager .page-size {
+    width: 100%;
+    text-align: center;
+    order: -1;
+  }
 }

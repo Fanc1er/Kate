@@ -13,6 +13,7 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const collapsed = ref(false)
+const mobileMenuOpen = ref(false)
 const wsConnected = ref(false)
 const wsBannerVisible = ref(false)
 let wsBannerTimer = 0
@@ -80,6 +81,11 @@ onBeforeUnmount(() => {
 
     <div class="main">
       <header class="topbar">
+        <button class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen">
+          <span />
+          <span />
+          <span />
+        </button>
         <button class="collapse-btn" @click="collapsed = !collapsed">
           {{ collapsed ? '»' : '«' }}
         </button>
@@ -100,6 +106,7 @@ onBeforeUnmount(() => {
         </AppErrorBoundary>
       </main>
     </div>
+    <div v-if="mobileMenuOpen" class="mobile-overlay" @click="mobileMenuOpen = false" />
     <GlobalSearch />
   </div>
 </template>
@@ -240,5 +247,54 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
+}
+
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+.mobile-menu-btn {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+.mobile-menu-btn span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--color-text-secondary);
+  border-radius: 2px;
+  transition: transform 0.2s;
+}
+
+@media (max-width: 768px) {
+  .sider {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.2s;
+  }
+  .sider:not(.collapsed) {
+    transform: translateX(0);
+  }
+  .collapse-btn {
+    display: none;
+  }
+  .mobile-menu-btn {
+    display: flex;
+  }
+  .topbar-title {
+    font-size: 14px;
+  }
 }
 </style>
