@@ -103,12 +103,106 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .search-mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 3000;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12vh;
-  z-index: 2000;
+  padding: 40px 16px;
+}
+
+.search-panel {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 640px;
+  max-height: calc(100vh - 80px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-hover);
+}
+
+.search-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 16px;
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.hint {
+  padding: 16px;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+}
+
+.group {
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.group-title {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.result:hover {
+  background: var(--color-bg-hover);
+}
+
+.result-name {
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.result-url {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-family-mono);
+}
+
+@media (max-width: 768px) {
+  .search-mask {
+    padding: 0;
+    align-items: stretch;
+  }
+  
+  .search-panel {
+    max-height: 100vh;
+    border-radius: 0;
+    width: 100%;
+  }
+  
+  .search-input {
+    font-size: 16px;
+    height: 52px;
+  }
 }
 .search-panel {
   width: 560px;
