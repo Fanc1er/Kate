@@ -6,6 +6,7 @@ import { MENU, canAccess } from '../config/routes'
 import { ROLE_LABELS } from '../config/permissions'
 import { eventStream } from '../api/ws'
 import AppErrorBoundary from '../components/AppErrorBoundary.vue'
+import GlobalSearch from '../components/GlobalSearch.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -99,6 +100,7 @@ onBeforeUnmount(() => {
         </AppErrorBoundary>
       </main>
     </div>
+    <GlobalSearch />
   </div>
 </template>
 

@@ -1,4 +1,4 @@
-import { get } from './http'
+import { get, post, del } from './http'
 
 export type AvailabilityStatus = 'normal' | 'abnormal' | 'unknown'
 
@@ -68,4 +68,28 @@ export function getAvailabilityTimeseries(assetId: number, hours = 24): Promise<
 
 export function getWorkerTopology(): Promise<WorkerTopology> {
   return get('/availability/worker-topology')
+}
+
+export function reprobe(assetIds: number[]): Promise<{ queued: number }> {
+  return post('/availability/reprobe', { asset_ids: assetIds })
+}
+
+export interface WhitelistRule {
+  id: number
+  kind: string
+  value: string
+  remark: string
+  enabled: string
+}
+
+export function getWhitelist(): Promise<WhitelistRule[]> {
+  return get('/availability/whitelist')
+}
+
+export function addWhitelist(kind: string, value: string, remark: string): Promise<WhitelistRule> {
+  return post('/availability/whitelist', { kind, value, remark })
+}
+
+export function removeWhitelist(id: number): Promise<unknown> {
+  return del(`/availability/whitelist/${id}`)
 }

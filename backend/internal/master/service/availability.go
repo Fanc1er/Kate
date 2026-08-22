@@ -7,16 +7,59 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/Fanc1er/Kate/backend/internal/master/models"
+	"github.com/Fanc1er/Kate/backend/pkg/errs"
 )
 
-// AvailabilityService 可用性监测：站点状态聚合、时序查询、工作节点拓扑。
+// AvailabilityService 可用性监测：站点状态聚合、时序查询、重新探测、白名单、工作节点拓扑。
 type AvailabilityService struct {
-	DB *gorm.DB
+	DB   *gorm.DB
+	Task *TaskService
 }
 
 // NewAvailabilityService 构造 AvailabilityService。
-func NewAvailabilityService(db *gorm.DB) *AvailabilityService {
-	return &AvailabilityService{DB: db}
+func NewAvailabilityService(db *gorm.DB, task *TaskService) *AvailabilityService {
+	return &AvailabilityService{DB: db, Task: task}
+}
+
+// Reprobe 对指定资产立即创建轻量可用性探测任务，返回实际入队数量。
+func (s *AvailabilityService) Reprobe(assetIDs []int64) (int, error) {
+	created, err := s.Task.CreateAvailabilityProbe(assetIDs)
+	if err != nil {
+		return 0, err
+	}
+	return len(created), nil
+}
+
+// Whitelist 查询白名单规则列表。
+func (s *AvailabilityService) Whitelist() ([]models.ScanWhitelist, error) {
+	var list []models.ScanWhitelist
+	if err := s.DB.Order("id DESC").Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// AddWhitelist 新增白名单规则（kind：domain/ip/cidr）。
+func (s *AvailabilityService) AddWhitelist(kind, value, remark string) (*models.ScanWhitelist, error) {
+	if kind == "" || value == "" {
+		return nil, errs.New(errs.CodeValidationFailed, "规则类型与值必填")
+	}
+	if kind != "domain" && kind != "ip" && kind != "cidr" {
+		return nil, errs.New(errs.CodeValidationFailed, "规则类型仅支持 domain/ip/cidr")
+	}
+	rule := &models.ScanWhitelist{Kind: kind, Value: value, Remark: remark, Enabled: "true"}
+	if err := s.DB.Create(rule).Error; err != nil {
+		return nil, err
+	}
+	return rule, nil
+}
+
+// RemoveWhitelist 删除白名单规则。
+func (s *AvailabilityService) RemoveWhitelist(id int64) error {
+	if err := s.DB.Delete(&models.ScanWhitelist{}, "id = ?", id).Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 // AvailabilityItem 站点可用性聚合项。

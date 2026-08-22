@@ -46,4 +46,62 @@ func registerAvailability(rg *gin.RouterGroup, d *Deps) {
 		}
 		response.OK(c, m)
 	})
+
+	g.POST("/reprobe", func(c *gin.Context) {
+		var req struct {
+			AssetIDs []int64 `json:"asset_ids"`
+		}
+		if !bindJSON(c, &req) {
+			return
+		}
+		if len(req.AssetIDs) == 0 {
+			response.Fail(c, errs.New(errs.CodeValidationFailed, "请选择资产"))
+			return
+		}
+		n, err := d.Availability.Reprobe(req.AssetIDs)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, map[string]any{"queued": n})
+	})
+
+	g.GET("/whitelist", func(c *gin.Context) {
+		list, err := d.Availability.Whitelist()
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, list)
+	})
+
+	g.POST("/whitelist", func(c *gin.Context) {
+		var req struct {
+			Kind   string `json:"kind"`
+			Value  string `json:"value"`
+			Remark string `json:"remark"`
+		}
+		if !bindJSON(c, &req) {
+			return
+		}
+		rule, err := d.Availability.AddWhitelist(req.Kind, req.Value, req.Remark)
+		if err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, rule)
+	})
+
+	g.DELETE("/whitelist/:id", func(c *gin.Context) {
+		id, err := parseIDParam(c, "id")
+		if err != nil {
+			response.Fail(c, errs.New(errs.CodeValidationFailed, "无效的规则 ID"))
+			return
+		}
+		if err := d.Availability.RemoveWhitelist(id); err != nil {
+			response.Fail(c, errs.FromError(err))
+			return
+		}
+		response.OK(c, nil)
+	})
 }

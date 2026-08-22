@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -499,6 +501,10 @@ func (s *WorkerService) processFinding(taskID, assetID int64, resultID string, w
 	}
 	// 告警生成：high/critical 或告警类类型。
 	if isAlertWorthy(wf.Severity, wf.Type) {
+		// 可用性白名单：命中白名单的资产不生成可用性告警（finding/event 仍保留供审计）。
+		if wf.EngineName == "availability" && s.isWhitelisted(assetID, wf.URL) {
+			return nil
+		}
 		alert := &models.Alert{
 			AssetID: assetID, FindingID: finding.ID,
 			AlertType: alertTypeOf(wf.EngineName), Severity: sev, Title: wf.Title,
@@ -890,6 +896,56 @@ func (s *WorkerService) isNoisy(url, engineName string) bool {
 		}
 	}
 	return false
+}
+
+// isWhitelisted 判断资产是否命中可用性白名单（domain/ip/cidr）。
+func (s *WorkerService) isWhitelisted(assetID int64, targetURL string) bool {
+	if targetURL == "" {
+		var asset models.Asset
+		if err := s.DB.Where("id = ?", assetID).First(&asset).Error; err == nil {
+			targetURL = asset.URL
+		}
+	}
+	if targetURL == "" {
+		return false
+	}
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	var rules []models.ScanWhitelist
+	s.DB.Where("enabled = ?", "true").Find(&rules)
+	for _, r := range rules {
+		switch r.Kind {
+		case "domain":
+			if host == r.Value || strings.HasSuffix(host, "."+r.Value) {
+				return true
+			}
+		case "ip":
+			if host == r.Value {
+				return true
+			}
+		case "cidr":
+			if ipInCIDR(host, r.Value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ipInCIDR 判断 IP 是否落在 CIDR 网段内（简化实现，支持 IPv4/IPv6）。
+func ipInCIDR(host, cidr string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	_, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+	return ipnet.Contains(ip)
 }
 
 // expandEngineSwitches 把策略高级开关展开为 Worker 侧细粒度引擎名。

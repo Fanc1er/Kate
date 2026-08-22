@@ -70,7 +70,7 @@ func Run() {
 	worker := service.NewWorkerService(gdb, task, evidence, hub, lic, cfg.StormLimitHour)
 	triage := service.NewTriageService(gdb, audit, evidence)
 	dashboard := service.NewDashboardService(gdb)
-	availability := service.NewAvailabilityService(gdb)
+	availability := service.NewAvailabilityService(gdb, task)
 	member := service.NewMemberService(gdb, audit, mail)
 	report := service.NewReportService(gdb)
 
