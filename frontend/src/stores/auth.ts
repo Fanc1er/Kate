@@ -1,20 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '../api/auth'
-import { setTokens, clearTokens, setOrgId, clearOrgId, getOrgId } from '../api/http'
+import { setTokens, clearTokens } from '../api/http'
 import type { UserInfo } from '../types'
-import type { OrgEntry } from '../api/auth'
 import { permissionsOf } from '../config/permissions'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('cinsight_access_token'))
   const refreshToken = ref<string | null>(localStorage.getItem('cinsight_refresh_token'))
   const user = ref<UserInfo | null>(null)
-  const orgId = ref<string | null>(getOrgId())
-  const orgName = ref('')
-  const organizations = ref<OrgEntry[]>([])
-  const needSelectOrg = ref(false)
-  const isSuperAdmin = ref(false)
 
   const role = computed(() => user.value?.role ?? '')
   const permissions = computed(() => permissionsOf(role.value))
@@ -31,37 +25,10 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await authApi.login({ username, password })
     applyLogin(res)
     user.value = res.user
-    organizations.value = res.organizations ?? []
-    isSuperAdmin.value = res.is_super_admin
-    needSelectOrg.value = res.need_select_org
-    if (!res.need_select_org && res.user?.org_id != null) {
-      setOrgId(res.user.org_id)
-      orgId.value = String(res.user.org_id)
-      orgName.value = res.user.org_name ?? ''
-    }
   }
 
   async function fetchMe(): Promise<void> {
-    const me = await authApi.me()
-    user.value = me
-    isSuperAdmin.value = me.is_super_admin
-    if (me.org_id != null) {
-      setOrgId(me.org_id)
-      orgId.value = String(me.org_id)
-      orgName.value = me.org_name ?? ''
-    }
-  }
-
-  async function selectOrg(id: number): Promise<void> {
-    const res = await authApi.selectOrg(id)
-    applyLogin(res)
-    const u = res.user
-    setOrgId(u.org_id ?? id)
-    orgId.value = String(u.org_id ?? id)
-    orgName.value = u.org_name ?? ''
-    user.value = u
-    isSuperAdmin.value = res.is_super_admin
-    needSelectOrg.value = false
+    user.value = await authApi.me()
   }
 
   async function logout(): Promise<void> {
@@ -73,30 +40,20 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
     clearTokens()
-    clearOrgId()
     token.value = null
     refreshToken.value = null
     user.value = null
-    orgId.value = null
-    orgName.value = ''
-    organizations.value = []
   }
 
   return {
     token,
     refreshToken,
     user,
-    orgId,
-    orgName,
-    organizations,
-    needSelectOrg,
-    isSuperAdmin,
     role,
     permissions,
     isLoggedIn,
     login,
     fetchMe,
-    selectOrg,
     logout,
   }
 })

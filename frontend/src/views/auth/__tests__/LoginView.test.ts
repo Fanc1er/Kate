@@ -36,18 +36,15 @@ describe('LoginView 表单校验', () => {
     vi.mocked(authApi.login).mockResolvedValue({
       access_token: 'at',
       refresh_token: 'rt',
+      expires_in: 7200,
       user: {
         id: 1,
         username: 'u',
         email: 'u@example.com',
         status: 'active',
-        is_super_admin: false,
-        role: 'org_admin',
+        role: 'admin',
         permissions: [],
       },
-      organizations: [{ org_id: 1, name: 'o', role: 'org_admin', plan: 'free', status: 'active' }],
-      need_select_org: false,
-      is_super_admin: false,
     })
     const wrapper = mount(LoginView, { global: { stubs: { 'router-link': true } } })
     input(wrapper, 'input[autocomplete="username"]', 'admin')

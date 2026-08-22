@@ -1,27 +1,19 @@
 import { get, post } from './http'
 import type { UserInfo } from '../types'
 
-export interface OrgEntry {
-  org_id: number
-  name: string
-  role: string
-  plan: string
-  status: string
-}
-
 export interface LoginPayload {
   username: string
   password: string
 }
 
-export function login(data: LoginPayload): Promise<{
+export interface LoginResponse {
   access_token: string
   refresh_token: string
+  expires_in: number
   user: UserInfo
-  organizations: OrgEntry[]
-  is_super_admin: boolean
-  need_select_org: boolean
-}> {
+}
+
+export function login(data: LoginPayload): Promise<LoginResponse> {
   return post('/auth/login', data)
 }
 
@@ -31,16 +23,6 @@ export function logout(refreshToken: string): Promise<null> {
 
 export function me(): Promise<UserInfo> {
   return get('/auth/me')
-}
-
-export function selectOrg(orgId: number): Promise<{
-  access_token: string
-  refresh_token: string
-  user: UserInfo
-  is_super_admin: boolean
-  need_select_org: boolean
-}> {
-  return post('/auth/select-org', { org_id: orgId })
 }
 
 export function refresh(refreshToken: string): Promise<{

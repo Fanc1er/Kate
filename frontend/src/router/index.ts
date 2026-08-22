@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { ORG_ROUTES, STATIC_ROUTES, canAccess } from '../config/routes'
-import { getOrgId } from '../api/http'
+import { useLicenseStore } from '../stores/license'
+import { APP_ROUTES, STATIC_ROUTES, canAccess } from '../config/routes'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -10,7 +10,7 @@ const router = createRouter({
     {
       path: '/',
       component: () => import('../layouts/DefaultLayout.vue'),
-      children: ORG_ROUTES,
+      children: APP_ROUTES,
     },
     {
       path: '/:pathMatch(.*)*',
@@ -22,8 +22,27 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  const auth = useAuthStore()
   document.title = `${String(to.meta.title ?? 'CInsight')} · CInsight`
+
+  // 授权门禁：任何登录/角色判断之前先校验授权状态。
+  const license = useLicenseStore()
+  if (!license.loaded) {
+    try {
+      await license.fetchStatus()
+    } catch {
+      license.loaded = true
+      license.status = 'missing'
+    }
+  }
+  if (to.path !== '/license') {
+    if (license.status !== 'valid') {
+      return { path: '/license' }
+    }
+  } else if (license.status === 'valid') {
+    return { path: '/login' }
+  }
+
+  const auth = useAuthStore()
 
   if (!auth.isLoggedIn) {
     if (to.path === '/login') return true
@@ -41,13 +60,6 @@ router.beforeEach(async (to) => {
     } catch {
       return { path: '/login' }
     }
-  }
-
-  // 需要组织上下文但未选组织：跳组织选择。
-  const needsOrg = to.matched.some((r) => r.meta.requiresOrg)
-  const hasOrg = !!getOrgId()
-  if (needsOrg && !hasOrg) {
-    return { path: '/select-org' }
   }
 
   // 角色越权。

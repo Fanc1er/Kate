@@ -34,22 +34,21 @@ describe('sanitizeHtml XSS 净化', () => {
 
 describe('canAccess 权限判定', () => {
   it('无 roles 限制时放行', () => {
-    expect(canAccess(undefined, 'viewer')).toBe(true)
-    expect(canAccess([], 'viewer')).toBe(true)
+    expect(canAccess(undefined, 'user')).toBe(true)
+    expect(canAccess([], 'user')).toBe(true)
   })
 
   it('命中角色放行', () => {
-    expect(canAccess(['org_admin', 'engineer'], 'engineer')).toBe(true)
-    expect(canAccess(['super_admin'], 'super_admin')).toBe(true)
+    expect(canAccess(['admin', 'user'], 'user')).toBe(true)
+    expect(canAccess(['admin'], 'admin')).toBe(true)
   })
 
   it('未命中角色拒绝', () => {
-    expect(canAccess(['org_admin'], 'viewer')).toBe(false)
-    expect(canAccess(['super_admin'], 'org_admin')).toBe(false)
+    expect(canAccess(['admin'], 'user')).toBe(false)
   })
 
-  it('平台管理仅 super_admin 可访问', () => {
-    expect(canAccess(['super_admin'], 'super_admin')).toBe(true)
-    expect(canAccess(['super_admin'], 'org_admin')).toBe(false)
+  it('平台管理仅 admin 可访问', () => {
+    expect(canAccess(['admin'], 'admin')).toBe(true)
+    expect(canAccess(['admin'], 'user')).toBe(false)
   })
 })

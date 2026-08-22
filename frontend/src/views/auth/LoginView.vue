@@ -20,13 +20,7 @@ async function submit(): Promise<void> {
   error.value = ''
   try {
     await auth.login(username.value, password.value)
-    if (auth.needSelectOrg || auth.organizations.length > 1) {
-      router.replace('/select-org')
-    } else if (auth.isSuperAdmin) {
-      router.replace('/platform')
-    } else {
-      router.replace('/')
-    }
+    router.replace('/')
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -39,7 +33,7 @@ async function submit(): Promise<void> {
   <div class="login-page">
     <div class="login-card">
       <h1 class="title">CInsight</h1>
-      <p class="subtitle">多租户安全监测平台</p>
+      <p class="subtitle">安全监测平台</p>
       <form @submit.prevent="submit">
         <div class="field">
           <label>用户名</label>

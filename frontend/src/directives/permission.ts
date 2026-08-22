@@ -4,7 +4,7 @@ import { hasPermission } from '../config/permissions'
 
 function check(value: string | string[], role: string): boolean {
   if (Array.isArray(value)) {
-    const roleValues = ['org_admin', 'engineer', 'viewer', 'super_admin']
+    const roleValues = ['admin', 'user']
     if (value.length > 0 && value.some((v) => roleValues.includes(v))) {
       return value.includes(role)
     }

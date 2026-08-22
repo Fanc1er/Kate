@@ -1,17 +1,13 @@
 export const ROLES = {
-  super_admin: 'super_admin',
-  org_admin: 'org_admin',
-  engineer: 'engineer',
-  viewer: 'viewer',
+  admin: 'admin',
+  user: 'user',
 } as const
 
 export type Role = (typeof ROLES)[keyof typeof ROLES]
 
 export const ROLE_LABELS: Record<string, string> = {
-  super_admin: '平台管理员',
-  org_admin: '组织管理员',
-  engineer: '安全工程师',
-  viewer: '只读访客',
+  admin: '管理员',
+  user: '普通用户',
 }
 
 export const ALL_PERMISSIONS = [
@@ -48,30 +44,43 @@ export const ALL_PERMISSIONS = [
 
 export type Permission = (typeof ALL_PERMISSIONS)[number]
 
-const ENGINEER_PERMISSIONS = new Set<Permission>([
+const USER_PERMISSIONS = new Set<Permission>([
   'asset:read',
   'asset:export',
   'asset:write',
+  'asset:batch-delete',
   'wechat:write',
+  'policy:write',
+  'plan:write',
   'task:write',
+  'task:delete',
   'event:write',
+  'noise:write',
   'alert:write',
   'vuln:write',
   'ticket:write',
   'evidence:upload',
+  'report:delete',
+  'report-template:write',
+  'worker:write',
+  'channel:write',
+  'route:write',
+  'rules:write',
+  'intel-sub:write',
+  'whitelist:write',
+  'token:write',
+  'webhook:write',
+  'scenario:write',
+  'escalation:write',
+  'watch:write',
 ])
-
-const VIEWER_PERMISSIONS = new Set<Permission>(['asset:read', 'asset:export'])
 
 export function permissionsOf(role?: string): Set<Permission> {
   switch (role) {
-    case ROLES.super_admin:
-    case ROLES.org_admin:
+    case ROLES.admin:
       return new Set<Permission>(ALL_PERMISSIONS)
-    case ROLES.engineer:
-      return new Set(ENGINEER_PERMISSIONS)
-    case ROLES.viewer:
-      return new Set(VIEWER_PERMISSIONS)
+    case ROLES.user:
+      return new Set(USER_PERMISSIONS)
     default:
       return new Set<Permission>()
   }

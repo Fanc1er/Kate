@@ -5,7 +5,6 @@ import type { Vulnerability } from './event'
 
 export interface Ticket {
   id: number
-  org_id: number
   event_id: number
   vuln_id: number
   assignee: string

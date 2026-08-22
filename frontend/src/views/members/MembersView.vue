@@ -11,7 +11,7 @@ const loading = ref(false)
 const page = reactive({ page: 1, page_size: 20 })
 
 const showInvite = ref(false)
-const form = reactive({ email: '', role: 'engineer' })
+const form = reactive({ email: '', role: 'user' })
 const saving = ref(false)
 const error = ref('')
 
@@ -80,9 +80,9 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="team-page">
+  <div class="members-page">
     <div class="toolbar">
-      <h2>团队管理</h2>
+      <h2>用户管理</h2>
       <span class="spacer" />
       <button class="btn primary" @click="showInvite = true">邀请成员</button>
     </div>
@@ -144,7 +144,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-.team-page {
+.members-page {
   display: flex;
   flex-direction: column;
   gap: 16px;

@@ -3,7 +3,6 @@ import type { PageResult, PageQuery } from '../types'
 
 export interface Finding {
   id: number
-  org_id: number
   asset_id: number
   task_id: number
   engine_name: string
@@ -25,7 +24,6 @@ export interface Finding {
 
 export interface EventItem {
   id: number
-  org_id: number
   asset_id: number
   finding_ids?: string
   engine_name: string
@@ -42,7 +40,6 @@ export interface EventItem {
 
 export interface AlertItem {
   id: number
-  org_id: number
   asset_id: number
   finding_id: number
   alert_type: string
@@ -56,7 +53,6 @@ export interface AlertItem {
 
 export interface Vulnerability {
   id: number
-  org_id: number
   asset_id: number
   finding_id: number
   cve_id?: string

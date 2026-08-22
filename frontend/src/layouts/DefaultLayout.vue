@@ -18,16 +18,7 @@ let wsBannerTimer = 0
 
 const menus = computed(() => MENU.filter((m) => canAccess(m.roles, auth.role)))
 
-const orgLabel = computed(() =>
-  auth.isSuperAdmin && (auth.orgId === '0' || auth.orgId === null)
-    ? '平台管理'
-    : auth.orgName || '未选择组织',
-)
 const roleLabel = computed(() => ROLE_LABELS[auth.role] ?? auth.role)
-
-function switchOrg(): void {
-  router.push('/select-org')
-}
 
 async function doLogout(): Promise<void> {
   await auth.logout()
@@ -93,9 +84,7 @@ onBeforeUnmount(() => {
         </button>
         <div class="topbar-title">{{ String(route.meta.title ?? '') }}</div>
         <div class="topbar-right">
-          <span class="org-name">{{ orgLabel }}</span>
           <span class="role-tag">{{ roleLabel }}</span>
-          <button class="btn-link" @click="switchOrg">切换组织</button>
           <button class="btn-link" @click="doLogout">退出</button>
         </div>
       </header>

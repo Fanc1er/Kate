@@ -21,26 +21,10 @@ export function clearTokens(): void {
   localStorage.removeItem('cinsight_refresh_token')
 }
 
-export function getOrgId(): string | null {
-  return localStorage.getItem('cinsight_org_id')
-}
-
-export function setOrgId(id: string | number): void {
-  localStorage.setItem('cinsight_org_id', String(id))
-}
-
-export function clearOrgId(): void {
-  localStorage.removeItem('cinsight_org_id')
-}
-
 http.interceptors.request.use((config) => {
   const token = getToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
-  }
-  const orgId = getOrgId()
-  if (orgId) {
-    config.headers['X-Org-Id'] = orgId
   }
   return config
 })
@@ -57,6 +41,30 @@ function isConflictCode(code: number): boolean {
   )
 }
 
+function isLicenseCode(code: number): boolean {
+  return code >= 2400 && code <= 2404
+}
+
+function handleUnauthorized(): void {
+  if (redirecting) return
+  redirecting = true
+  clearTokens()
+  const path = window.location.pathname
+  if (!path.startsWith('/login')) {
+    window.location.href = '/login'
+  }
+  setTimeout(() => {
+    redirecting = false
+  }, 1000)
+}
+
+function handleLicenseBlocked(): void {
+  clearTokens()
+  if (window.location.pathname !== '/license') {
+    window.location.href = '/license'
+  }
+}
+
 http.interceptors.response.use(
   (res) => {
     const body = res.data as ApiResponse
@@ -66,8 +74,9 @@ http.interceptors.response.use(
       }
       if (body.code === 401) {
         handleUnauthorized()
-      }
-      if (isConflictCode(body.code)) {
+      } else if (isLicenseCode(body.code)) {
+        handleLicenseBlocked()
+      } else if (isConflictCode(body.code)) {
         toast.warning('数据已被他人修改，请刷新后重试')
       } else {
         toast.error(body.message || '操作失败')
@@ -83,6 +92,10 @@ http.interceptors.response.use(
       handleUnauthorized()
       return Promise.reject(new ApiError(401, '登录已过期'))
     }
+    if (isLicenseCode(body?.code ?? -1)) {
+      handleLicenseBlocked()
+      return Promise.reject(new ApiError(body?.code ?? -1, body?.message || '授权校验失败'))
+    }
     if (status === 409 || isConflictCode(body?.code ?? -1)) {
       toast.warning('数据已被他人修改，请刷新后重试')
     } else {
@@ -92,20 +105,6 @@ http.interceptors.response.use(
     return Promise.reject(new ApiError(body?.code ?? status ?? -1, msg))
   },
 )
-
-function handleUnauthorized(): void {
-  if (redirecting) return
-  redirecting = true
-  clearTokens()
-  clearOrgId()
-  const path = window.location.pathname
-  if (!path.startsWith('/login')) {
-    window.location.href = '/login'
-  }
-  setTimeout(() => {
-    redirecting = false
-  }, 1000)
-}
 
 export class ApiError extends Error {
   code: number
