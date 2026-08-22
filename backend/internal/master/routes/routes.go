@@ -64,6 +64,9 @@ func Setup(d *Deps) *gin.Engine {
 	registerAuth(api, d)
 	registerWorker(api, d)
 
+	// WebSocket 实时事件：握手认证由 ServeWS 自行处理（浏览器 WS 只能传 query token）。
+	api.GET("/ws/events", d.Hub.ServeWS(d.Tokens))
+
 	// 认证后（仅 JWT，可无 org）：
 	authed := api.Group("", d.Security.AuthRequired())
 	authed.GET("/auth/me", func(c *gin.Context) {
@@ -126,9 +129,6 @@ func Setup(d *Deps) *gin.Engine {
 			response.OK(c, map[string]any{"initialized": false, "temp_password": pwd})
 		})
 	}
-
-	// WebSocket 实时事件。
-	org.GET("/ws/events", d.Hub.ServeWS(d.Tokens))
 
 	// Swagger（可选）。
 	if swaggerEnabled() {

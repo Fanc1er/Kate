@@ -41,7 +41,7 @@ async function load(): Promise<void> {
         { name: '告警', type: 'line', smooth: true, data: t.alerts, itemStyle: { color: '#d03050' } },
       ],
     }
-    const engineNames = Object.keys(cov)
+    const engineNames = cov.map((e) => e.name)
     radarOption.value = {
       tooltip: {},
       radar: {
@@ -51,7 +51,7 @@ async function load(): Promise<void> {
       series: [
         {
           type: 'radar',
-          data: [{ value: engineNames.map((n) => cov[n]), name: '引擎覆盖率' }],
+          data: [{ value: cov.map((e) => e.findings), name: '引擎覆盖率' }],
           areaStyle: { opacity: 0.2 },
         },
       ],

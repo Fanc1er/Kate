@@ -22,8 +22,7 @@ async function loadOrgs(): Promise<void> {
 
 async function loadWorkers(): Promise<void> {
   try {
-    const res = await listWorkerNodes({ page: 1, page_size: 100 })
-    workers.value = res.list as never
+    workers.value = await listWorkerNodes({ page: 1, page_size: 100 })
   } catch {
     // 忽略
   }

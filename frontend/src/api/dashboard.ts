@@ -26,8 +26,11 @@ export interface TopRisk {
   created_at: string
 }
 
-export interface EngineCoverage {
-  [engine: string]: number
+export interface EngineCoverageItem {
+  engine: string
+  name: string
+  enabled: boolean
+  findings: number
 }
 
 export function getStats(): Promise<DashboardStats> {
@@ -42,6 +45,6 @@ export function getTopRisks(limit = 10): Promise<TopRisk[]> {
   return get('/dashboard/top-risks', { limit })
 }
 
-export function getEngineCoverage(): Promise<EngineCoverage> {
+export function getEngineCoverage(): Promise<EngineCoverageItem[]> {
   return get('/dashboard/engine-coverage')
 }

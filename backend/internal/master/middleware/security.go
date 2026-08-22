@@ -135,11 +135,9 @@ func (s *Security) RequireRoles(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role := c.GetString("role")
 		if role == models.RoleSuperAdmin {
-			// 超管经 org_id=0 全局通道；若带 org 上下文由 OrgRequired 已拦截。
-			if c.GetInt64("org_id") == 0 {
-				c.Next()
-				return
-			}
+			// 超管在平台通道与组织视角下均具备最高权限。
+			c.Next()
+			return
 		}
 		if !allowed[role] {
 			response.FailCode(c, errs.CodeForbidden)

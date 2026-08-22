@@ -21,7 +21,7 @@ export interface Organization {
   created_at: string
 }
 
-export function listWorkerNodes(params: PageQuery): Promise<PageResult<WorkerNode>> {
+export function listWorkerNodes(params: PageQuery): Promise<WorkerNode[]> {
   return get('/worker/nodes', params)
 }
 

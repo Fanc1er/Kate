@@ -56,11 +56,8 @@ func (h *Hub) ServeWS(tokens *TokenManager) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if claims.OrgID <= 0 {
-			response.FailMsg(c, errs.CodeOrgRequired, "WebSocket 需要组织上下文")
-			c.Abort()
-			return
-		}
+		// org_id=0 为平台通道（super_admin 平台视角），org_id>0 为组织通道；
+		// 事件均按 org 隔离广播，平台通道不会收到组织级事件。
 		conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
