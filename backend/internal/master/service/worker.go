@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"github.com/Fanc1er/Kate/backend/internal/master/license"
 	"github.com/Fanc1er/Kate/backend/internal/master/models"
 	"github.com/Fanc1er/Kate/backend/pkg/errs"
 	"github.com/Fanc1er/Kate/backend/pkg/utils"
@@ -24,36 +25,48 @@ type WorkerService struct {
 	Task       *TaskService
 	Evidence   *EvidenceService
 	Hub        *Hub
+	License    *license.Manager
 	StormLimit int
 }
 
 // NewWorkerService 构造 WorkerService。
-func NewWorkerService(db *gorm.DB, task *TaskService, evidence *EvidenceService, hub *Hub, stormLimit int) *WorkerService {
-	return &WorkerService{DB: db, Task: task, Evidence: evidence, Hub: hub, StormLimit: stormLimit}
+func NewWorkerService(db *gorm.DB, task *TaskService, evidence *EvidenceService, hub *Hub, lic *license.Manager, stormLimit int) *WorkerService {
+	return &WorkerService{DB: db, Task: task, Evidence: evidence, Hub: hub, License: lic, StormLimit: stormLimit}
 }
 
 // ---------- 注册握手 ----------
 
-// CreateWorkerNode 组织管理员创建节点并生成一次性 Bootstrap Token。
-func (s *WorkerService) CreateWorkerNode(orgID int64, name, ip string) (*models.WorkerNode, string, error) {
-	var org models.Organization
-	if err := s.DB.First(&org, orgID).Error; err != nil {
+// CreateWorkerNode 管理员创建节点并生成一次性 Bootstrap Token。
+func (s *WorkerService) CreateWorkerNode(name, ip string) (*models.WorkerNode, string, error) {
+	if err := s.checkWorkerQuota(); err != nil {
 		return nil, "", err
-	}
-	var used int64
-	s.DB.Model(&models.WorkerNode{}).Where("org_id = ? AND status <> ?", orgID, "offline_removed").Count(&used)
-	if int(used) >= org.MaxWorkers {
-		return nil, "", errs.New(errs.CodeWorkerQuota, "")
 	}
 	token := randomSecret(48)
 	node := &models.WorkerNode{
-		OrgID: orgID, Name: name, IP: ip, Status: models.StatusOffline,
+		Name: name, IP: ip, Status: models.StatusOffline,
 		BootTokenHash: utils.SHA256HexString(token),
 	}
 	if err := s.DB.Create(node).Error; err != nil {
 		return nil, "", err
 	}
 	return node, token, nil
+}
+
+// checkWorkerQuota 校验 Worker 节点数是否超过授权上限。
+func (s *WorkerService) checkWorkerQuota() error {
+	if s.License == nil {
+		return nil
+	}
+	max := s.License.MaxWorkers()
+	if max <= 0 {
+		return nil
+	}
+	var used int64
+	s.DB.Model(&models.WorkerNode{}).Where("status <> ?", "offline_removed").Count(&used)
+	if int(used) >= max {
+		return errs.New(errs.CodeWorkerQuota, "")
+	}
+	return nil
 }
 
 // Register Bootstrap Token 一次性换取长期凭证。
@@ -91,25 +104,24 @@ func (s *WorkerService) Register(token, name, version, ip string) (map[string]an
 	return map[string]any{
 		"client_id":     clientID,
 		"client_secret": clientSecret,
-		"org_id":        node.OrgID,
 	}, nil
 }
 
 // Heartbeat 心跳上报。
-func (s *WorkerService) Heartbeat(nodeID, orgID int64, load float64, version string) error {
+func (s *WorkerService) Heartbeat(nodeID int64, load float64, version string) error {
 	now := time.Now()
 	return s.DB.Model(&models.WorkerNode{}).
-		Where("id = ? AND org_id = ?", nodeID, orgID).
+		Where("id = ?", nodeID).
 		Updates(map[string]any{"load": load, "version": version, "heartbeat_at": now, "status": models.StatusOnline}).Error
 }
 
 // ---------- 任务拉取 ----------
 
 // PullTask 拉取 pending 任务并原子置 processing（单事务防双拉）。
-func (s *WorkerService) PullTask(orgID int64, workerID string) (map[string]any, error) {
+func (s *WorkerService) PullTask(workerID string) (map[string]any, error) {
 	var task models.ScanTask
 	err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("org_id = ? AND status = ? AND (retry_at IS NULL OR retry_at <= ?)", orgID, models.StatusPending, time.Now()).
+		if err := tx.Where("status = ? AND (retry_at IS NULL OR retry_at <= ?)", models.StatusPending, time.Now()).
 			Order("id ASC").First(&task).Error; err != nil {
 			return err
 		}
@@ -125,11 +137,11 @@ func (s *WorkerService) PullTask(orgID int64, workerID string) (map[string]any, 
 		return nil, err
 	}
 	var policy models.ScanPolicy
-	if err := s.DB.Where("id = ? AND org_id IN (0, ?)", task.PolicyID, orgID).First(&policy).Error; err != nil {
-		policy = models.ScanPolicy{OrgID: orgID, Name: "默认", Concurrency: 4, Timeout: 60, ScanDepth: 2, ConcurrencyLimit: 4, SameOrigin: true, CrawlSubpages: true}
+	if err := s.DB.Where("id = ?", task.PolicyID).First(&policy).Error; err != nil {
+		policy = models.ScanPolicy{Name: "默认", Concurrency: 4, Timeout: 60, ScanDepth: 2, ConcurrencyLimit: 4, SameOrigin: true, CrawlSubpages: true}
 	}
 	var asset models.Asset
-	s.DB.Where("id = ? AND org_id = ?", task.AssetID, orgID).First(&asset)
+	s.DB.Where("id = ?", task.AssetID).First(&asset)
 	// 从 EngineSwitches 解析可用性引擎配置（fail_count / slow_threshold_ms）随任务下发。
 	switches := map[string]any{}
 	_ = json.Unmarshal([]byte(policy.EngineSwitches), &switches)
@@ -194,7 +206,7 @@ func (s *WorkerService) PullTask(orgID int64, workerID string) (map[string]any, 
 	keywordRules := []map[string]any{}
 	{
 		var defs []models.RuleDefinition
-		s.DB.Where("org_id IN (0, ?) AND kind = ? AND loaded = ?", orgID, "keyword", true).
+		s.DB.Where("kind = ? AND loaded = ?", "keyword", true).
 			Order("id ASC").Find(&defs)
 		for _, d := range defs {
 			keywordRules = append(keywordRules, map[string]any{
@@ -208,7 +220,7 @@ func (s *WorkerService) PullTask(orgID int64, workerID string) (map[string]any, 
 	domainRules := []map[string]any{}
 	{
 		var defs []models.RuleDefinition
-		s.DB.Where("org_id IN (0, ?) AND kind IN ? AND loaded = ?", orgID, []string{"domain_whitelist", "malicious_domain"}, true).
+		s.DB.Where("kind IN ? AND loaded = ?", []string{"domain_whitelist", "malicious_domain"}, true).
 			Order("id ASC").Find(&defs)
 		for _, d := range defs {
 			domainRules = append(domainRules, map[string]any{
@@ -288,19 +300,19 @@ type DiscoveredAsset struct {
 }
 
 // ReportResult 处理结果回传：幂等去重 → 落 finding → 结果评估 → 降噪 → 事件/漏洞/告警 → WS 广播。
-func (s *WorkerService) ReportResult(orgID int64, result *WorkerResult) (map[string]any, error) {
+func (s *WorkerService) ReportResult(result *WorkerResult) (map[string]any, error) {
 	if result.ResultID == "" {
 		return nil, errs.New(errs.CodeValidationFailed, "缺少 result_id")
 	}
 	// 幂等去重。
 	var existing int64
-	s.DB.Model(&models.Finding{}).Where("org_id = ? AND result_id = ?", orgID, result.ResultID).Count(&existing)
+	s.DB.Model(&models.Finding{}).Where("result_id = ?", result.ResultID).Count(&existing)
 	if existing > 0 {
 		return map[string]any{"received": true, "duplicated": true}, nil
 	}
 	// 更新任务状态。
 	var task models.ScanTask
-	if err := s.DB.Where("id = ? AND org_id = ?", result.TaskID, orgID).First(&task).Error; err != nil {
+	if err := s.DB.Where("id = ?", result.TaskID).First(&task).Error; err != nil {
 		return nil, errs.New(errs.CodeNotFound, "任务不存在")
 	}
 	now := time.Now()
@@ -334,7 +346,7 @@ func (s *WorkerService) ReportResult(orgID int64, result *WorkerResult) (map[str
 	// 递归扫描发现的子资产落库：source_type 标注 + 配额校验。
 	// 达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded。
 	if len(result.Discovered) > 0 {
-		s.persistDiscoveredAssets(orgID, task, result.Discovered)
+		s.persistDiscoveredAssets(task, result.Discovered)
 	}
 
 	// 处理 findings。
@@ -342,19 +354,19 @@ func (s *WorkerService) ReportResult(orgID int64, result *WorkerResult) (map[str
 	for _, wf := range result.Findings {
 		// 内容完整性指纹：仅维护基线（importance=high 建立/比对），不产生 info finding。
 		if wf.EngineName == "content_security" && wf.Type == "content_integrity" {
-			s.processContentIntegrity(orgID, task, result.ResultID, wf)
+			s.processContentIntegrity(task, result.ResultID, wf)
 			continue
 		}
 		// 外链清单：维护外链基线，新增/移除/可疑由 processExternalLink 比对处理。
 		if wf.EngineName == "content_security" && wf.Type == "external_link" {
-			s.processExternalLink(orgID, task, result.ResultID, wf)
+			s.processExternalLink(task, result.ResultID, wf)
 			continue
 		}
 		// 顶层证据未内嵌在 finding 时，回退到 result.Evidence（全量证据链）。
 		if len(wf.InlineEvidence) == 0 && len(result.Evidence) > 0 {
 			wf.InlineEvidence = result.Evidence
 		}
-		if err := s.processFinding(orgID, result.TaskID, task.AssetID, result.ResultID, wf); err == nil {
+		if err := s.processFinding(result.TaskID, task.AssetID, result.ResultID, wf); err == nil {
 			created++
 		}
 	}
@@ -367,19 +379,19 @@ func (s *WorkerService) ReportResult(orgID int64, result *WorkerResult) (map[str
 		if utils.SHA256Hex(data) != ie.SHA256 {
 			continue
 		}
-		if _, err := s.Evidence.CreateFromBytes(orgID, ie.Kind, data); err != nil {
+		if _, err := s.Evidence.CreateFromBytes(ie.Kind, data); err != nil {
 			continue
 		}
 	}
 	if created > 0 {
-		s.Hub.Broadcast(orgID, map[string]any{
+		s.Hub.Broadcast(map[string]any{
 			"type": "finding.new", "data": map[string]any{"task_id": result.TaskID, "count": created},
 		})
 	}
 	return map[string]any{"received": true, "findings_created": created}, nil
 }
 
-func (s *WorkerService) processFinding(orgID, taskID, assetID int64, resultID string, wf WorkerFinding) error {
+func (s *WorkerService) processFinding(taskID, assetID int64, resultID string, wf WorkerFinding) error {
 	// 处理内联证据。
 	evidenceIDs := wf.EvidenceIDs
 	for _, ie := range wf.InlineEvidence {
@@ -390,7 +402,7 @@ func (s *WorkerService) processFinding(orgID, taskID, assetID int64, resultID st
 		if utils.SHA256Hex(data) != ie.SHA256 {
 			continue
 		}
-		id, err := s.Evidence.CreateFromBytes(orgID, ie.Kind, data)
+		id, err := s.Evidence.CreateFromBytes(ie.Kind, data)
 		if err != nil {
 			continue
 		}
@@ -401,7 +413,7 @@ func (s *WorkerService) processFinding(orgID, taskID, assetID int64, resultID st
 		sev = "info"
 	}
 	// 结果评估。
-	score, level, suggestion, assessment, err := s.Task.Assessor.Assess(orgID, assetID, wf.EngineName, sev, wf.Type, wf.Confidence)
+	score, level, suggestion, assessment, err := s.Task.Assessor.Assess(assetID, wf.EngineName, sev, wf.Type, wf.Confidence)
 	if err != nil {
 		score, level, suggestion = 0, "info", ""
 	}
@@ -414,7 +426,7 @@ func (s *WorkerService) processFinding(orgID, taskID, assetID int64, resultID st
 	extraJSON, _ := json.Marshal(wf.Extra)
 	evIDs, _ := json.Marshal(evidenceIDs)
 	finding := &models.Finding{
-		OrgID: orgID, TaskID: taskID, AssetID: assetID, ResultID: resultID,
+		TaskID: taskID, AssetID: assetID, ResultID: resultID,
 		EngineName: wf.EngineName, Type: wf.Type, Severity: sev,
 		RiskLevel: level, RiskScore: score, Suggestion: suggestion,
 		Title: wf.Title, Description: wf.Description, URL: wf.URL, LineNo: wf.LineNo,
@@ -425,10 +437,10 @@ func (s *WorkerService) processFinding(orgID, taskID, assetID int64, resultID st
 	}
 	// 敏感信息命中明细落库：engine=content_security 且 type=sensitive_info 时解析 extra.sensitive_info_hits。
 	if wf.EngineName == "content_security" && wf.Type == "sensitive_info" {
-		s.persistSensitiveInfoHits(orgID, taskID, wf.Extra)
+		s.persistSensitiveInfoHits(taskID, wf.Extra)
 	}
 	// 降噪过滤（简化：无规则命中即放行）。
-	if s.isNoisy(orgID, wf.URL, wf.EngineName) {
+	if s.isNoisy(wf.URL, wf.EngineName) {
 		return nil
 	}
 	// 多端 UA 正常评估报告（info）不入事件，避免扫描噪音；仅异常（high/medium）生成事件。
@@ -438,7 +450,7 @@ func (s *WorkerService) processFinding(orgID, taskID, assetID int64, resultID st
 	// 生成事件。
 	eventType, title := mapEvent(wf.EngineName, wf.Type, wf.Severity)
 	event := &models.Event{
-		OrgID: orgID, AssetID: assetID, FindingIDs: fmt.Sprint(finding.ID),
+		AssetID: assetID, FindingIDs: fmt.Sprint(finding.ID),
 		EngineName: wf.EngineName, EventType: eventType, Title: title,
 		Severity: sev, URL: wf.URL, Content: wf.Description,
 		EvidenceIDs: string(evIDs), Status: "pending",
@@ -446,23 +458,23 @@ func (s *WorkerService) processFinding(orgID, taskID, assetID int64, resultID st
 	if err := s.DB.Create(event).Error; err != nil {
 		return err
 	}
-	s.Hub.Broadcast(orgID, map[string]any{
+	s.Hub.Broadcast(map[string]any{
 		"type": "event.new",
 		"data": map[string]any{"event_id": event.ID, "title": title, "severity": sev},
 	})
 	// 漏洞聚合（vuln_scan / dns 类）。
 	if wf.EngineName == "vuln_scan" || wf.EngineName == "dns_security" {
-		s.aggregateVuln(orgID, finding, wf, evidenceIDs)
+		s.aggregateVuln(finding, wf, evidenceIDs)
 	}
 	// 告警生成：high/critical 或告警类类型。
 	if isAlertWorthy(wf.Severity, wf.Type) {
 		alert := &models.Alert{
-			OrgID: orgID, AssetID: assetID, FindingID: finding.ID,
+			AssetID: assetID, FindingID: finding.ID,
 			AlertType: alertTypeOf(wf.EngineName), Severity: sev, Title: wf.Title,
 			Content: wf.Description, Status: "open",
 		}
 		if err := s.DB.Create(alert).Error; err == nil {
-			s.Hub.Broadcast(orgID, map[string]any{
+			s.Hub.Broadcast(map[string]any{
 				"type": "alert.new",
 				"data": map[string]any{"alert_id": alert.ID, "title": wf.Title, "severity": sev},
 			})
@@ -473,10 +485,10 @@ func (s *WorkerService) processFinding(orgID, taskID, assetID int64, resultID st
 
 // processContentIntegrity 内容完整性基线维护：importance=high 资产建立/比对内容指纹，
 // 变更时生成篡改 finding（type=content_integrity）与事件。
-func (s *WorkerService) processContentIntegrity(orgID int64, task models.ScanTask, resultID string, wf WorkerFinding) {
+func (s *WorkerService) processContentIntegrity(task models.ScanTask, resultID string, wf WorkerFinding) {
 	// 仅重点资产纳入基线监测。
 	var asset models.Asset
-	if err := s.DB.Where("id = ? AND org_id = ?", task.AssetID, orgID).First(&asset).Error; err != nil {
+	if err := s.DB.Where("id = ?", task.AssetID).First(&asset).Error; err != nil {
 		return
 	}
 	// 仅种子资产 URL 纳入基线（递归发现的子页面不单独建基线）。
@@ -502,11 +514,11 @@ func (s *WorkerService) processContentIntegrity(orgID int64, task models.ScanTas
 	}
 	now := time.Now()
 	var bl models.ContentBaseline
-	err := s.DB.Where("org_id = ? AND asset_id = ? AND url = ?", orgID, asset.ID, wf.URL).First(&bl).Error
+	err := s.DB.Where("asset_id = ? AND url = ?", asset.ID, wf.URL).First(&bl).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// 首次采集：建立基线。
 		s.DB.Create(&models.ContentBaseline{
-			OrgID: orgID, AssetID: asset.ID, URL: wf.URL,
+			AssetID: asset.ID, URL: wf.URL,
 			Fingerprint: mustJSON(fp), FingerprintVer: ver,
 			FirstSeenAt: now, LastSeenAt: now,
 		})
@@ -541,7 +553,7 @@ func (s *WorkerService) processContentIntegrity(orgID int64, task models.ScanTas
 	// 生成篡改 finding。
 	changedStr := strings.Join(changedDims, "、")
 	finding := &models.Finding{
-		OrgID: orgID, TaskID: task.ID, AssetID: asset.ID, ResultID: resultID,
+		TaskID: task.ID, AssetID: asset.ID, ResultID: resultID,
 		EngineName: "content_security", Type: "content_integrity", Severity: "high",
 		Title:       "内容完整性基线偏差: " + asset.Name,
 		Description: "重点资产「" + asset.Name + "」内容发生变更，变更维度: " + changedStr + "，共变更 " + fmt.Sprint(len(changedDims)) + " 项。",
@@ -557,24 +569,24 @@ func (s *WorkerService) processContentIntegrity(orgID int64, task models.ScanTas
 	}
 	// 事件。
 	event := &models.Event{
-		OrgID: orgID, AssetID: asset.ID, FindingIDs: fmt.Sprint(finding.ID),
+		AssetID: asset.ID, FindingIDs: fmt.Sprint(finding.ID),
 		EngineName: "content_security", EventType: "篡改", Title: finding.Title,
 		Severity: "high", URL: wf.URL, Content: finding.Description,
 		Status: "pending",
 	}
 	if err := s.DB.Create(event).Error; err == nil {
-		s.Hub.Broadcast(orgID, map[string]any{
+		s.Hub.Broadcast(map[string]any{
 			"type": "event.new", "data": map[string]any{"event_id": event.ID, "title": finding.Title, "severity": "high"},
 		})
 	}
 	// 告警。
 	alert := &models.Alert{
-		OrgID: orgID, AssetID: asset.ID, FindingID: finding.ID,
+		AssetID: asset.ID, FindingID: finding.ID,
 		AlertType: "tamper", Severity: "high", Title: finding.Title,
 		Content: finding.Description, Status: "open",
 	}
 	if err := s.DB.Create(alert).Error; err == nil {
-		s.Hub.Broadcast(orgID, map[string]any{
+		s.Hub.Broadcast(map[string]any{
 			"type": "alert.new", "data": map[string]any{"alert_id": alert.ID, "title": finding.Title, "severity": "high"},
 		})
 	}
@@ -591,7 +603,7 @@ type extLinkItem struct {
 
 // processExternalLink 外链发现基线维护：资产页面外链清单建立/比对，
 // 检测新增/移除/目标域名变更/可疑外链，生成 external_link finding 与暗链挂马事件。
-func (s *WorkerService) processExternalLink(orgID int64, task models.ScanTask, resultID string, wf WorkerFinding) {
+func (s *WorkerService) processExternalLink(task models.ScanTask, resultID string, wf WorkerFinding) {
 	rawLinks, ok := wf.Extra["external_links"].([]any)
 	if !ok {
 		return
@@ -618,19 +630,19 @@ func (s *WorkerService) processExternalLink(orgID int64, task models.ScanTask, r
 	now := time.Now()
 	// 资产信息（来源页展示）。
 	var asset models.Asset
-	if err := s.DB.Where("id = ? AND org_id = ?", task.AssetID, orgID).First(&asset).Error; err != nil {
+	if err := s.DB.Where("id = ?", task.AssetID).First(&asset).Error; err != nil {
 		asset = models.Asset{ID: task.AssetID, Name: fmt.Sprint(task.AssetID)}
 	}
 	var bl models.ExternalLinkBaseline
-	err := s.DB.Where("org_id = ? AND asset_id = ? AND url = ?", orgID, asset.ID, wf.URL).First(&bl).Error
+	err := s.DB.Where("asset_id = ? AND url = ?", asset.ID, wf.URL).First(&bl).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// 首次采集：建立基线。
 		s.DB.Create(&models.ExternalLinkBaseline{
-			OrgID: orgID, AssetID: asset.ID, URL: wf.URL,
+			AssetID: asset.ID, URL: wf.URL,
 			Links: mustJSON(links), FirstSeenAt: now, LastSeenAt: now,
 		})
 		// 首次即发现可疑外链也生成 finding（无需等待变更）。
-		if s.emitSuspiciousExternalLink(orgID, task, resultID, asset, links) {
+		if s.emitSuspiciousExternalLink(task, resultID, asset, links) {
 			return
 		}
 		return
@@ -666,7 +678,7 @@ func (s *WorkerService) processExternalLink(orgID int64, task models.ScanTask, r
 	})
 	if len(added) == 0 && len(removed) == 0 && len(changed) == 0 {
 		// 无结构变更，仅检查可疑外链。
-		if s.emitSuspiciousExternalLink(orgID, task, resultID, asset, links) {
+		if s.emitSuspiciousExternalLink(task, resultID, asset, links) {
 			return
 		}
 		return
@@ -684,7 +696,7 @@ func (s *WorkerService) processExternalLink(orgID int64, task models.ScanTask, r
 		dims = append(dims, fmt.Sprintf("目标域名变更 %d 条", len(changed)))
 	}
 	finding := &models.Finding{
-		OrgID: orgID, TaskID: task.ID, AssetID: asset.ID, ResultID: resultID,
+		TaskID: task.ID, AssetID: asset.ID, ResultID: resultID,
 		EngineName: "content_security", Type: "external_link", Severity: "medium",
 		Title:       "外链变更: " + asset.Name,
 		Description: "资产「" + asset.Name + "」外链清单发生变化: " + strings.Join(dims, "、"),
@@ -698,11 +710,11 @@ func (s *WorkerService) processExternalLink(orgID int64, task models.ScanTask, r
 	if err := s.DB.Create(finding).Error; err != nil {
 		return
 	}
-	s.createIntegrityEvent(orgID, asset.ID, finding, "暗链挂马", "外链变更", now)
+	s.createIntegrityEvent(asset.ID, finding, "暗链挂马", "外链变更", now)
 }
 
 // emitSuspiciousExternalLink 检测可疑外链（恶意域名/相似度），命中生成 high finding + 暗链挂马事件。
-func (s *WorkerService) emitSuspiciousExternalLink(orgID int64, task models.ScanTask, resultID string, asset models.Asset, links []extLinkItem) bool {
+func (s *WorkerService) emitSuspiciousExternalLink(task models.ScanTask, resultID string, asset models.Asset, links []extLinkItem) bool {
 	var suspicious []extLinkItem
 	for _, l := range links {
 		if l.Suspicious {
@@ -718,7 +730,7 @@ func (s *WorkerService) emitSuspiciousExternalLink(orgID int64, task models.Scan
 		names = append(names, l.URL)
 	}
 	finding := &models.Finding{
-		OrgID: orgID, TaskID: task.ID, AssetID: asset.ID, ResultID: resultID,
+		TaskID: task.ID, AssetID: asset.ID, ResultID: resultID,
 		EngineName: "content_security", Type: "external_link", Severity: "high",
 		Title:       "可疑外链: " + asset.Name,
 		Description: "资产「" + asset.Name + "」页面存在 " + fmt.Sprint(len(suspicious)) + " 条可疑外链（恶意域名库命中/域名相似度）: " + truncateText(strings.Join(names, ", "), 200),
@@ -731,30 +743,30 @@ func (s *WorkerService) emitSuspiciousExternalLink(orgID int64, task models.Scan
 	if err := s.DB.Create(finding).Error; err != nil {
 		return false
 	}
-	s.createIntegrityEvent(orgID, asset.ID, finding, "暗链挂马", "可疑外链", now)
+	s.createIntegrityEvent(asset.ID, finding, "暗链挂马", "可疑外链", now)
 	return true
 }
 
 // createIntegrityEvent 生成事件 + WS 广播（外链/篡改通用）。
-func (s *WorkerService) createIntegrityEvent(orgID, assetID int64, finding *models.Finding, eventType, title string, now time.Time) {
+func (s *WorkerService) createIntegrityEvent(assetID int64, finding *models.Finding, eventType, title string, now time.Time) {
 	event := &models.Event{
-		OrgID: orgID, AssetID: assetID, FindingIDs: fmt.Sprint(finding.ID),
+		AssetID: assetID, FindingIDs: fmt.Sprint(finding.ID),
 		EngineName: "content_security", EventType: eventType, Title: title,
 		Severity: finding.Severity, URL: finding.URL, Content: finding.Description,
 		Status: "pending",
 	}
 	if err := s.DB.Create(event).Error; err == nil {
-		s.Hub.Broadcast(orgID, map[string]any{
+		s.Hub.Broadcast(map[string]any{
 			"type": "event.new", "data": map[string]any{"event_id": event.ID, "title": title, "severity": finding.Severity},
 		})
 	}
 	alert := &models.Alert{
-		OrgID: orgID, AssetID: assetID, FindingID: finding.ID,
+		AssetID: assetID, FindingID: finding.ID,
 		AlertType: "tamper", Severity: finding.Severity, Title: finding.Title,
 		Content: finding.Description, Status: "open",
 	}
 	if err := s.DB.Create(alert).Error; err == nil {
-		s.Hub.Broadcast(orgID, map[string]any{
+		s.Hub.Broadcast(map[string]any{
 			"type": "alert.new", "data": map[string]any{"alert_id": alert.ID, "title": finding.Title, "severity": finding.Severity},
 		})
 	}
@@ -778,17 +790,17 @@ func truncateText(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// aggregateVuln 按 org+asset+engine+签名 聚合并入 vulnerabilities。
-func (s *WorkerService) aggregateVuln(orgID int64, f *models.Finding, wf WorkerFinding, evidenceIDs []int64) {
+// aggregateVuln 按 asset+engine+签名 聚合并入 vulnerabilities。
+func (s *WorkerService) aggregateVuln(f *models.Finding, wf WorkerFinding, evidenceIDs []int64) {
 	sign := utils.MD5Hex(wf.EngineName + "|" + wf.Type + "|" + wf.URL)
 	var vuln models.Vulnerability
-	err := s.DB.Where("org_id = ? AND asset_id = ? AND engine_name = ? AND cve_id = ?",
-		orgID, f.AssetID, wf.EngineName, sign).First(&vuln).Error
+	err := s.DB.Where("asset_id = ? AND engine_name = ? AND cve_id = ?",
+		f.AssetID, wf.EngineName, sign).First(&vuln).Error
 	now := time.Now()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		evIDs, _ := json.Marshal(evidenceIDs)
 		vuln = models.Vulnerability{
-			OrgID: orgID, FindingID: f.ID, AssetID: f.AssetID, CVEID: sign,
+			FindingID: f.ID, AssetID: f.AssetID, CVEID: sign,
 			EngineName: wf.EngineName, Severity: wf.Severity, Status: "open",
 			Title: wf.Title, Description: wf.Description, EvidenceIDs: string(evIDs),
 			FirstSeenAt: now, LastSeenAt: now,
@@ -800,7 +812,7 @@ func (s *WorkerService) aggregateVuln(orgID int64, f *models.Finding, wf WorkerF
 }
 
 // persistSensitiveInfoHits 解析 extra.sensitive_info_hits 并写入命中明细表。
-func (s *WorkerService) persistSensitiveInfoHits(orgID, taskID int64, extra map[string]any) {
+func (s *WorkerService) persistSensitiveInfoHits(taskID int64, extra map[string]any) {
 	raw, ok := extra["sensitive_info_hits"]
 	if !ok {
 		return
@@ -821,7 +833,7 @@ func (s *WorkerService) persistSensitiveInfoHits(orgID, taskID int64, extra map[
 	}
 	for _, h := range hits {
 		hit := &models.SensitiveInfoHit{
-			OrgID: orgID, TaskID: taskID, Group: h.Group, Name: h.Name,
+			TaskID: taskID, Group: h.Group, Name: h.Name,
 			MatchedText: h.MatchedText, Scope: h.Scope, URL: h.URL,
 		}
 		_ = s.DB.Create(hit).Error
@@ -829,9 +841,9 @@ func (s *WorkerService) persistSensitiveInfoHits(orgID, taskID int64, extra map[
 }
 
 // isNoisy 降噪过滤（MVP 支持白名单 IP 与忽略类型）。
-func (s *WorkerService) isNoisy(orgID int64, url, engineName string) bool {
+func (s *WorkerService) isNoisy(url, engineName string) bool {
 	var rules []models.NoiseRule
-	s.DB.Where("org_id = ? AND enabled = ?", orgID, "true").Find(&rules)
+	s.DB.Where("enabled = ?", "true").Find(&rules)
 	for _, r := range rules {
 		var cfg map[string]any
 		_ = json.Unmarshal([]byte(r.Config), &cfg)
@@ -976,15 +988,15 @@ func decodeBase64(s string) ([]byte, error) {
 }
 
 // persistDiscoveredAssets 递归扫描发现的子资产落 assets 表。
-// 达到组织 max_assets 配额后停止写入新发现并标记 discovery_stopped: quota_exceeded。
-func (s *WorkerService) persistDiscoveredAssets(orgID int64, task models.ScanTask, discovered []DiscoveredAsset) {
-	var org models.Organization
-	if err := s.DB.First(&org, orgID).Error; err != nil {
-		return
+// 达到授权 max_assets 配额后停止写入新发现并标记 discovery_stopped: quota_exceeded。
+func (s *WorkerService) persistDiscoveredAssets(task models.ScanTask, discovered []DiscoveredAsset) {
+	maxAssets := 0
+	if s.License != nil {
+		maxAssets = s.License.MaxAssets()
 	}
 	var used int64
-	s.DB.Model(&models.Asset{}).Where("org_id = ? AND status <> ?", orgID, models.StatusDeleted).Count(&used)
-	quotaExceeded := org.MaxAssets > 0 && int(used) >= org.MaxAssets
+	s.DB.Model(&models.Asset{}).Where("status <> ?", models.StatusDeleted).Count(&used)
+	quotaExceeded := maxAssets > 0 && int(used) >= maxAssets
 	created := 0
 	for _, d := range discovered {
 		if d.URL == "" || d.SourceType == "" {
@@ -993,14 +1005,14 @@ func (s *WorkerService) persistDiscoveredAssets(orgID int64, task models.ScanTas
 		if quotaExceeded {
 			break
 		}
-		// 同组织同 URL 去重（含 source_type 区分）。
+		// 同 URL 去重（含 source_type 区分）。
 		var exist int64
-		s.DB.Model(&models.Asset{}).Where("org_id = ? AND url = ?", orgID, d.URL).Count(&exist)
+		s.DB.Model(&models.Asset{}).Where("url = ?", d.URL).Count(&exist)
 		if exist > 0 {
 			continue
 		}
 		asset := &models.Asset{
-			OrgID: orgID, URL: d.URL, Name: d.URL, SourceType: d.SourceType,
+			URL: d.URL, Name: d.URL, SourceType: d.SourceType,
 			Importance: "medium", Status: models.StatusActive,
 		}
 		if err := s.DB.Create(asset).Error; err != nil {
@@ -1008,7 +1020,7 @@ func (s *WorkerService) persistDiscoveredAssets(orgID int64, task models.ScanTas
 		}
 		created++
 		used++
-		if org.MaxAssets > 0 && int(used) >= org.MaxAssets {
+		if maxAssets > 0 && int(used) >= maxAssets {
 			quotaExceeded = true
 		}
 	}

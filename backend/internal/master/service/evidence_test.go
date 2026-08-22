@@ -30,7 +30,7 @@ func TestChunkUploadCollectAndVerify(t *testing.T) {
 	sha := utils.SHA256Hex(data)
 	total := 3
 	for i, part := range []string{"chunk-a-data", "|chunk-b-data", "|chunk-c-data"} {
-		id, complete, err := svc.ChunkUpload(10, "up-1", "html", total, i, []byte(part), sha)
+		id, complete, err := svc.ChunkUpload("up-1", "html", total, i, []byte(part), sha)
 		if err != nil {
 			t.Fatalf("chunk %d: %v", i, err)
 		}
@@ -41,11 +41,11 @@ func TestChunkUploadCollectAndVerify(t *testing.T) {
 			t.Fatalf("末片应 complete 且返回 evidence_id, got complete=%v id=%d", complete, id)
 		}
 	}
-	ev, err := svc.Get(10, 1)
+	ev, err := svc.Get(1)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	got, _, err := svc.Read(10, ev.ID)
+	got, _, err := svc.Read(ev.ID)
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
@@ -58,14 +58,14 @@ func TestChunkUploadTamperedSHA256(t *testing.T) {
 	svc := newEvidenceTestSvc(t)
 	data := []byte("real-content")
 	wrong := utils.SHA256Hex([]byte("tampered"))
-	_, complete, err := svc.ChunkUpload(10, "up-2", "html", 2, 0, data, wrong)
+	_, complete, err := svc.ChunkUpload("up-2", "html", 2, 0, data, wrong)
 	if err != nil {
 		t.Fatalf("首片: %v", err)
 	}
 	if complete {
 		t.Fatal("单片不应 complete")
 	}
-	_, _, err = svc.ChunkUpload(10, "up-2", "html", 2, 1, data, wrong)
+	_, _, err = svc.ChunkUpload("up-2", "html", 2, 1, data, wrong)
 	if err == nil {
 		t.Fatal("SHA-256 不一致应报错")
 	}
@@ -76,23 +76,15 @@ func TestChunkUploadTamperedSHA256(t *testing.T) {
 
 func TestCreateFromBytesDedup(t *testing.T) {
 	svc := newEvidenceTestSvc(t)
-	id1, err := svc.CreateFromBytes(10, "html", []byte("same-content"))
+	id1, err := svc.CreateFromBytes("html", []byte("same-content"))
 	if err != nil {
 		t.Fatalf("first: %v", err)
 	}
-	id2, err := svc.CreateFromBytes(10, "html", []byte("same-content"))
+	id2, err := svc.CreateFromBytes("html", []byte("same-content"))
 	if err != nil {
 		t.Fatalf("second: %v", err)
 	}
 	if id1 != id2 {
 		t.Fatalf("MD5 去重应返回相同 evidence_id, got %d vs %d", id1, id2)
-	}
-	// 不同 org 不去重。
-	id3, err := svc.CreateFromBytes(20, "html", []byte("same-content"))
-	if err != nil {
-		t.Fatalf("other org: %v", err)
-	}
-	if id3 == id1 {
-		t.Fatal("跨组织不应去重")
 	}
 }

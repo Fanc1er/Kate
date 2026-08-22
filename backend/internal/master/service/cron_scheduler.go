@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/Fanc1er/Kate/backend/internal/master/license"
 	"github.com/Fanc1er/Kate/backend/internal/master/models"
 )
 
@@ -17,13 +18,15 @@ import (
 type CronScheduler struct {
 	DB   *gorm.DB
 	Task *TaskService
+	// License 授权管理器，为 nil 时不校验授权（测试用）。
+	License *license.Manager
 	// Now 可注入时间（测试用），默认 time.Now。
 	Now func() time.Time
 }
 
 // NewCronScheduler 构造 CronScheduler。
-func NewCronScheduler(db *gorm.DB, task *TaskService) *CronScheduler {
-	return &CronScheduler{DB: db, Task: task, Now: time.Now}
+func NewCronScheduler(db *gorm.DB, task *TaskService, lic *license.Manager) *CronScheduler {
+	return &CronScheduler{DB: db, Task: task, License: lic, Now: time.Now}
 }
 
 // Run 启动定时循环（每 30 秒检查一次，分钟粒度触发）。
@@ -43,6 +46,10 @@ func (s *CronScheduler) Run(ctx context.Context) {
 
 // tick 扫描启用中的计划，匹配当前时间则触发。
 func (s *CronScheduler) tick() {
+	// 授权无效时停止调度新的扫描任务。
+	if s.License != nil && s.License.Check() != license.StatusValid {
+		return
+	}
 	now := s.Now()
 	var plans []models.ScanPlan
 	if err := s.DB.Where("status = ?", "enabled").Find(&plans).Error; err != nil {
@@ -84,7 +91,7 @@ func (s *CronScheduler) triggerPlan(p *models.ScanPlan, now time.Time) {
 		return
 	}
 	var assetIDs []int64
-	q := s.DB.Model(&models.Asset{}).Where("org_id = ?", p.OrgID)
+	q := s.DB.Model(&models.Asset{})
 	if p.AssetGroupName != "" {
 		q = q.Where("group_name = ?", p.AssetGroupName)
 	}
@@ -96,7 +103,7 @@ func (s *CronScheduler) triggerPlan(p *models.ScanPlan, now time.Time) {
 		log.Printf("cron-scheduler: plan %d has no assets, skip", p.ID)
 		return
 	}
-	_, err := s.Task.Create(p.OrgID, TaskCreateReq{AssetIDs: assetIDs, PolicyID: p.PolicyID}, 0, "cron", "", "")
+	_, err := s.Task.Create(TaskCreateReq{AssetIDs: assetIDs, PolicyID: p.PolicyID}, 0, "cron", "", "")
 	if err != nil {
 		// 去重冲突（已有进行中任务）时更新 LastRunAt 但跳过报错，视为本次已尝试。
 		log.Printf("cron-scheduler: plan %d create tasks: %v", p.ID, err)

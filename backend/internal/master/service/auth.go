@@ -24,7 +24,7 @@ const (
 	LoginLockMinutes = 15
 )
 
-// AuthService 认证与组织切换服务。
+// AuthService 认证服务。
 type AuthService struct {
 	DB     *gorm.DB
 	Tokens *TokenManager
@@ -65,40 +65,25 @@ func NewAuthService(db *gorm.DB, tokens *TokenManager, mail *MailService) *AuthS
 	}
 }
 
-// OrgEntry 组织选择卡片条目。
-type OrgEntry struct {
-	OrgID   int64  `json:"org_id"`
-	Name    string `json:"name"`
-	Role    string `json:"role"`
-	Plan    string `json:"plan"`
-	Status  string `json:"status"`
-}
-
 // LoginResult 登录成功返回。
 type LoginResult struct {
 	TokenPair
-	User          *UserDTO   `json:"user"`
-	Organizations []OrgEntry `json:"organizations"`
-	IsSuperAdmin  bool       `json:"is_super_admin"`
-	NeedSelectOrg bool       `json:"need_select_org"`
+	User *UserDTO `json:"user"`
 }
 
 // UserDTO 当前用户信息。
 type UserDTO struct {
-	ID        int64    `json:"id"`
-	Username  string   `json:"username"`
-	Email     string   `json:"email"`
-	Phone     string   `json:"phone"`
-	AvatarURL string   `json:"avatar_url"`
-	Status    string   `json:"status"`
-	Role      string   `json:"role,omitempty"`
-	OrgID     int64    `json:"org_id"`
-	OrgName   string   `json:"org_name,omitempty"`
-	IsSuperAdmin bool  `json:"is_super_admin"`
+	ID          int64    `json:"id"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email"`
+	Phone       string   `json:"phone"`
+	AvatarURL   string   `json:"avatar_url"`
+	Status      string   `json:"status"`
+	Role        string   `json:"role"`
 	Permissions []string `json:"permissions"`
 }
 
-// Login 用户名密码登录。JWT 不含 org_id；单组织直接返回 org_id+role，多组织返回列表。
+// Login 用户名密码登录。签发携带 role 的 access token。
 func (s *AuthService) Login(username, password, ip string) (*LoginResult, error) {
 	username = strings.TrimSpace(username)
 	if username == "" || password == "" {
@@ -150,121 +135,21 @@ func (s *AuthService) Login(username, password, ip string) (*LoginResult, error)
 	now := time.Now()
 	s.DB.Model(&user).Update("last_login_at", now)
 
-	res := &LoginResult{TokenPair: *pair, IsSuperAdmin: user.IsSuperAdmin}
-	if user.IsSuperAdmin {
-		// 超管不属于任何组织，走 org_id=0 平台通道。
-		res.User = s.buildUserDTO(&user, models.RoleSuperAdmin, 0, "平台")
-		res.NeedSelectOrg = false
-		return res, nil
-	}
-	var orgs []models.UserOrg
-	if err := s.DB.Where("user_id = ? AND status = ?", user.ID, models.StatusActive).Order("id ASC").Find(&orgs).Error; err != nil {
-		return nil, err
-	}
-	for _, o := range orgs {
-		var org models.Organization
-		if err := s.DB.First(&org, o.OrgID).Error; err != nil {
-			continue
-		}
-		res.Organizations = append(res.Organizations, OrgEntry{
-			OrgID: org.ID, Name: org.Name, Role: o.Role, Plan: org.Plan, Status: org.Status,
-		})
-	}
-	switch len(res.Organizations) {
-	case 0:
-		return nil, errs.New(errs.CodeForbidden, "该账号未关联任何有效组织")
-	case 1:
-		entry := res.Organizations[0]
-		if entry.Status == models.StatusDisabled {
-			return nil, errs.New(errs.CodeOrgDisabled, "")
-		}
-		orgID := entry.OrgID
-		// 单组织直接换取带 org_id 的 JWT。
-		access, err := s.Tokens.IssueForOrg(user.ID, orgID, entry.Role)
-		if err != nil {
-			return nil, err
-		}
-		pair.AccessToken = access
-		res.TokenPair = *pair
-		res.User = s.buildUserDTO(&user, entry.Role, orgID, entry.Name)
-		res.NeedSelectOrg = false
-	default:
-		res.User = s.buildUserDTO(&user, "", 0, "")
-		res.NeedSelectOrg = true
-	}
-	return res, nil
-}
-
-// SelectOrg 多组织用户选择组织，换取带 org_id 的 JWT。
-// super_admin 不受 user_orgs 约束，可选择任意有效组织进入组织视角。
-func (s *AuthService) SelectOrg(userID, orgID int64) (*LoginResult, error) {
-	var user models.User
-	if err := s.DB.First(&user, userID).Error; err != nil {
-		return nil, err
-	}
-	role := ""
-	if user.IsSuperAdmin {
-		role = models.RoleSuperAdmin
-	} else {
-		var uo models.UserOrg
-		if err := s.DB.Where("user_id = ? AND org_id = ?", userID, orgID).First(&uo).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, errs.New(errs.CodeForbidden, "非该组织成员")
-			}
-			return nil, err
-		}
-		if uo.Status != models.StatusActive {
-			return nil, errs.New(errs.CodeUserDisabled, "成员已被禁用")
-		}
-		role = uo.Role
-	}
-	var org models.Organization
-	if err := s.DB.First(&org, orgID).Error; err != nil {
-		return nil, err
-	}
-	if org.Status == models.StatusDisabled {
-		return nil, errs.New(errs.CodeOrgDisabled, "")
-	}
-	access, err := s.Tokens.IssueForOrg(userID, orgID, role)
-	if err != nil {
-		return nil, err
-	}
-	// 换组织后原 token 失效：拉黑当前用户全部 refresh。
-	s.Tokens.RevokeAllUserRefresh(userID)
-	pair, err := s.Tokens.Issue(userID)
+	access, err := s.Tokens.IssueWithRole(user.ID, user.Role)
 	if err != nil {
 		return nil, err
 	}
 	pair.AccessToken = access
-	return &LoginResult{
-		TokenPair:     *pair,
-		User:          s.buildUserDTO(&user, role, orgID, org.Name),
-		IsSuperAdmin:  user.IsSuperAdmin,
-		NeedSelectOrg: false,
-	}, nil
+	return &LoginResult{TokenPair: *pair, User: s.buildUserDTO(&user)}, nil
 }
 
-// Me 返回当前用户信息（仅依赖 JWT，不需要 X-Org-Id）。
+// Me 返回当前用户信息（仅依赖 JWT）。
 func (s *AuthService) Me(userID int64) (*UserDTO, error) {
 	var user models.User
 	if err := s.DB.First(&user, userID).Error; err != nil {
 		return nil, err
 	}
-	if user.IsSuperAdmin {
-		return s.buildUserDTO(&user, models.RoleSuperAdmin, 0, "平台"), nil
-	}
-	var uo models.UserOrg
-	if err := s.DB.Where("user_id = ? AND status = ?", userID, models.StatusActive).First(&uo).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return s.buildUserDTO(&user, "", 0, ""), nil
-		}
-		return nil, err
-	}
-	var org models.Organization
-	if err := s.DB.First(&org, uo.OrgID).Error; err != nil {
-		return nil, err
-	}
-	return s.buildUserDTO(&user, uo.Role, uo.OrgID, org.Name), nil
+	return s.buildUserDTO(&user), nil
 }
 
 // Refresh 用 refresh token 换发新 access token。
@@ -365,7 +250,7 @@ func (s *AuthService) ResetPassword(email, code, newPwd string) error {
 	return nil
 }
 
-func (s *AuthService) buildUserDTO(u *models.User, role string, orgID int64, orgName string) *UserDTO {
+func (s *AuthService) buildUserDTO(u *models.User) *UserDTO {
 	return &UserDTO{
 		ID:          u.ID,
 		Username:    u.Username,
@@ -373,11 +258,8 @@ func (s *AuthService) buildUserDTO(u *models.User, role string, orgID int64, org
 		Phone:       u.Phone,
 		AvatarURL:   u.AvatarURL,
 		Status:      u.Status,
-		Role:        role,
-		OrgID:       orgID,
-		OrgName:     orgName,
-		IsSuperAdmin: u.IsSuperAdmin,
-		Permissions: rbac.PermissionsOf(role),
+		Role:        u.Role,
+		Permissions: rbac.PermissionsOf(u.Role),
 	}
 }
 

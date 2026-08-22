@@ -52,7 +52,7 @@ func (e *SensitiveWordEngine) Run(ctx context.Context, target Target, _ Policy) 
 }
 
 // Match 对给定文本执行敏感词匹配，返回命中 finding。
-// source: 页面 URL；whitelist: 组织白名单词汇（kind=content_whitelist）。
+// source: 页面 URL；whitelist: 内容白名单词汇（kind=content_whitelist）。
 func (e *SensitiveWordEngine) Match(source, title, content string, whitelist []string) []Finding {
 	var out []Finding
 	text := content

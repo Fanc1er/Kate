@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/Fanc1er/Kate/backend/internal/master/license"
 	"github.com/Fanc1er/Kate/backend/internal/master/middleware"
 	"github.com/Fanc1er/Kate/backend/internal/master/routes"
 	"github.com/Fanc1er/Kate/backend/internal/master/service"
@@ -44,31 +46,46 @@ func Run() {
 	audit := service.NewAuditWriter(gdb)
 	mail := service.NewMailService(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPassword, cfg.SMTPFrom, cfg.MailCodeTTL)
 	auth := service.NewAuthService(gdb, tokens, mail)
-	seed := service.NewSeedService(gdb, cfg.SuperAdminUser, cfg.SuperAdminPass)
-	asset := service.NewAssetService(gdb, cache, audit)
+	seed := service.NewSeedService(gdb, cfg.AdminUser, cfg.AdminPass)
+
+	licensePath := cfg.LicensePath
+	if licensePath == "" {
+		licensePath = filepath.Join(cfg.DataDir, "license.lic")
+	}
+	saltPath := filepath.Join(cfg.DataDir, "machine.salt")
+	lic, err := license.NewManager(licensePath, saltPath)
+	if err != nil {
+		log.Fatalf("init license: %v", err)
+	}
+	if err := lic.Load(); err != nil {
+		log.Fatalf("load license: %v", err)
+	}
+
+	asset := service.NewAssetService(gdb, cache, audit, lic)
 	assessor := service.NewResultAssessor(gdb)
 	task := service.NewTaskService(gdb, audit, assessor)
 	policy := service.NewPolicyService(gdb, audit)
 	hub := service.NewHub()
 	evidence := service.NewEvidenceService(gdb, store, cfg.EvidenceTTL)
-	worker := service.NewWorkerService(gdb, task, evidence, hub, cfg.StormLimitHour)
+	worker := service.NewWorkerService(gdb, task, evidence, hub, lic, cfg.StormLimitHour)
 	triage := service.NewTriageService(gdb, audit, evidence)
 	dashboard := service.NewDashboardService(gdb)
 	member := service.NewMemberService(gdb, audit, mail)
 	report := service.NewReportService(gdb)
-	sec := middleware.NewSecurity(gdb, tokens)
 
-	if _, pwd, err := seed.EnsureSuperAdmin(); err != nil {
-		log.Fatalf("init super admin: %v", err)
+	sec := middleware.NewSecurity(gdb, tokens, lic)
+
+	if _, pwd, err := seed.EnsureAdmin(); err != nil {
+		log.Fatalf("init admin: %v", err)
 	} else if pwd != "" {
-		log.Printf("super_admin 已创建：%s，临时密码：%s（仅首次打印）", cfg.SuperAdminUser, pwd)
+		log.Printf("admin 已创建：%s，临时密码：%s（仅首次打印）", cfg.AdminUser, pwd)
 	}
 	if err := seed.EnsureDefaults(); err != nil {
 		log.Fatalf("init defaults: %v", err)
 	}
 
 	sched := service.NewMasterScheduler(gdb, cache, evidence)
-	cron := service.NewCronScheduler(gdb, task)
+	cron := service.NewCronScheduler(gdb, task, lic)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go sched.Run(ctx)
@@ -89,6 +106,7 @@ func Run() {
 		Report:    report,
 		Tokens:    tokens,
 		Security:  sec,
+		License:   lic,
 		Hub:       hub,
 		Logger:    logger,
 	})

@@ -12,7 +12,7 @@ import (
 	"github.com/Fanc1er/Kate/backend/pkg/errs"
 )
 
-// PolicyService 策略模板（组织可复制平台默认模板，org_id=0 为平台级只读）。
+// PolicyService 策略模板（单租户，所有模板归属本实例）。
 type PolicyService struct {
 	DB    *gorm.DB
 	Audit *AuditWriter
@@ -54,15 +54,15 @@ func NewPolicyService(db *gorm.DB, audit *AuditWriter) *PolicyService {
 	return &PolicyService{DB: db, Audit: audit}
 }
 
-// List 列出本组织可见模板（平台默认 + 组织自建）。
-func (s *PolicyService) List(orgID int64) ([]models.ScanPolicy, error) {
+// List 列出可见模板（平台默认 + 自定义）。
+func (s *PolicyService) List() ([]models.ScanPolicy, error) {
 	var list []models.ScanPolicy
-	err := s.DB.Where("org_id IN (0, ?)", orgID).Order("org_id ASC, id ASC").Find(&list).Error
+	err := s.DB.Order("id ASC").Find(&list).Error
 	return list, err
 }
 
-// Create 组织创建自定义模板。
-func (s *PolicyService) Create(orgID int64, p *models.ScanPolicy, userID int64, username, ip, ua string) (*models.ScanPolicy, error) {
+// Create 创建自定义模板。
+func (s *PolicyService) Create(p *models.ScanPolicy, userID int64, username, ip, ua string) (*models.ScanPolicy, error) {
 	if p.Name == "" {
 		return nil, errs.New(errs.CodeValidationFailed, "策略名称不能为空")
 	}
@@ -72,7 +72,6 @@ func (s *PolicyService) Create(orgID int64, p *models.ScanPolicy, userID int64, 
 	if p.Timeout <= 0 {
 		p.Timeout = 60
 	}
-	p.OrgID = orgID
 	if p.EngineSwitches == "" {
 		p.EngineSwitches = `{}`
 	}
@@ -80,22 +79,21 @@ func (s *PolicyService) Create(orgID int64, p *models.ScanPolicy, userID int64, 
 		return nil, err
 	}
 	if s.Audit != nil {
-		s.Audit.Write(orgID, userID, username, "policy.create", "policy", fmt.Sprint(p.ID), "", p.Name, ip, ua)
+		s.Audit.Write(userID, username, "policy.create", "policy", fmt.Sprint(p.ID), "", p.Name, ip, ua)
 	}
 	return p, nil
 }
 
-// Update 更新组织自建模板。
-func (s *PolicyService) Update(orgID, id int64, p *models.ScanPolicy, userID int64, username, ip, ua string) (*models.ScanPolicy, error) {
+// Update 更新自定义模板。
+func (s *PolicyService) Update(id int64, p *models.ScanPolicy, userID int64, username, ip, ua string) (*models.ScanPolicy, error) {
 	var old models.ScanPolicy
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&old).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&old).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.New(errs.CodeNotFound, "策略模板不存在")
 		}
 		return nil, err
 	}
 	p.ID = id
-	p.OrgID = orgID
 	if err := s.DB.Model(&old).Updates(map[string]any{
 		"name": p.Name, "scenario": p.Scenario, "engine_switches": p.EngineSwitches,
 		"concurrency": p.Concurrency, "timeout": p.Timeout, "rate_limit": p.RateLimit,
@@ -105,42 +103,41 @@ func (s *PolicyService) Update(orgID, id int64, p *models.ScanPolicy, userID int
 		return nil, err
 	}
 	if s.Audit != nil {
-		s.Audit.Write(orgID, userID, username, "policy.update", "policy", fmt.Sprint(id), "", p.Name, ip, ua)
+		s.Audit.Write(userID, username, "policy.update", "policy", fmt.Sprint(id), "", p.Name, ip, ua)
 	}
 	var updated models.ScanPolicy
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&updated).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&updated).Error; err != nil {
 		return nil, err
 	}
 	return &updated, nil
 }
 
-// Delete 删除组织自建模板。
-func (s *PolicyService) Delete(orgID, id int64, userID int64, username, ip, ua string) error {
+// Delete 删除自定义模板。
+func (s *PolicyService) Delete(id int64, userID int64, username, ip, ua string) error {
 	var p models.ScanPolicy
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&p).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&p).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errs.New(errs.CodeNotFound, "策略模板不存在")
 		}
 		return err
 	}
-	if err := s.DB.Delete(&models.ScanPolicy{}, "id = ? AND org_id = ?", id, orgID).Error; err != nil {
+	if err := s.DB.Delete(&models.ScanPolicy{}, "id = ?", id).Error; err != nil {
 		return err
 	}
 	if s.Audit != nil {
-		s.Audit.Write(orgID, userID, username, "policy.delete", "policy", fmt.Sprint(id), "", p.Name, ip, ua)
+		s.Audit.Write(userID, username, "policy.delete", "policy", fmt.Sprint(id), "", p.Name, ip, ua)
 	}
 	return nil
 }
 
-// CopyPlatform 复制平台默认模板到组织（TaskScheduler 创建计划时使用）。
-func (s *PolicyService) CopyPlatform(orgID, platformID int64) (int64, error) {
+// CopyPlatform 复制平台默认模板（TaskScheduler 创建计划时使用）。
+func (s *PolicyService) CopyPlatform(platformID int64) (int64, error) {
 	var src models.ScanPolicy
-	if err := s.DB.Where("id = ? AND org_id = 0", platformID).First(&src).Error; err != nil {
+	if err := s.DB.Where("id = ?", platformID).First(&src).Error; err != nil {
 		return 0, errs.New(errs.CodeNotFound, "平台默认策略不存在")
 	}
 	cp := src
 	cp.ID = 0
-	cp.OrgID = orgID
 	cp.Name = src.Name + " (副本)"
 	cp.Version = 1
 	cp.CreatedAt = time.Time{}
@@ -152,9 +149,9 @@ func (s *PolicyService) CopyPlatform(orgID, platformID int64) (int64, error) {
 }
 
 // Get 获取策略（含平台级）。
-func (s *PolicyService) Get(orgID, id int64) (*models.ScanPolicy, error) {
+func (s *PolicyService) Get(id int64) (*models.ScanPolicy, error) {
 	var p models.ScanPolicy
-	if err := s.DB.Where("id = ? AND org_id IN (0, ?)", id, orgID).First(&p).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&p).Error; err != nil {
 		return nil, err
 	}
 	return &p, nil

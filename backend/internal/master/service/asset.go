@@ -10,6 +10,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/Fanc1er/Kate/backend/internal/master/license"
 	"github.com/Fanc1er/Kate/backend/internal/master/models"
 	"github.com/Fanc1er/Kate/backend/internal/master/repository"
 	"github.com/Fanc1er/Kate/backend/pkg/badger"
@@ -19,42 +20,39 @@ import (
 
 // AssetService 资产服务：CRUD + URL 归一化去重 + 画像 + 变更追踪 + 批量操作。
 type AssetService struct {
-	DB     *gorm.DB
-	Cache  *badger.Store
-	Audit  *AuditWriter
-	Tokens *TokenManager
+	DB      *gorm.DB
+	Cache   *badger.Store
+	Audit   *AuditWriter
+	Tokens  *TokenManager
+	License *license.Manager
 }
 
 // NewAssetService 构造 AssetService。
-func NewAssetService(db *gorm.DB, cache *badger.Store, audit *AuditWriter) *AssetService {
-	return &AssetService{DB: db, Cache: cache, Audit: audit}
+func NewAssetService(db *gorm.DB, cache *badger.Store, audit *AuditWriter, lic *license.Manager) *AssetService {
+	return &AssetService{DB: db, Cache: cache, Audit: audit, License: lic}
 }
 
-// guard 返回组织隔离守卫（org_id 强制过滤，缺省 org_id 拒绝查询）。
-func (s *AssetService) guard(orgID int64) *repository.Guard {
-	g, err := repository.NewGuard(s.DB, orgID)
-	if err != nil {
-		panic(err)
-	}
-	return g
+// guard 返回单租户查询守卫（无组织隔离）。
+func (s *AssetService) guard() *repository.Guard {
+	return repository.NewGuard(s.DB)
 }
 
 // urlKey 归一化 URL 的 BadgerDB 去重键。
-func urlKey(orgID int64, md5 string) string {
-	return fmt.Sprintf("urlmd5:%d:%s", orgID, md5)
+func urlKey(md5 string) string {
+	return fmt.Sprintf("urlmd5:%s", md5)
 }
 
 // Create 创建资产（URL 归一化 + BadgerDB MD5 防重 + 配额校验）。
-func (s *AssetService) Create(orgID int64, name, rawURL, group, importance, remark string, userID int64, username, ip, ua string) (*models.Asset, error) {
+func (s *AssetService) Create(name, rawURL, group, importance, remark string, userID int64, username, ip, ua string) (*models.Asset, error) {
 	normalized, err := utils.NormalizeURL(rawURL)
 	if err != nil {
 		return nil, errs.New(errs.CodeValidationFailed, "URL 不合法")
 	}
 	// 配额校验。
-	if err := s.checkQuota(orgID); err != nil {
+	if err := s.checkQuota(); err != nil {
 		return nil, err
 	}
-	key := urlKey(orgID, utils.URLKey(normalized))
+	key := urlKey(utils.URLKey(normalized))
 	exists, err := s.Cache.Has(key)
 	if err != nil {
 		return nil, err
@@ -66,7 +64,7 @@ func (s *AssetService) Create(orgID int64, name, rawURL, group, importance, rema
 		importance = "medium"
 	}
 	asset := &models.Asset{
-		OrgID: orgID, URL: normalized, Name: name, GroupName: group,
+		URL: normalized, Name: name, GroupName: group,
 		Importance: importance, Remark: remark, Status: models.StatusActive, SourceType: "manual",
 	}
 	if err := s.DB.Create(asset).Error; err != nil {
@@ -74,28 +72,31 @@ func (s *AssetService) Create(orgID int64, name, rawURL, group, importance, rema
 	}
 	_ = s.Cache.Set(key, strconv.FormatInt(asset.ID, 10))
 	if s.Audit != nil {
-		s.Audit.Write(orgID, userID, username, "asset.create", "asset", fmt.Sprint(asset.ID), "", normalized, ip, ua)
+		s.Audit.Write(userID, username, "asset.create", "asset", fmt.Sprint(asset.ID), "", normalized, ip, ua)
 	}
 	return asset, nil
 }
 
-func (s *AssetService) checkQuota(orgID int64) error {
-	var org models.Organization
-	if err := s.DB.First(&org, orgID).Error; err != nil {
-		return err
+func (s *AssetService) checkQuota() error {
+	if s.License == nil {
+		return nil
+	}
+	max := s.License.MaxAssets()
+	if max <= 0 {
+		return nil
 	}
 	var used int64
-	s.DB.Model(&models.Asset{}).Where("org_id = ? AND status <> ?", orgID, models.StatusDeleted).Count(&used)
-	if int(used) >= org.MaxAssets {
+	s.DB.Model(&models.Asset{}).Where("status <> ?", models.StatusDeleted).Count(&used)
+	if int(used) >= max {
 		return errs.New(errs.CodeAssetQuota, "")
 	}
 	return nil
 }
 
 // Update 编辑资产（带乐观锁 version）。
-func (s *AssetService) Update(orgID, id int64, patch map[string]any, version int, userID int64, username, ip, ua string) (*models.Asset, error) {
+func (s *AssetService) Update(id int64, patch map[string]any, version int, userID int64, username, ip, ua string) (*models.Asset, error) {
 	var asset models.Asset
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&asset).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&asset).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, errs.New(errs.CodeNotFound, "")
 		}
@@ -120,15 +121,15 @@ func (s *AssetService) Update(orgID, id int64, patch map[string]any, version int
 	s.DB.First(&asset, asset.ID)
 	if s.Audit != nil {
 		after, _ := json.Marshal(asset)
-		s.Audit.Write(orgID, userID, username, "asset.update", "asset", fmt.Sprint(id), string(before), string(after), ip, ua)
+		s.Audit.Write(userID, username, "asset.update", "asset", fmt.Sprint(id), string(before), string(after), ip, ua)
 	}
 	return &asset, nil
 }
 
 // Delete 删除资产（软删除 status=deleted + 清理 BadgerDB 键）。
-func (s *AssetService) Delete(orgID, id int64, userID int64, username, ip, ua string) error {
+func (s *AssetService) Delete(id int64, userID int64, username, ip, ua string) error {
 	var asset models.Asset
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&asset).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&asset).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return errs.New(errs.CodeNotFound, "")
 		}
@@ -137,16 +138,16 @@ func (s *AssetService) Delete(orgID, id int64, userID int64, username, ip, ua st
 	if err := s.DB.Model(&asset).Updates(map[string]any{"status": models.StatusDeleted}).Error; err != nil {
 		return err
 	}
-	_ = s.Cache.Delete(urlKey(orgID, utils.URLKey(asset.URL)))
+	_ = s.Cache.Delete(urlKey(utils.URLKey(asset.URL)))
 	if s.Audit != nil {
-		s.Audit.Write(orgID, userID, username, "asset.delete", "asset", fmt.Sprint(id), asset.URL, "deleted", ip, ua)
+		s.Audit.Write(userID, username, "asset.delete", "asset", fmt.Sprint(id), asset.URL, "deleted", ip, ua)
 	}
 	return nil
 }
 
 // List 资产列表（模糊搜索/分组/重要程度/状态筛选 + 分页）。
-func (s *AssetService) List(orgID int64, keyword, group, importance, status, sourceType string, page, pageSize int) ([]models.Asset, int64, error) {
-	q := s.guard(orgID).Scoped(&models.Asset{}).Where("status <> ?", models.StatusDeleted)
+func (s *AssetService) List(keyword, group, importance, status, sourceType string, page, pageSize int) ([]models.Asset, int64, error) {
+	q := s.guard().Scoped(&models.Asset{}).Where("status <> ?", models.StatusDeleted)
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		q = q.Where("(url LIKE ? OR name LIKE ?)", like, like)
@@ -175,7 +176,7 @@ func (s *AssetService) List(orgID int64, keyword, group, importance, status, sou
 }
 
 // Groups 分组去重计数。
-func (s *AssetService) Groups(orgID int64) ([]GroupStat, error) {
+func (s *AssetService) Groups() ([]GroupStat, error) {
 	type row struct {
 		GroupName string
 		Cnt       int64
@@ -183,7 +184,7 @@ func (s *AssetService) Groups(orgID int64) ([]GroupStat, error) {
 	var rows []row
 	if err := s.DB.Model(&models.Asset{}).
 		Select("group_name, COUNT(*) AS cnt").
-		Where("org_id = ? AND status <> ? AND group_name <> ''", orgID, models.StatusDeleted).
+		Where("status <> ? AND group_name <> ''", models.StatusDeleted).
 		Group("group_name").Scan(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -202,9 +203,9 @@ type GroupStat struct {
 }
 
 // Get 资产详情。
-func (s *AssetService) Get(orgID, id int64) (*models.Asset, error) {
+func (s *AssetService) Get(id int64) (*models.Asset, error) {
 	var a models.Asset
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&a).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&a).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, errs.New(errs.CodeNotFound, "")
 		}
@@ -214,8 +215,8 @@ func (s *AssetService) Get(orgID, id int64) (*models.Asset, error) {
 }
 
 // Profile 资产画像（技术栈指纹/ICP/SSL 倒计时/端口快照）。
-func (s *AssetService) Profile(orgID, id int64) (map[string]any, error) {
-	a, err := s.Get(orgID, id)
+func (s *AssetService) Profile(id int64) (map[string]any, error) {
+	a, err := s.Get(id)
 	if err != nil {
 		return nil, err
 	}
@@ -230,20 +231,20 @@ func (s *AssetService) Profile(orgID, id int64) (map[string]any, error) {
 }
 
 // History 变更追踪（读取审计日志中 asset.create/update/delete 记录）。
-func (s *AssetService) History(orgID, id int64) ([]models.AuditLog, error) {
+func (s *AssetService) History(id int64) ([]models.AuditLog, error) {
 	var logs []models.AuditLog
-	if err := s.DB.Where("org_id = ? AND resource_type = ? AND resource_id = ?", orgID, "asset", fmt.Sprint(id)).
+	if err := s.DB.Where("resource_type = ? AND resource_id = ?", "asset", fmt.Sprint(id)).
 		Order("created_at DESC").Limit(50).Find(&logs).Error; err != nil {
 		return nil, err
 	}
 	return logs, nil
 }
 
-// BatchDelete 批量删除（仅 org_admin，见权限矩阵）。
-func (s *AssetService) BatchDelete(orgID int64, ids []int64, userID int64, username, ip, ua string) BatchResult {
+// BatchDelete 批量删除（仅管理员，见权限矩阵）。
+func (s *AssetService) BatchDelete(ids []int64, userID int64, username, ip, ua string) BatchResult {
 	res := BatchResult{Success: 0}
 	for _, id := range ids {
-		if err := s.Delete(orgID, id, userID, username, ip, ua); err != nil {
+		if err := s.Delete(id, userID, username, ip, ua); err != nil {
 			res.Failed = append(res.Failed, FailedItem{ID: id, Reason: errs.FromError(err).Message})
 		} else {
 			res.Success++
@@ -253,10 +254,10 @@ func (s *AssetService) BatchDelete(orgID int64, ids []int64, userID int64, usern
 }
 
 // BatchGroup 批量改分组。
-func (s *AssetService) BatchGroup(orgID int64, ids []int64, group string) BatchResult {
+func (s *AssetService) BatchGroup(ids []int64, group string) BatchResult {
 	res := BatchResult{Success: 0}
 	for _, id := range ids {
-		if err := s.DB.Model(&models.Asset{}).Where("id = ? AND org_id = ?", id, orgID).
+		if err := s.DB.Model(&models.Asset{}).Where("id = ?", id).
 			Update("group_name", group).Error; err != nil {
 			res.Failed = append(res.Failed, FailedItem{ID: id, Reason: errs.FromError(err).Message})
 		} else {
@@ -267,7 +268,7 @@ func (s *AssetService) BatchGroup(orgID int64, ids []int64, group string) BatchR
 }
 
 // BatchImport 批量导入（URL 列表或 CSV）。
-func (s *AssetService) BatchImport(orgID int64, content string, userID int64, username, ip, ua string) (ImportResult, error) {
+func (s *AssetService) BatchImport(content string, userID int64, username, ip, ua string) (ImportResult, error) {
 	lines := parseImportLines(content)
 	res := ImportResult{}
 	for i, line := range lines {
@@ -283,7 +284,7 @@ func (s *AssetService) BatchImport(orgID int64, content string, userID int64, us
 		if url == "" {
 			continue
 		}
-		_, err := s.Create(orgID, name, url, "", "medium", "", userID, username, ip, ua)
+		_, err := s.Create(name, url, "", "medium", "", userID, username, ip, ua)
 		if err != nil {
 			res.Failed++
 			res.Errors = append(res.Errors, fmt.Sprintf("第 %d 行 %s: %s", i+1, url, errs.FromError(err).Message))
@@ -326,11 +327,11 @@ type FailedItem struct {
 }
 
 // ExportCSV 当前筛选结果导出 CSV。
-func (s *AssetService) ExportCSV(orgID int64, keyword, group, importance, status string) ([]byte, error) {
+func (s *AssetService) ExportCSV(keyword, group, importance, status string) ([]byte, error) {
 	var buf strings.Builder
 	w := csv.NewWriter(&buf)
 	_ = w.Write([]string{"ID", "URL", "名称", "分组", "重要程度", "状态", "创建时间"})
-	q := s.guard(orgID).Scoped(&models.Asset{}).Where("status <> ?", models.StatusDeleted)
+	q := s.guard().Scoped(&models.Asset{}).Where("status <> ?", models.StatusDeleted)
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		q = q.Where("(url LIKE ? OR name LIKE ?)", like, like)
@@ -359,8 +360,8 @@ func (s *AssetService) ExportCSV(orgID int64, keyword, group, importance, status
 }
 
 // WechatAsset CRUD
-func (s *AssetService) CreateWechat(orgID int64, m map[string]any) (*models.WechatAsset, error) {
-	a := &models.WechatAsset{OrgID: orgID}
+func (s *AssetService) CreateWechat(m map[string]any) (*models.WechatAsset, error) {
+	a := &models.WechatAsset{}
 	if v, ok := m["name"]; ok {
 		a.Name = v.(string)
 	}
@@ -402,8 +403,8 @@ func intField(m map[string]any, key string) int {
 	}
 }
 
-func (s *AssetService) ListWechat(orgID int64, page, pageSize int) ([]models.WechatAsset, int64, error) {
-	q := s.DB.Model(&models.WechatAsset{}).Where("org_id = ?", orgID)
+func (s *AssetService) ListWechat(page, pageSize int) ([]models.WechatAsset, int64, error) {
+	q := s.DB.Model(&models.WechatAsset{})
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -415,9 +416,9 @@ func (s *AssetService) ListWechat(orgID int64, page, pageSize int) ([]models.Wec
 	return list, total, nil
 }
 
-func (s *AssetService) UpdateWechat(orgID, id int64, m map[string]any) (*models.WechatAsset, error) {
+func (s *AssetService) UpdateWechat(id int64, m map[string]any) (*models.WechatAsset, error) {
 	var a models.WechatAsset
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&a).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&a).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, errs.New(errs.CodeNotFound, "")
 		}
@@ -430,6 +431,6 @@ func (s *AssetService) UpdateWechat(orgID, id int64, m map[string]any) (*models.
 	return &a, nil
 }
 
-func (s *AssetService) DeleteWechat(orgID, id int64) error {
-	return s.DB.Where("id = ? AND org_id = ?", id, orgID).Delete(&models.WechatAsset{}).Error
+func (s *AssetService) DeleteWechat(id int64) error {
+	return s.DB.Where("id = ?", id).Delete(&models.WechatAsset{}).Error
 }

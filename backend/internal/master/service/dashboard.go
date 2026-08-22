@@ -19,33 +19,29 @@ func NewDashboardService(db *gorm.DB) *DashboardService {
 	return &DashboardService{DB: db}
 }
 
-// guard 返回组织隔离守卫（org_id 强制过滤，缺省 org_id 拒绝查询）。
-func (s *DashboardService) guard(orgID int64) *repository.Guard {
-	g, err := repository.NewGuard(s.DB, orgID)
-	if err != nil {
-		panic(err)
-	}
-	return g
+// guard 返回单租户查询守卫（无组织隔离）。
+func (s *DashboardService) guard() *repository.Guard {
+	return repository.NewGuard(s.DB)
 }
 
 // Stats 统计卡片：资产数/任务数/高危数/今日告警/可用性/覆盖率。
-func (s *DashboardService) Stats(orgID int64) (map[string]any, error) {
+func (s *DashboardService) Stats() (map[string]any, error) {
 	var assets, tasks, tasksToday, findings, critical, high, alerts, evToday int64
 	now := time.Now()
 	todayStart := now.Truncate(24 * time.Hour)
-	s.guard(orgID).Scoped(&models.Asset{}).Where("status <> ?", "deleted").Count(&assets)
-	s.guard(orgID).Scoped(&models.ScanTask{}).Count(&tasks)
-	s.guard(orgID).Scoped(&models.ScanTask{}).Where("created_at >= ?", todayStart).Count(&tasksToday)
-	s.guard(orgID).Scoped(&models.Finding{}).Count(&findings)
-	s.guard(orgID).Scoped(&models.Finding{}).Where("severity = ? AND status <> ?", "critical", "closed").Count(&critical)
-	s.guard(orgID).Scoped(&models.Finding{}).Where("severity = ? AND status <> ?", "high", "closed").Count(&high)
-	s.guard(orgID).Scoped(&models.Alert{}).Where("status = ?", "open").Count(&alerts)
-	s.guard(orgID).Scoped(&models.Alert{}).Where("created_at >= ?", todayStart).Count(&evToday)
+	s.guard().Scoped(&models.Asset{}).Where("status <> ?", "deleted").Count(&assets)
+	s.guard().Scoped(&models.ScanTask{}).Count(&tasks)
+	s.guard().Scoped(&models.ScanTask{}).Where("created_at >= ?", todayStart).Count(&tasksToday)
+	s.guard().Scoped(&models.Finding{}).Count(&findings)
+	s.guard().Scoped(&models.Finding{}).Where("severity = ? AND status <> ?", "critical", "closed").Count(&critical)
+	s.guard().Scoped(&models.Finding{}).Where("severity = ? AND status <> ?", "high", "closed").Count(&high)
+	s.guard().Scoped(&models.Alert{}).Where("status = ?", "open").Count(&alerts)
+	s.guard().Scoped(&models.Alert{}).Where("created_at >= ?", todayStart).Count(&evToday)
 
 	// 可用性最近 24h 均值。
 	var okPts, totalPts int64
-	s.guard(orgID).Scoped(&models.AvailabilityPoint{}).Where("sampled_at >= ?", now.Add(-24*time.Hour)).Count(&totalPts)
-	s.guard(orgID).Scoped(&models.AvailabilityPoint{}).Where("sampled_at >= ? AND status_code >= 200 AND status_code < 500", now.Add(-24*time.Hour)).Count(&okPts)
+	s.guard().Scoped(&models.AvailabilityPoint{}).Where("sampled_at >= ?", now.Add(-24*time.Hour)).Count(&totalPts)
+	s.guard().Scoped(&models.AvailabilityPoint{}).Where("sampled_at >= ? AND status_code >= 200 AND status_code < 500", now.Add(-24*time.Hour)).Count(&okPts)
 	avail := 0.0
 	if totalPts > 0 {
 		avail = float64(okPts) / float64(totalPts) * 100
@@ -53,7 +49,7 @@ func (s *DashboardService) Stats(orgID int64) (map[string]any, error) {
 	// 引擎覆盖率：已上线引擎数/总引擎数。
 	engineTotal := []string{"vuln_scan", "content_security", "hidden_link", "webshell", "phishing", "availability", "port_service", "dns_security", "reputation", "intelligence"}
 	var engineUsed int64
-	s.guard(orgID).Scoped(&models.Finding{}).Distinct("engine_name").Count(&engineUsed)
+	s.guard().Scoped(&models.Finding{}).Distinct("engine_name").Count(&engineUsed)
 	coverage := 0.0
 	if len(engineTotal) > 0 {
 		coverage = float64(engineUsed) / float64(len(engineTotal)) * 100
@@ -73,7 +69,7 @@ func (s *DashboardService) Stats(orgID int64) (map[string]any, error) {
 }
 
 // Trends 7 天趋势：findings/alerts/availability。
-func (s *DashboardService) Trends(orgID int64, days int) (map[string]any, error) {
+func (s *DashboardService) Trends(days int) (map[string]any, error) {
 	if days <= 0 {
 		days = 7
 	}
@@ -95,7 +91,7 @@ func (s *DashboardService) Trends(orgID int64, days int) (map[string]any, error)
 		var rows []dayCnt
 		s.DB.Table(table).
 			Select("strftime('%m-%d', created_at) AS day, COUNT(*) AS cnt").
-			Where("org_id = ? AND created_at >= ?", orgID, start).
+			Where("created_at >= ?", start).
 			Group("day").Scan(&rows)
 		for _, r := range rows {
 			out[r.Day] = r.Cnt
@@ -117,7 +113,7 @@ func (s *DashboardService) Trends(orgID int64, days int) (map[string]any, error)
 	var availRows []dayAvail
 	s.DB.Table("availability_points").
 		Select("strftime('%m-%d', sampled_at) AS day, SUM(CASE WHEN status_code >= 200 AND status_code < 500 THEN 1 ELSE 0 END) AS ok, COUNT(*) AS tot").
-		Where("org_id = ? AND sampled_at >= ?", orgID, start).Group("day").Scan(&availRows)
+		Where("sampled_at >= ?", start).Group("day").Scan(&availRows)
 	for _, r := range availRows {
 		if r.Tot > 0 {
 			availOut[r.Day] = round1(float64(r.Ok) / float64(r.Tot) * 100)
@@ -135,18 +131,18 @@ func (s *DashboardService) Trends(orgID int64, days int) (map[string]any, error)
 }
 
 // TopRisks 风险 Top10（按 risk_score）。
-func (s *DashboardService) TopRisks(orgID int64, limit int) ([]models.Finding, error) {
+func (s *DashboardService) TopRisks(limit int) ([]models.Finding, error) {
 	if limit <= 0 || limit > 10 {
 		limit = 10
 	}
 	var list []models.Finding
-	err := s.DB.Where("org_id = ? AND status <> ?", orgID, "closed").
+	err := s.DB.Where("status <> ?", "closed").
 		Order("risk_score DESC, id DESC").Limit(limit).Find(&list).Error
 	return list, err
 }
 
 // EngineCoverage 引擎覆盖率明细。
-func (s *DashboardService) EngineCoverage(orgID int64) ([]map[string]any, error) {
+func (s *DashboardService) EngineCoverage() ([]map[string]any, error) {
 	engines := []struct {
 		Key  string
 		Name string
@@ -158,7 +154,7 @@ func (s *DashboardService) EngineCoverage(orgID int64) ([]map[string]any, error)
 	out := make([]map[string]any, 0, len(engines))
 	for _, e := range engines {
 		var cnt int64
-		s.DB.Model(&models.Finding{}).Where("org_id = ? AND engine_name = ?", orgID, e.Key).Count(&cnt)
+		s.DB.Model(&models.Finding{}).Where("engine_name = ?", e.Key).Count(&cnt)
 		enabled := cnt > 0
 		out = append(out, map[string]any{"engine": e.Key, "name": e.Name, "enabled": enabled, "findings": cnt})
 	}

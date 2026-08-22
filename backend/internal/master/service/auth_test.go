@@ -18,64 +18,46 @@ func newAuthService(t *testing.T) *AuthService {
 	return NewAuthService(gdb, tm, mail)
 }
 
-func seedUser(t *testing.T, s *AuthService, username, pwd, email string, isSuper bool, status string) *models.User {
+func seedUser(t *testing.T, s *AuthService, username, pwd, email, role, status string) *models.User {
 	t.Helper()
 	hash, err := utils.HashPassword(pwd)
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
-	u := models.User{Username: username, Password: hash, Email: email, IsSuperAdmin: isSuper, Status: status}
+	u := models.User{Username: username, Password: hash, Email: email, Role: role, Status: status}
 	if err := s.DB.Create(&u).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
 	return &u
 }
 
-func seedOrgMember(t *testing.T, s *AuthService, userID int64, role string, status string) int64 {
-	t.Helper()
-	org := models.Organization{Name: "org", Status: "active"}
-	if err := s.DB.Create(&org).Error; err != nil {
-		t.Fatalf("create org: %v", err)
-	}
-	uo := models.UserOrg{UserID: userID, OrgID: org.ID, Role: role, Status: status, JoinedAt: time.Now()}
-	if err := s.DB.Create(&uo).Error; err != nil {
-		t.Fatalf("create user_org: %v", err)
-	}
-	return org.ID
-}
-
-func TestLoginSuccessSingleOrg(t *testing.T) {
+func TestLoginSuccess(t *testing.T) {
 	s := newAuthService(t)
-	u := seedUser(t, s, "alice", "Test@123456aA!", "alice@x.com", false, models.StatusActive)
-	orgID := seedOrgMember(t, s, u.ID, models.RoleOrgAdmin, models.StatusActive)
-	_ = orgID
+	u := seedUser(t, s, "alice", "Test@123456aA!", "alice@x.com", models.RoleUser, models.StatusActive)
 
 	res, err := s.Login("alice", "Test@123456aA!", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	if res.NeedSelectOrg {
-		t.Fatal("单组织不应 need_select_org")
-	}
-	if res.User == nil || res.User.Role != models.RoleOrgAdmin {
+	if res.User == nil || res.User.Role != models.RoleUser {
 		t.Fatalf("user = %+v", res.User)
 	}
 	if res.AccessToken == "" || res.RefreshToken == "" {
 		t.Fatal("token 不应为空")
 	}
-	// 单组织直接换取带 org 的 access token。
+	// access token 携带当前用户 role。
 	claims, err := s.Tokens.Parse(res.AccessToken)
 	if err != nil {
 		t.Fatalf("parse access: %v", err)
 	}
-	if claims.OrgID <= 0 {
-		t.Fatalf("access token 应带 org_id, claims=%+v", claims)
+	if claims.UserID != u.ID || claims.Role != models.RoleUser {
+		t.Fatalf("claims = %+v", claims)
 	}
 }
 
 func TestLoginWrongPassword(t *testing.T) {
 	s := newAuthService(t)
-	seedUser(t, s, "bob", "Test@123456aA!", "bob@x.com", false, models.StatusActive)
+	seedUser(t, s, "bob", "Test@123456aA!", "bob@x.com", models.RoleUser, models.StatusActive)
 	_, err := s.Login("bob", "WrongPass123!", "127.0.0.1")
 	if err == nil || errs.CodeOf(err) != errs.CodeAuthFailed {
 		t.Fatalf("错误密码应返回 CodeAuthFailed, got %v", err)
@@ -84,7 +66,7 @@ func TestLoginWrongPassword(t *testing.T) {
 
 func TestLoginDisabledUser(t *testing.T) {
 	s := newAuthService(t)
-	seedUser(t, s, "carol", "Test@123456aA!", "carol@x.com", false, models.StatusDisabled)
+	seedUser(t, s, "carol", "Test@123456aA!", "carol@x.com", models.RoleUser, models.StatusDisabled)
 	_, err := s.Login("carol", "Test@123456aA!", "127.0.0.1")
 	if err == nil || errs.CodeOf(err) != errs.CodeUserDisabled {
 		t.Fatalf("禁用用户应返回 CodeUserDisabled, got %v", err)
@@ -93,7 +75,7 @@ func TestLoginDisabledUser(t *testing.T) {
 
 func TestLoginLockout(t *testing.T) {
 	s := newAuthService(t)
-	seedUser(t, s, "dave", "Test@123456aA!", "dave@x.com", false, models.StatusActive)
+	seedUser(t, s, "dave", "Test@123456aA!", "dave@x.com", models.RoleUser, models.StatusActive)
 
 	// 连续失败 LoginMaxAttempts 次（每次换 IP，避免触发 IP 限流而非账户锁定）。
 	for i := 0; i < LoginMaxAttempts; i++ {
@@ -111,7 +93,7 @@ func TestLoginLockout(t *testing.T) {
 
 func TestLoginIPRateLimit(t *testing.T) {
 	s := newAuthService(t)
-	seedUser(t, s, "eve", "Test@123456aA!", "eve@x.com", false, models.StatusActive)
+	seedUser(t, s, "eve", "Test@123456aA!", "eve@x.com", models.RoleUser, models.StatusActive)
 	// 同一 IP 连续请求超过 5 次/min 触发限流。
 	for i := 0; i < 6; i++ {
 		_, _ = s.Login("eve", "WrongPass123!", "10.0.0.1")
@@ -122,34 +104,34 @@ func TestLoginIPRateLimit(t *testing.T) {
 	}
 }
 
-func TestLoginSuperAdmin(t *testing.T) {
+func TestLoginAdmin(t *testing.T) {
 	s := newAuthService(t)
-	seedUser(t, s, "root", "Test@123456aA!", "root@x.com", true, models.StatusActive)
+	seedUser(t, s, "root", "Test@123456aA!", "root@x.com", models.RoleAdmin, models.StatusActive)
 	res, err := s.Login("root", "Test@123456aA!", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	if !res.IsSuperAdmin {
-		t.Fatal("应为超管")
+	if res.User == nil || res.User.Role != models.RoleAdmin {
+		t.Fatalf("admin user = %+v", res.User)
 	}
-	if res.User == nil || res.User.Role != models.RoleSuperAdmin {
-		t.Fatalf("超管 user = %+v", res.User)
+	claims, err := s.Tokens.Parse(res.AccessToken)
+	if err != nil {
+		t.Fatalf("parse access: %v", err)
 	}
-	if res.NeedSelectOrg {
-		t.Fatal("超管不应 need_select_org")
+	if claims.Role != models.RoleAdmin {
+		t.Fatalf("access token 应带 admin 角色, claims=%+v", claims)
 	}
 }
 
 func TestMe(t *testing.T) {
 	s := newAuthService(t)
-	u := seedUser(t, s, "alice", "Test@123456aA!", "alice@x.com", false, models.StatusActive)
-	orgID := seedOrgMember(t, s, u.ID, models.RoleEngineer, models.StatusActive)
+	u := seedUser(t, s, "alice", "Test@123456aA!", "alice@x.com", models.RoleUser, models.StatusActive)
 
 	me, err := s.Me(u.ID)
 	if err != nil {
 		t.Fatalf("Me: %v", err)
 	}
-	if me.Role != models.RoleEngineer || me.OrgID != orgID || me.OrgName != "org" {
+	if me.Role != models.RoleUser {
 		t.Fatalf("me = %+v", me)
 	}
 	if len(me.Permissions) == 0 {
@@ -157,40 +139,9 @@ func TestMe(t *testing.T) {
 	}
 }
 
-func TestSelectOrg(t *testing.T) {
-	s := newAuthService(t)
-	u := seedUser(t, s, "alice", "Test@123456aA!", "alice@x.com", false, models.StatusActive)
-	orgID := seedOrgMember(t, s, u.ID, models.RoleOrgAdmin, models.StatusActive)
-
-	res, err := s.SelectOrg(u.ID, orgID)
-	if err != nil {
-		t.Fatalf("SelectOrg: %v", err)
-	}
-	claims, err := s.Tokens.Parse(res.AccessToken)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	if claims.OrgID != orgID || claims.Role != models.RoleOrgAdmin {
-		t.Fatalf("claims = %+v", claims)
-	}
-}
-
-func TestSelectOrgNotMember(t *testing.T) {
-	s := newAuthService(t)
-	u := seedUser(t, s, "alice", "Test@123456aA!", "alice@x.com", false, models.StatusActive)
-	org := models.Organization{Name: "Acme", Status: "active"}
-	if err := s.DB.Create(&org).Error; err != nil {
-		t.Fatalf("create org: %v", err)
-	}
-	if _, err := s.SelectOrg(u.ID, org.ID); err == nil {
-		t.Fatal("非成员选择组织应失败")
-	}
-}
-
 func TestChangePasswordInvalidatesTokens(t *testing.T) {
 	s := newAuthService(t)
-	u := seedUser(t, s, "alice", "Test@123456aA!", "alice@x.com", false, models.StatusActive)
-	seedOrgMember(t, s, u.ID, models.RoleEngineer, models.StatusActive)
+	u := seedUser(t, s, "alice", "Test@123456aA!", "alice@x.com", models.RoleUser, models.StatusActive)
 
 	if err := s.ChangePassword(u.ID, "Test@123456aA!", "NewPass@123abc"); err != nil {
 		t.Fatalf("ChangePassword: %v", err)

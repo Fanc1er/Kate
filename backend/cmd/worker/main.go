@@ -43,7 +43,6 @@ func main() {
 	} else {
 		w.clientID = os.Getenv("CINSIGHT_WORKER_CLIENT_ID")
 		w.clientSecret = os.Getenv("CINSIGHT_WORKER_CLIENT_SECRET")
-		w.orgID = atoi(os.Getenv("CINSIGHT_WORKER_ORG_ID"))
 	}
 
 	go w.heartbeatLoop(ctx)
@@ -64,7 +63,6 @@ type worker struct {
 	heartbeatMS  int
 	clientID     string
 	clientSecret string
-	orgID        int64
 	version      string
 	mu           sync.Mutex
 	outbox       outbox
@@ -86,7 +84,6 @@ func (w *worker) register(cfg *config.Config) error {
 		Data    struct {
 			ClientID     string `json:"client_id"`
 			ClientSecret string `json:"client_secret"`
-			OrgID        int64  `json:"org_id"`
 		} `json:"data"`
 	}
 	if err := w.post("/api/v1/worker/register", body, &resp); err != nil {
@@ -97,9 +94,8 @@ func (w *worker) register(cfg *config.Config) error {
 	}
 	w.clientID = resp.Data.ClientID
 	w.clientSecret = resp.Data.ClientSecret
-	w.orgID = resp.Data.OrgID
 	w.version = "0.1.0"
-	log.Printf("worker registered: client_id=%s org=%d", w.clientID, w.orgID)
+	log.Printf("worker registered: client_id=%s", w.clientID)
 	return nil
 }
 
@@ -862,12 +858,6 @@ func (w *worker) uploadEvidenceChunked(ev inlineEvidence) (int64, bool) {
 		}
 	}
 	return 0, false
-}
-
-func atoi(s string) int64 {
-	var n int64
-	fmt.Sscanf(s, "%d", &n)
-	return n
 }
 
 // ---- 协议结构 ----

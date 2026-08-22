@@ -1,4 +1,4 @@
-// Package repository 提供 org_id 强制过滤守卫与通用数据访问辅助。
+// Package repository 提供通用数据访问辅助（单租户，无组织隔离）。
 package repository
 
 import (
@@ -6,38 +6,26 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
-
-	"github.com/Fanc1er/Kate/backend/pkg/errs"
 )
 
-// Guard 组织隔离守卫，缺省 org_id 拒绝查询（对应关键不变量「租户隔离」）。
+// Guard 通用查询辅助，封装分页、过滤、排序等数据访问工具。
 type Guard struct {
-	DB    *gorm.DB
-	OrgID int64
+	DB *gorm.DB
 }
 
-// NewGuard 构造守卫。
-func NewGuard(db *gorm.DB, orgID int64) (*Guard, error) {
-	if orgID < 0 {
-		return nil, errs.New(errs.CodeOrgRequired, "")
-	}
-	return &Guard{DB: db, OrgID: orgID}, nil
+// NewGuard 构造查询辅助。
+func NewGuard(db *gorm.DB) *Guard {
+	return &Guard{DB: db}
 }
 
-// OrgID 返回当前组织 ID。
-func (g *Guard) OrgIDValue() int64 { return g.OrgID }
-
-// Scoped 为业务模型查询附加 org_id 过滤。
+// Scoped 为业务模型返回模型查询（单租户，无组织过滤）。
 func (g *Guard) Scoped(model any) *gorm.DB {
-	return g.DB.Model(model).Where("org_id = ?", g.OrgID)
+	return g.DB.Model(model)
 }
 
-// ScopedAll 附加 org_id 过滤且不限制模型（super_admin org_id=0 时不加过滤）。
+// ScopedAll 返回基础查询（单租户，无组织过滤）。
 func (g *Guard) ScopedAll() *gorm.DB {
-	if g.OrgID == 0 {
-		return g.DB
-	}
-	return g.DB.Where("org_id = ?", g.OrgID)
+	return g.DB
 }
 
 // ApplyFilter 应用 filter[字段]=值 查询参数（白名单字段）。

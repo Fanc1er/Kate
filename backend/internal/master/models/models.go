@@ -7,10 +7,8 @@ import (
 
 // 角色枚举
 const (
-	RoleSuperAdmin = "super_admin"
-	RoleOrgAdmin   = "org_admin"
-	RoleEngineer   = "engineer"
-	RoleViewer     = "viewer"
+	RoleAdmin = "admin"
+	RoleUser  = "user"
 )
 
 // 通用状态
@@ -28,21 +26,6 @@ const (
 	StatusCancelled = "cancelled"
 )
 
-// Organization 组织。
-type Organization struct {
-	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name       string    `gorm:"size:128;not null" json:"name"`
-	LogoPath   string    `gorm:"size:512" json:"logo_path"`
-	Plan       string    `gorm:"size:32;default:free" json:"plan"` // free/pro/enterprise
-	MaxAssets  int       `gorm:"default:1000" json:"max_assets"`
-	MaxWorkers int       `gorm:"default:5" json:"max_workers"`
-	MaxMembers int       `gorm:"default:50" json:"max_members"`
-	ExpireAt   *time.Time `json:"expire_at"`
-	Status     string    `gorm:"size:32;default:active" json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-}
-
 // User 用户。
 type User struct {
 	ID           int64      `gorm:"primaryKey;autoIncrement" json:"id"`
@@ -52,26 +35,15 @@ type User struct {
 	Phone        string     `gorm:"size:32" json:"phone"`
 	AvatarURL    string     `gorm:"size:512" json:"avatar_url"`
 	Status       string     `gorm:"size:32;default:active" json:"status"`
-	IsSuperAdmin bool       `gorm:"default:false" json:"is_super_admin"`
+	Role         string     `gorm:"size:32;default:user" json:"role"`
 	LastLoginAt  *time.Time `json:"last_login_at"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
-// UserOrg 成员关系。super_admin 禁止加入本表。
-type UserOrg struct {
-	ID       int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID   int64     `gorm:"index:idx_user_orgs_user;not null" json:"user_id"`
-	OrgID    int64     `gorm:"index:idx_user_orgs_org;not null" json:"org_id"`
-	Role     string    `gorm:"size:32;not null" json:"role"`
-	Status   string    `gorm:"size:32;default:active" json:"status"`
-	JoinedAt time.Time `json:"joined_at"`
-}
-
 // Asset 资产。
 type Asset struct {
 	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID      int64     `gorm:"index:idx_assets_org_url;not null" json:"org_id"`
 	URL        string    `gorm:"size:1024;not null" json:"url"`
 	Name       string    `gorm:"size:256" json:"name"`
 	GroupName  string    `gorm:"size:128;index:idx_assets_org_group" json:"group_name"`
@@ -90,7 +62,6 @@ type Asset struct {
 // WechatAsset 微信公众号资产。
 type WechatAsset struct {
 	ID           int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID        int64     `gorm:"index;not null" json:"org_id"`
 	Name         string    `gorm:"size:256" json:"name"`
 	WechatID     string    `gorm:"size:128" json:"wechat_id"`
 	AvatarURL    string    `gorm:"size:512" json:"avatar_url"`
@@ -106,7 +77,6 @@ type WechatAsset struct {
 // ScanPolicy 策略模板。
 type ScanPolicy struct {
 	ID              int64  `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID           int64  `gorm:"index;not null" json:"org_id"`
 	Name            string `gorm:"size:128;not null" json:"name"`
 	Scenario        string `gorm:"size:32;default:daily" json:"scenario"`
 	EngineSwitches  string `gorm:"type:text" json:"engine_switches"`
@@ -126,7 +96,6 @@ type ScanPolicy struct {
 // ScanTask 扫描任务。
 type ScanTask struct {
 	ID           int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID        int64     `gorm:"index:idx_tasks_org_status;not null" json:"org_id"`
 	PolicyID     int64     `json:"policy_id"`
 	PlanID       int64     `json:"plan_id"`
 	AssetID      int64     `gorm:"index:idx_tasks_org_created" json:"asset_id"`
@@ -149,7 +118,6 @@ type ScanTask struct {
 // Finding 检测发现（引擎统一输出）。
 type Finding struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID       int64     `gorm:"index:idx_findings_org_severity;not null" json:"org_id"`
 	TaskID      int64     `gorm:"index:idx_findings_org_engine" json:"task_id"`
 	AssetID     int64     `json:"asset_id"`
 	ResultID    string    `gorm:"size:64;index:idx_findings_result" json:"result_id"`
@@ -173,7 +141,6 @@ type Finding struct {
 // SensitiveInfoHit 敏感信息命中明细。
 type SensitiveInfoHit struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID       int64     `gorm:"index;not null" json:"org_id"`
 	TaskID      int64     `json:"task_id"`
 	RuleID      int64     `json:"rule_id"`
 	Group       string    `gorm:"size:64" json:"group"`
@@ -188,7 +155,6 @@ type SensitiveInfoHit struct {
 // RuleDefinition 规则项（敏感词/POC/木马特征/关键词/白名单）。
 type RuleDefinition struct {
 	ID       int64  `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID    int64  `gorm:"index;not null" json:"org_id"`
 	Kind     string `gorm:"size:32;not null" json:"kind"` // sensitive/poc/keyword/trojan/content_whitelist/domain_whitelist
 	Group    string `gorm:"size:64" json:"group"`
 	Name     string `gorm:"size:256" json:"name"`
@@ -208,7 +174,6 @@ type RuleDefinition struct {
 // Vulnerability 漏洞实体。
 type Vulnerability struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID       int64     `gorm:"index:idx_vuln_org_severity;not null" json:"org_id"`
 	FindingID   int64     `json:"finding_id"`
 	AssetID     int64     `gorm:"index:idx_vuln_org_asset" json:"asset_id"`
 	CVEID       string    `gorm:"size:64;index:idx_vuln_org_cve" json:"cve_id"`
@@ -226,7 +191,6 @@ type Vulnerability struct {
 // Alert 告警实体。
 type Alert struct {
 	ID         int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID      int64      `gorm:"index:idx_alerts_org_status;not null" json:"org_id"`
 	AssetID    int64      `gorm:"index:idx_alerts_org_asset" json:"asset_id"`
 	FindingID  int64      `json:"finding_id"`
 	AlertType  string     `gorm:"size:64;index:idx_alerts_org_type" json:"alert_type"`
@@ -243,7 +207,6 @@ type Alert struct {
 // Event 安全事件。
 type Event struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID       int64     `gorm:"index:idx_events_org_status;not null" json:"org_id"`
 	AssetID     int64     `json:"asset_id"`
 	FindingIDs  string    `gorm:"type:text" json:"finding_ids"`
 	EngineName  string    `gorm:"size:64" json:"engine_name"`
@@ -261,7 +224,6 @@ type Event struct {
 // Ticket 工单。
 type Ticket struct {
 	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID      int64     `gorm:"index;not null" json:"org_id"`
 	EventID    int64     `json:"event_id"`
 	VulnID     int64     `json:"vuln_id"`
 	Assignee   string    `gorm:"size:128" json:"assignee"`
@@ -276,7 +238,6 @@ type Ticket struct {
 // Evidence 证据元数据（大文件 gzip 落盘，库内仅存元数据与签名）。
 type Evidence struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID     int64     `gorm:"index:idx_evidence_org_md5;not null" json:"org_id"`
 	MD5       string    `gorm:"size:64;index:idx_evidence_org_md5" json:"md5"`
 	SHA256    string    `gorm:"size:64;not null" json:"sha256"`
 	FilePath  string    `gorm:"size:1024" json:"file_path"`
@@ -289,7 +250,6 @@ type Evidence struct {
 type EvidenceFile struct {
 	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
 	EvidenceID int64     `gorm:"index" json:"evidence_id"`
-	OrgID      int64     `gorm:"index" json:"org_id"`
 	Kind       string    `gorm:"size:32" json:"kind"`
 	UploadID   string    `gorm:"size:128" json:"upload_id"`
 	PartIndex  int       `json:"part_index"`
@@ -306,7 +266,6 @@ type EvidenceFile struct {
 // ScanPlan Cron 定时计划。
 type ScanPlan struct {
 	ID             int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID          int64     `gorm:"index;not null" json:"org_id"`
 	Name           string    `gorm:"size:128" json:"name"`
 	PolicyID       int64     `json:"policy_id"`
 	AssetGroupName string    `gorm:"size:128" json:"asset_group_name"`
@@ -323,7 +282,6 @@ type ScanPlan struct {
 // AuditLog 审计日志（仅 insert/select，禁止修改删除）。
 type AuditLog struct {
 	ID           int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID        int64     `gorm:"index:idx_audit_org_created;not null" json:"org_id"`
 	UserID       int64     `gorm:"index:idx_audit_org_user" json:"user_id"`
 	Username     string    `gorm:"size:64;index:idx_audit_org_user" json:"username"`
 	Action       string    `gorm:"size:64;index:idx_audit_org_action" json:"action"`
@@ -339,7 +297,6 @@ type AuditLog struct {
 // APIToken API Token（独立于 JWT 的开放集成认证）。
 type APIToken struct {
 	ID         int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID      int64      `gorm:"index:idx_token_org;not null" json:"org_id"`
 	Name       string     `gorm:"size:128" json:"name"`
 	TokenHash  string     `gorm:"size:64;not null" json:"-"`
 	Scopes     string     `gorm:"type:text" json:"scopes"`
@@ -352,7 +309,6 @@ type APIToken struct {
 // NotifyChannel 通知渠道。
 type NotifyChannel struct {
 	ID      int64  `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID   int64  `gorm:"index;not null" json:"org_id"`
 	Type    string `gorm:"size:32" json:"type"`
 	Config  string `gorm:"type:text" json:"config"`
 	Enabled string `gorm:"size:8;default:true" json:"enabled"`
@@ -361,7 +317,6 @@ type NotifyChannel struct {
 // NotifyRoute 通知路由。
 type NotifyRoute struct {
 	ID               int64  `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID            int64  `gorm:"index;not null" json:"org_id"`
 	Name             string `gorm:"size:128" json:"name"`
 	Rule             string `gorm:"type:text" json:"rule"`
 	DefaultChannelID int64  `json:"default_channel_id"`
@@ -371,7 +326,6 @@ type NotifyRoute struct {
 // NoiseRule 降噪规则。
 type NoiseRule struct {
 	ID      int64  `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID   int64  `gorm:"index;not null" json:"org_id"`
 	Type    string `gorm:"size:32" json:"type"`
 	Config  string `gorm:"type:text" json:"config"`
 	Enabled string `gorm:"size:8;default:true" json:"enabled"`
@@ -380,7 +334,6 @@ type NoiseRule struct {
 // ScanWhitelist 扫描授权白名单。
 type ScanWhitelist struct {
 	ID      int64  `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID   int64  `gorm:"index;not null" json:"org_id"`
 	Kind    string `gorm:"size:16" json:"kind"` // domain/ip/cidr
 	Value   string `gorm:"size:256" json:"value"`
 	Remark  string `gorm:"size:512" json:"remark"`
@@ -390,7 +343,6 @@ type ScanWhitelist struct {
 // WorkerNode Worker 节点。
 type WorkerNode struct {
 	ID               int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID            int64      `gorm:"index:idx_worker_org;not null" json:"org_id"`
 	Name             string     `gorm:"size:128" json:"name"`
 	IP               string     `gorm:"size:64" json:"ip"`
 	Version          string     `gorm:"size:64" json:"version"`
@@ -403,7 +355,7 @@ type WorkerNode struct {
 	CreatedAt        time.Time  `json:"created_at"`
 }
 
-// IntelItem 情报条目（全局，非组织隔离）。
+// IntelItem 情报条目（全局）。
 type IntelItem struct {
 	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
 	Source     string    `gorm:"size:16;index:idx_intel_source_sev;not null" json:"source"`
@@ -419,7 +371,6 @@ type IntelItem struct {
 // IntelSubscription 情报订阅配置。
 type IntelSubscription struct {
 	ID         int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID      int64      `gorm:"uniqueIndex:idx_intel_sub_org_source;not null" json:"org_id"`
 	Source     string     `gorm:"size:16;uniqueIndex:idx_intel_sub_org_source" json:"source"`
 	Enabled    string     `gorm:"size:8;default:true" json:"enabled"`
 	LastSyncAt *time.Time `json:"last_sync_at"`
@@ -428,7 +379,6 @@ type IntelSubscription struct {
 // ReportTemplate 报告模板。
 type ReportTemplate struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID     int64     `gorm:"index;not null" json:"org_id"`
 	Name      string    `gorm:"size:128" json:"name"`
 	Sections  string    `gorm:"type:text" json:"sections"`
 	Period    string    `gorm:"size:32" json:"period"`
@@ -442,7 +392,6 @@ type ReportTemplate struct {
 // Report 报告。
 type Report struct {
 	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID      int64     `gorm:"index;not null" json:"org_id"`
 	TemplateID int64     `json:"template_id"`
 	Name       string    `gorm:"size:128" json:"name"`
 	Title      string    `gorm:"size:256" json:"title"`
@@ -459,7 +408,6 @@ type Report struct {
 // Webhook 事件推送配置。
 type Webhook struct {
 	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID      int64     `gorm:"index;not null" json:"org_id"`
 	Name       string    `gorm:"size:128" json:"name"`
 	URL        string    `gorm:"size:1024" json:"url"`
 	SecretHash string    `gorm:"size:128" json:"-"`
@@ -474,7 +422,6 @@ type Webhook struct {
 // AvailabilityPoint 可用性时序点（HTTP/DNS/TCP/PING）。
 type AvailabilityPoint struct {
 	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID      int64     `gorm:"index:idx_avail_org_asset_ts;not null" json:"org_id"`
 	AssetID    int64     `gorm:"index:idx_avail_org_asset_ts" json:"asset_id"`
 	Engine     string    `gorm:"size:16" json:"engine"`
 	StatusCode int       `json:"status_code"`
@@ -485,7 +432,6 @@ type AvailabilityPoint struct {
 // TrendPoint 趋势点。
 type TrendPoint struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID     int64     `gorm:"index:idx_trend_org_metric_sampled;not null" json:"org_id"`
 	Metric    string    `gorm:"size:64" json:"metric"`
 	Value     float64   `json:"value"`
 	SampledAt time.Time `gorm:"index:idx_trend_org_metric_sampled" json:"sampled_at"`
@@ -494,7 +440,6 @@ type TrendPoint struct {
 // EscalationRule 告警升级规则。
 type EscalationRule struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID     int64     `gorm:"index:idx_escalation_org;not null" json:"org_id"`
 	Name      string    `gorm:"size:128" json:"name"`
 	Trigger   string    `gorm:"size:64" json:"trigger"`
 	EscalateTo string   `gorm:"size:64" json:"escalate_to"`
@@ -506,7 +451,6 @@ type EscalationRule struct {
 // WatchShift 值守班次。
 type WatchShift struct {
 	ID           int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID        int64     `gorm:"index:idx_shift_org_status;not null" json:"org_id"`
 	StartTime    time.Time `json:"start_time"`
 	EndTime      *time.Time `json:"end_time"`
 	OnDuty       string    `gorm:"size:128" json:"on_duty"`
@@ -518,7 +462,6 @@ type WatchShift struct {
 // DailyWarReport 每日战报。
 type DailyWarReport struct {
 	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID      int64     `gorm:"uniqueIndex:idx_war_report_org_date;not null" json:"org_id"`
 	ReportDate string    `gorm:"size:32;uniqueIndex:idx_war_report_org_date" json:"report_date"`
 	Summary    string    `gorm:"type:text" json:"summary"`
 	FilePath   string    `gorm:"size:1024" json:"file_path"`
@@ -528,7 +471,6 @@ type DailyWarReport struct {
 // Scenario 扫描场景。
 type Scenario struct {
 	ID           int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID        int64      `gorm:"index:idx_scenarios_org;not null" json:"org_id"`
 	Name         string     `gorm:"size:128" json:"name"`
 	ScenarioType string     `gorm:"size:32" json:"scenario_type"`
 	Description  string     `gorm:"size:1024" json:"description"`
@@ -541,7 +483,6 @@ type Scenario struct {
 // SOPTemplate 应急响应 SOP 模板（JSON 存于规则库）。
 type SOPTemplate struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID     int64     `gorm:"index;not null" json:"org_id"`
 	EventType string    `gorm:"size:64" json:"event_type"`
 	Title     string    `gorm:"size:256" json:"title"`
 	Steps     string    `gorm:"type:text" json:"steps"`
@@ -551,7 +492,6 @@ type SOPTemplate struct {
 // ContentBaseline 内容完整性基线：纳入监测的重点资产内容指纹（标题/正文/HTML Hash）。
 type ContentBaseline struct {
 	ID              int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID           int64     `gorm:"index:idx_cb_org_asset;not null" json:"org_id"`
 	AssetID         int64     `gorm:"index:idx_cb_org_asset;not null" json:"asset_id"`
 	URL             string    `gorm:"size:1024;not null" json:"url"`
 	Fingerprint     string    `gorm:"type:text" json:"fingerprint"`
@@ -567,7 +507,6 @@ type ContentBaseline struct {
 // ExternalLinkBaseline 外链发现基线：资产页面的外链清单（JSON），比对新增/移除/目标域名变更。
 type ExternalLinkBaseline struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrgID       int64     `gorm:"index:idx_elb_org_asset;not null" json:"org_id"`
 	AssetID     int64     `gorm:"index:idx_elb_org_asset;not null" json:"asset_id"`
 	URL         string    `gorm:"size:1024;not null" json:"url"`
 	Links       string    `gorm:"type:text" json:"links"` // JSON: [{"url","type","domain"}]
@@ -577,4 +516,16 @@ type ExternalLinkBaseline struct {
 	ChangedCount int      `gorm:"default:0" json:"changed_count"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// License 授权导入记录（审计用，授权真相源为授权文件）。
+type License struct {
+	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	MachineHash string    `gorm:"size:64;not null" json:"machine_hash"`
+	NotBefore   time.Time `json:"not_before"`
+	NotAfter    time.Time `json:"not_after"`
+	MaxAssets   int       `json:"max_assets"`
+	MaxWorkers  int       `json:"max_workers"`
+	Customer    string    `gorm:"size:256" json:"customer"`
+	ImportedAt  time.Time `json:"imported_at"`
 }

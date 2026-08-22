@@ -14,30 +14,29 @@ import (
 	"github.com/Fanc1er/Kate/backend/pkg/response"
 )
 
-// Hub WebSocket 实时事件推送（按 org_id 订阅粒度隔离，禁止跨组织）。
+// Hub WebSocket 实时事件推送（单租户，全局广播）。
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[int64]map[*wsClient]bool
+	mu       sync.RWMutex
+	clients  map[*wsClient]bool
 	upgrader websocket.Upgrader
 }
 
 type wsClient struct {
-	conn  *websocket.Conn
-	orgID int64
-	send  chan []byte
+	conn *websocket.Conn
+	send chan []byte
 }
 
 // NewHub 构造 Hub。
 func NewHub() *Hub {
 	return &Hub{
-		clients: make(map[int64]map[*wsClient]bool),
+		clients: make(map[*wsClient]bool),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 	}
 }
 
-// ServeWS 升级 WebSocket 连接。握手校验 JWT + org_id，绑定连接所属 org。
+// ServeWS 升级 WebSocket 连接。握手校验 JWT。
 func (h *Hub) ServeWS(tokens *TokenManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// token 从 query 或 Authorization 头获取。
@@ -50,34 +49,31 @@ func (h *Hub) ServeWS(tokens *TokenManager) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		claims, err := tokens.Parse(token)
-		if err != nil {
+		if _, err := tokens.Parse(token); err != nil {
 			response.Fail(c, errs.FromError(err))
 			c.Abort()
 			return
 		}
-		// org_id=0 为平台通道（super_admin 平台视角），org_id>0 为组织通道；
-		// 事件均按 org 隔离广播，平台通道不会收到组织级事件。
 		conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}
-		client := &wsClient{conn: conn, orgID: claims.OrgID, send: make(chan []byte, 64)}
+		client := &wsClient{conn: conn, send: make(chan []byte, 64)}
 		h.register(client)
 		go h.writePump(client)
 		go h.readPump(client)
 	}
 }
 
-// Broadcast 向指定 org 推送消息帧。
-func (h *Hub) Broadcast(orgID int64, msg map[string]any) {
+// Broadcast 向全部连接推送消息帧。
+func (h *Hub) Broadcast(msg map[string]any) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return
 	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	for cl := range h.clients[orgID] {
+	for cl := range h.clients {
 		select {
 		case cl.send <- data:
 		default:
@@ -88,20 +84,15 @@ func (h *Hub) Broadcast(orgID int64, msg map[string]any) {
 func (h *Hub) register(cl *wsClient) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.clients[cl.orgID] == nil {
-		h.clients[cl.orgID] = make(map[*wsClient]bool)
-	}
-	h.clients[cl.orgID][cl] = true
+	h.clients[cl] = true
 }
 
 func (h *Hub) unregister(cl *wsClient) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if m := h.clients[cl.orgID]; m != nil {
-		if _, ok := m[cl]; ok {
-			delete(m, cl)
-			close(cl.send)
-		}
+	if _, ok := h.clients[cl]; ok {
+		delete(h.clients, cl)
+		close(cl.send)
 	}
 }
 
@@ -150,7 +141,7 @@ func (h *Hub) readPump(cl *wsClient) {
 		case "ping":
 			_ = cl.conn.WriteJSON(map[string]string{"type": "pong"})
 		case "subscribe":
-			// 通道绑定 org，无需额外处理。
+			// 全局订阅，无需额外处理。
 		}
 	}
 }

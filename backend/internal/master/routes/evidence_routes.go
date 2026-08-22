@@ -27,12 +27,12 @@ func registerEvidence(rg *gin.RouterGroup, d *Deps) {
 		if !ok {
 			return
 		}
-		ev, err := d.Evidence.Get(orgID(c), id)
+		ev, err := d.Evidence.Get(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}
-		files, _ := d.Evidence.Files(orgID(c), id)
+		files, _ := d.Evidence.Files(id)
 		response.OK(c, map[string]any{"evidence": ev, "files": files})
 	})
 
@@ -42,12 +42,12 @@ func registerEvidence(rg *gin.RouterGroup, d *Deps) {
 		if !ok {
 			return
 		}
-		ev, err := d.Evidence.Get(orgID(c), id)
+		ev, err := d.Evidence.Get(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}
-		data, _, err := d.Evidence.Read(orgID(c), id)
+		data, _, err := d.Evidence.Read(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -63,7 +63,7 @@ func registerEvidence(rg *gin.RouterGroup, d *Deps) {
 		if !ok {
 			return
 		}
-		data, filename, err := d.Evidence.Download(orgID(c), id, c.Query("format"))
+		data, filename, err := d.Evidence.Download(id, c.Query("format"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -79,7 +79,7 @@ func registerEvidence(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "缺少文件")
 			return
 		}
-		ev, err := d.Evidence.UploadScreenshot(orgID(c), "screenshot", header)
+		ev, err := d.Evidence.UploadScreenshot("screenshot", header)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return

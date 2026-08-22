@@ -9,7 +9,7 @@ import (
 	"github.com/Fanc1er/Kate/backend/pkg/errs"
 )
 
-// MailService 系统级邮件发送（验证码/邀请邮件），独立于组织通知渠道。
+// MailService 系统级邮件发送（验证码/邀请邮件），与业务通知渠道相互独立。
 type MailService struct {
 	Host     string
 	Port     int

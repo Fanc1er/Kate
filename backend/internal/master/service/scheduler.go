@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -57,18 +56,13 @@ func (s *MasterScheduler) reconcileBadger() {
 	}
 	removed := 0
 	for _, kv := range kvs {
-		// key 形如 urlmd5:{orgID}:{md5}，value 为资产 ID。
-		parts := strings.Split(kv.Key, ":")
-		if len(parts) < 3 {
-			continue
-		}
-		orgID, err1 := strconv.ParseInt(parts[1], 10, 64)
-		assetID, err2 := strconv.ParseInt(kv.Value, 10, 64)
-		if err1 != nil || err2 != nil {
+		// key 形如 urlmd5:{md5}，value 为资产 ID。
+		assetID, err := strconv.ParseInt(kv.Value, 10, 64)
+		if err != nil {
 			continue
 		}
 		var count int64
-		s.DB.Model(&models.Asset{}).Where("id = ? AND org_id = ?", assetID, orgID).Count(&count)
+		s.DB.Model(&models.Asset{}).Where("id = ?", assetID).Count(&count)
 		if count == 0 {
 			// 脏 key：SQLite 中无对应资产，清理。
 			_ = s.Cache.Delete(kv.Key)
@@ -102,7 +96,7 @@ func (s *MasterScheduler) reconcile() {
 	s.DB.Where("status = ?", models.StatusPending).Find(&stale)
 	for _, t := range stale {
 		var policy models.ScanPolicy
-		if err := s.DB.Where("id = ? AND org_id IN (0, ?)", t.PolicyID, t.OrgID).First(&policy).Error; err != nil {
+		if err := s.DB.Where("id = ?", t.PolicyID).First(&policy).Error; err != nil {
 			continue
 		}
 		timeout := time.Duration(policy.Timeout) * time.Minute

@@ -19,7 +19,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		page := utils.ParsePage(c.Query("page"))
 		pageSize := utils.ParsePageSize(c.Query("page_size"))
 		list, total, err := d.Asset.List(
-			orgID(c), c.Query("keyword"), c.Query("group_name"), c.Query("importance"), c.Query("status"),
+			c.Query("keyword"), c.Query("group_name"), c.Query("importance"), c.Query("status"),
 			c.Query("source_type"), page, pageSize,
 		)
 		if err != nil {
@@ -31,7 +31,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 
 	// 分组统计。
 	g.GET("/groups", func(c *gin.Context) {
-		list, err := d.Asset.Groups(orgID(c))
+		list, err := d.Asset.Groups()
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -51,7 +51,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		a, err := d.Asset.Create(orgID(c), req.Name, req.URL, req.GroupName, req.Importance, req.Remark,
+		a, err := d.Asset.Create(req.Name, req.URL, req.GroupName, req.Importance, req.Remark,
 			userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
@@ -68,7 +68,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		started, err := d.Task.BatchScan(orgID(c), req.IDs, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		started, err := d.Task.BatchScan(req.IDs, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -84,7 +84,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		res, err := d.Asset.BatchImport(orgID(c), req.Content, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		res, err := d.Asset.BatchImport(req.Content, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -100,7 +100,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		res := d.Asset.BatchDelete(orgID(c), req.IDs, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		res := d.Asset.BatchDelete(req.IDs, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		response.OK(c, res)
 	})
 
@@ -113,7 +113,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		res := d.Asset.BatchGroup(orgID(c), req.IDs, req.Group)
+		res := d.Asset.BatchGroup(req.IDs, req.Group)
 		response.OK(c, res)
 	})
 
@@ -126,7 +126,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 
 	// 当前筛选结果导出。
 	g.GET("/export", func(c *gin.Context) {
-		data, err := d.Asset.ExportCSV(orgID(c), c.Query("keyword"), c.Query("group_name"), c.Query("importance"), c.Query("status"))
+		data, err := d.Asset.ExportCSV(c.Query("keyword"), c.Query("group_name"), c.Query("importance"), c.Query("status"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -142,7 +142,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		a, err := d.Asset.Get(orgID(c), id)
+		a, err := d.Asset.Get(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -157,7 +157,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		p, err := d.Asset.Profile(orgID(c), id)
+		p, err := d.Asset.Profile(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -172,7 +172,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		logs, err := d.Asset.History(orgID(c), id)
+		logs, err := d.Asset.History(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -191,7 +191,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &patch) {
 			return
 		}
-		a, err := d.Asset.Update(orgID(c), id, patch, 0, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		a, err := d.Asset.Update(id, patch, 0, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -206,7 +206,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		if err := d.Asset.Delete(orgID(c), id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent")); err != nil {
+		if err := d.Asset.Delete(id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent")); err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}
@@ -216,7 +216,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 	// 微信公众号资产。
 	wechat := rg.Group("/wechat-assets")
 	wechat.GET("", func(c *gin.Context) {
-		list, total, err := d.Asset.ListWechat(orgID(c), utils.ParsePage(c.Query("page")), utils.ParsePageSize(c.Query("page_size")))
+		list, total, err := d.Asset.ListWechat(utils.ParsePage(c.Query("page")), utils.ParsePageSize(c.Query("page_size")))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -228,7 +228,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &m) {
 			return
 		}
-		a, err := d.Asset.CreateWechat(orgID(c), m)
+		a, err := d.Asset.CreateWechat(m)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -245,7 +245,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &m) {
 			return
 		}
-		a, err := d.Asset.UpdateWechat(orgID(c), id, m)
+		a, err := d.Asset.UpdateWechat(id, m)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -258,7 +258,7 @@ func registerAssets(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		if err := d.Asset.DeleteWechat(orgID(c), id); err != nil {
+		if err := d.Asset.DeleteWechat(id); err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}

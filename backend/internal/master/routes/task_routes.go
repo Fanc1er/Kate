@@ -16,7 +16,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 
 	// 任务列表。
 	g.GET("", func(c *gin.Context) {
-		list, total, err := d.Task.List(orgID(c), c.Query("status"), utils.ParsePage(c.Query("page")), utils.ParsePageSize(c.Query("page_size")))
+		list, total, err := d.Task.List(c.Query("status"), utils.ParsePage(c.Query("page")), utils.ParsePageSize(c.Query("page_size")))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -26,7 +26,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 
 	// 队列监控。
 	g.GET("/queue", func(c *gin.Context) {
-		m, err := d.Task.Queue(orgID(c))
+		m, err := d.Task.Queue()
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -40,7 +40,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		created, err := d.Task.Create(orgID(c), req, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		created, err := d.Task.Create(req, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -56,7 +56,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		res := d.Task.BatchStop(orgID(c), req.IDs, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		res := d.Task.BatchStop(req.IDs, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		response.OK(c, res)
 	})
 
@@ -68,7 +68,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		res := d.Task.BatchRerun(orgID(c), req.IDs, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		res := d.Task.BatchRerun(req.IDs, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		response.OK(c, res)
 	})
 
@@ -79,7 +79,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		t, err := d.Task.Get(orgID(c), id)
+		t, err := d.Task.Get(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -94,7 +94,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		m, err := d.Task.Progress(orgID(c), id)
+		m, err := d.Task.Progress(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -109,7 +109,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		t, err := d.Task.Stop(orgID(c), id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		t, err := d.Task.Stop(id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -124,7 +124,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		t, err := d.Task.Rerun(orgID(c), id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		t, err := d.Task.Rerun(id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -139,7 +139,7 @@ func registerTasks(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		if err := d.Task.Delete(orgID(c), id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent")); err != nil {
+		if err := d.Task.Delete(id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent")); err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}
@@ -151,7 +151,7 @@ func registerPolicies(rg *gin.RouterGroup, d *Deps) {
 	g := rg.Group("/policies")
 
 	g.GET("", func(c *gin.Context) {
-		list, err := d.Policy.List(orgID(c))
+		list, err := d.Policy.List()
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -164,7 +164,7 @@ func registerPolicies(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &p) {
 			return
 		}
-		pol, err := d.Policy.Create(orgID(c), p.ToModel(), userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		pol, err := d.Policy.Create(p.ToModel(), userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -182,7 +182,7 @@ func registerPolicies(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &p) {
 			return
 		}
-		pol, err := d.Policy.Update(orgID(c), id, p.ToModel(), userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
+		pol, err := d.Policy.Update(id, p.ToModel(), userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent"))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -196,7 +196,7 @@ func registerPolicies(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		if err := d.Policy.Delete(orgID(c), id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent")); err != nil {
+		if err := d.Policy.Delete(id, userID(c), usernameOf(c), c.ClientIP(), c.GetHeader("User-Agent")); err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}

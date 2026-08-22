@@ -10,18 +10,18 @@ func TestPersistSensitiveInfoHits(t *testing.T) {
 	gdb := newTestDB(t)
 	assessor := NewResultAssessor(gdb)
 	taskSvc := NewTaskService(gdb, nil, assessor)
-	s := NewWorkerService(gdb, taskSvc, nil, NewHub(), 10)
+	s := NewWorkerService(gdb, taskSvc, nil, NewHub(), nil, 10)
 
-	asset := models.Asset{OrgID: 1, URL: "https://example.com", Name: "example"}
+	asset := models.Asset{URL: "https://example.com", Name: "example"}
 	if err := gdb.Create(&asset).Error; err != nil {
 		t.Fatalf("create asset: %v", err)
 	}
-	task := models.ScanTask{OrgID: 1, AssetID: asset.ID, PolicyID: 1, Status: models.StatusProcessing}
+	task := models.ScanTask{AssetID: asset.ID, PolicyID: 1, Status: models.StatusProcessing}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "si-1", TaskID: task.ID, Status: models.StatusCompleted, Progress: 100,
 		Findings: []WorkerFinding{{
 			EngineName: "content_security", Type: "sensitive_info", Severity: "high",
@@ -45,8 +45,8 @@ func TestPersistSensitiveInfoHits(t *testing.T) {
 	if len(hits) != 2 {
 		t.Fatalf("应落 2 条命中明细, got %d", len(hits))
 	}
-	if hits[0].OrgID != 1 || hits[0].TaskID != task.ID {
-		t.Fatalf("org/task 错误: %+v", hits[0])
+	if hits[0].TaskID != task.ID {
+		t.Fatalf("task 错误: %+v", hits[0])
 	}
 }
 
@@ -54,12 +54,12 @@ func TestPersistSensitiveInfoHitsNoExtra(t *testing.T) {
 	gdb := newTestDB(t)
 	assessor := NewResultAssessor(gdb)
 	taskSvc := NewTaskService(gdb, nil, assessor)
-	s := NewWorkerService(gdb, taskSvc, nil, NewHub(), 10)
+	s := NewWorkerService(gdb, taskSvc, nil, NewHub(), nil, 10)
 
-	task := models.ScanTask{OrgID: 1, AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
+	task := models.ScanTask{AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
 	_ = gdb.Create(&task)
 
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "si-2", TaskID: task.ID, Status: models.StatusCompleted, Progress: 100,
 		Findings: []WorkerFinding{{
 			EngineName: "availability", Type: "http_error", Severity: "medium",
@@ -80,12 +80,12 @@ func TestPersistSensitiveInfoHitsBadFormat(t *testing.T) {
 	gdb := newTestDB(t)
 	assessor := NewResultAssessor(gdb)
 	taskSvc := NewTaskService(gdb, nil, assessor)
-	s := NewWorkerService(gdb, taskSvc, nil, NewHub(), 10)
+	s := NewWorkerService(gdb, taskSvc, nil, NewHub(), nil, 10)
 
-	task := models.ScanTask{OrgID: 1, AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
+	task := models.ScanTask{AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
 	_ = gdb.Create(&task)
 
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "si-3", TaskID: task.ID, Status: models.StatusCompleted, Progress: 100,
 		Findings: []WorkerFinding{{
 			EngineName: "content_security", Type: "sensitive_info", Severity: "high",

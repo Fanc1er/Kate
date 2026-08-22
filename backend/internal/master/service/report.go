@@ -35,14 +35,14 @@ type ExportParams struct {
 }
 
 // Export 生成报告字节流与建议文件名。
-func (s *ReportService) Export(orgID int64, p ExportParams) ([]byte, string, error) {
+func (s *ReportService) Export(p ExportParams) ([]byte, string, error) {
 	var q *gorm.DB
 	switch p.Format {
 	case "pdf", "excel":
 	default:
 		return nil, "", errs.New(errs.CodeValidationFailed, "format 仅支持 pdf/excel")
 	}
-	q = s.DB.Where("org_id = ?", orgID)
+	q = s.DB
 	if p.AssetID > 0 {
 		q = q.Where("asset_id = ?", p.AssetID)
 	}
@@ -68,7 +68,7 @@ func (s *ReportService) Export(orgID int64, p ExportParams) ([]byte, string, err
 		data, err := vulnsToXLSX(vulns)
 		return data, "vuln_list.xlsx", err
 	default:
-		data, err := vulnsToPDF(orgID, vulns)
+		data, err := vulnsToPDF(vulns)
 		return data, "vuln_report.pdf", err
 	}
 }
@@ -115,7 +115,7 @@ func vulnsToXLSX(vulns []models.Vulnerability) ([]byte, error) {
 }
 
 // vulnsToPDF 生成 PDF 漏洞报告（英文内容 + 对角线水印）。
-func vulnsToPDF(orgID int64, vulns []models.Vulnerability) ([]byte, error) {
+func vulnsToPDF(vulns []models.Vulnerability) ([]byte, error) {
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetTitle("Vulnerability Report", true)
 	pdf.AddPage()
@@ -124,7 +124,7 @@ func vulnsToPDF(orgID int64, vulns []models.Vulnerability) ([]byte, error) {
 	pdf.Cell(0, 10, "CInsight Vulnerability Report")
 	pdf.Ln(8)
 	pdf.SetFont("Helvetica", "", 10)
-	pdf.Cell(0, 6, fmt.Sprintf("Generated at %s | Organization ID: %d | Total: %d", time.Now().Format(time.RFC3339), orgID, len(vulns)))
+	pdf.Cell(0, 6, fmt.Sprintf("Generated at %s | Total: %d", time.Now().Format(time.RFC3339), len(vulns)))
 	pdf.Ln(10)
 
 	if len(vulns) == 0 {

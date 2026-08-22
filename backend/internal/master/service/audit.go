@@ -18,12 +18,11 @@ func NewAuditWriter(db *gorm.DB) *AuditWriter {
 }
 
 // Write 写入一条审计记录（before/after 含手机号/邮箱/身份证/密钥时脱敏后落库）。
-func (w *AuditWriter) Write(orgID, userID int64, username, action, resourceType, resourceID, before, after, ip, ua string) {
+func (w *AuditWriter) Write(userID int64, username, action, resourceType, resourceID, before, after, ip, ua string) {
 	if w == nil || w.DB == nil {
 		return
 	}
 	rec := &models.AuditLog{
-		OrgID:        orgID,
 		UserID:       userID,
 		Username:     username,
 		Action:       action,

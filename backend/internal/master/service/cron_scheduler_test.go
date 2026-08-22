@@ -50,21 +50,21 @@ func TestMatchCronExprHourAndWeekday(t *testing.T) {
 func TestCronSchedulerTriggerCreatesTasks(t *testing.T) {
 	gdb := newTestDB(t)
 	taskSvc := NewTaskService(gdb, nil, nil)
-	cs := NewCronScheduler(gdb, taskSvc)
+	cs := NewCronScheduler(gdb, taskSvc, nil)
 	now := time.Date(2026, 8, 20, 10, 30, 0, 0, time.UTC)
 	cs.Now = func() time.Time { return now }
 
 	// 构造资产、策略、计划。
-	asset := models.Asset{OrgID: 1, URL: "https://example.com", Name: "test", GroupName: "web"}
+	asset := models.Asset{URL: "https://example.com", Name: "test", GroupName: "web"}
 	if err := gdb.Create(&asset).Error; err != nil {
 		t.Fatalf("create asset: %v", err)
 	}
-	policy := models.ScanPolicy{OrgID: 1, Name: "p1", Timeout: 60}
+	policy := models.ScanPolicy{Name: "p1", Timeout: 60}
 	if err := gdb.Create(&policy).Error; err != nil {
 		t.Fatalf("create policy: %v", err)
 	}
 	plan := models.ScanPlan{
-		OrgID: 1, Name: "daily", PolicyID: policy.ID, AssetGroupName: "web",
+		Name: "daily", PolicyID: policy.ID, AssetGroupName: "web",
 		CronExpr: "30 * * * *", Status: "enabled",
 	}
 	if err := gdb.Create(&plan).Error; err != nil {
@@ -95,16 +95,16 @@ func TestCronSchedulerTriggerCreatesTasks(t *testing.T) {
 func TestCronSchedulerSameMinuteIdempotent(t *testing.T) {
 	gdb := newTestDB(t)
 	taskSvc := NewTaskService(gdb, nil, nil)
-	cs := NewCronScheduler(gdb, taskSvc)
+	cs := NewCronScheduler(gdb, taskSvc, nil)
 	now := time.Date(2026, 8, 20, 10, 30, 0, 0, time.UTC)
 	cs.Now = func() time.Time { return now }
 
-	asset := models.Asset{OrgID: 1, URL: "https://example.com", GroupName: "g"}
+	asset := models.Asset{URL: "https://example.com", GroupName: "g"}
 	_ = gdb.Create(&asset)
-	policy := models.ScanPolicy{OrgID: 1, Name: "p"}
+	policy := models.ScanPolicy{Name: "p"}
 	_ = gdb.Create(&policy)
 	plan := models.ScanPlan{
-		OrgID: 1, PolicyID: policy.ID, AssetGroupName: "g",
+		PolicyID: policy.ID, AssetGroupName: "g",
 		CronExpr: "* * * * *", Status: "enabled",
 	}
 	_ = gdb.Create(&plan)
@@ -122,15 +122,15 @@ func TestCronSchedulerSameMinuteIdempotent(t *testing.T) {
 func TestCronSchedulerDisabledPlanSkipped(t *testing.T) {
 	gdb := newTestDB(t)
 	taskSvc := NewTaskService(gdb, nil, nil)
-	cs := NewCronScheduler(gdb, taskSvc)
+	cs := NewCronScheduler(gdb, taskSvc, nil)
 	now := time.Date(2026, 8, 20, 10, 30, 0, 0, time.UTC)
 	cs.Now = func() time.Time { return now }
 
-	policy := models.ScanPolicy{OrgID: 1, Name: "p"}
+	policy := models.ScanPolicy{Name: "p"}
 	_ = gdb.Create(&policy)
 	// disabled 计划不应触发。
 	plan := models.ScanPlan{
-		OrgID: 1, PolicyID: policy.ID, CronExpr: "* * * * *", Status: "disabled",
+		PolicyID: policy.ID, CronExpr: "* * * * *", Status: "disabled",
 	}
 	_ = gdb.Create(&plan)
 
@@ -146,15 +146,15 @@ func TestCronSchedulerDisabledPlanSkipped(t *testing.T) {
 func TestCronSchedulerNoMatchingAssets(t *testing.T) {
 	gdb := newTestDB(t)
 	taskSvc := NewTaskService(gdb, nil, nil)
-	cs := NewCronScheduler(gdb, taskSvc)
+	cs := NewCronScheduler(gdb, taskSvc, nil)
 	now := time.Date(2026, 8, 20, 10, 30, 0, 0, time.UTC)
 	cs.Now = func() time.Time { return now }
 
-	policy := models.ScanPolicy{OrgID: 1, Name: "p"}
+	policy := models.ScanPolicy{Name: "p"}
 	_ = gdb.Create(&policy)
 	// 计划指向不存在的分组。
 	plan := models.ScanPlan{
-		OrgID: 1, PolicyID: policy.ID, AssetGroupName: "nonexist",
+		PolicyID: policy.ID, AssetGroupName: "nonexist",
 		CronExpr: "* * * * *", Status: "enabled",
 	}
 	_ = gdb.Create(&plan)
@@ -171,17 +171,17 @@ func TestCronSchedulerNoMatchingAssets(t *testing.T) {
 func TestCronSchedulerTimezone(t *testing.T) {
 	gdb := newTestDB(t)
 	taskSvc := NewTaskService(gdb, nil, nil)
-	cs := NewCronScheduler(gdb, taskSvc)
+	cs := NewCronScheduler(gdb, taskSvc, nil)
 	// UTC 10:30，计划时区 Asia/Shanghai（+8）→ 本地 18:30。
 	now := time.Date(2026, 8, 20, 10, 30, 0, 0, time.UTC)
 	cs.Now = func() time.Time { return now }
 
-	asset := models.Asset{OrgID: 1, URL: "https://example.com", GroupName: "g"}
+	asset := models.Asset{URL: "https://example.com", GroupName: "g"}
 	_ = gdb.Create(&asset)
-	policy := models.ScanPolicy{OrgID: 1, Name: "p"}
+	policy := models.ScanPolicy{Name: "p"}
 	_ = gdb.Create(&policy)
 	plan := models.ScanPlan{
-		OrgID: 1, PolicyID: policy.ID, AssetGroupName: "g",
+		PolicyID: policy.ID, AssetGroupName: "g",
 		CronExpr: "30 18 * * *", Status: "enabled", Timezone: "Asia/Shanghai",
 	}
 	_ = gdb.Create(&plan)

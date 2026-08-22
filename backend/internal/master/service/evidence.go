@@ -20,12 +20,11 @@ import (
 
 // chunkBuffer 分片上传暂存（按 upload_id 聚合）。
 type chunkBuffer struct {
-	orgID       int64
-	kind        string
-	total       int
-	sha256      string
-	chunks      map[int][]byte
-	lastSeen    time.Time
+	kind     string
+	total    int
+	sha256   string
+	chunks   map[int][]byte
+	lastSeen time.Time
 }
 
 // EvidenceService 证据服务：gzip 落盘 + MD5 去重 + SHA-256 防篡改 + 截图上传 + 分片上传。
@@ -44,7 +43,7 @@ func NewEvidenceService(db *gorm.DB, store *storage.Store, ttlDays int) *Evidenc
 
 // ChunkUpload 分片上传：chunk_index=-1 表示收齐后合并校验落库。
 // 返回 evidence_id（完成时）与 complete 标记。
-func (s *EvidenceService) ChunkUpload(orgID int64, uploadID, kind string, total, index int, data []byte, sha256 string) (int64, bool, error) {
+func (s *EvidenceService) ChunkUpload(uploadID, kind string, total, index int, data []byte, sha256 string) (int64, bool, error) {
 	if uploadID == "" || total <= 0 || index < 0 {
 		return 0, false, errs.New(errs.CodeValidationFailed, "分片参数非法")
 	}
@@ -62,7 +61,7 @@ func (s *EvidenceService) ChunkUpload(orgID int64, uploadID, kind string, total,
 	}
 	b, ok := s.bufs[uploadID]
 	if !ok {
-		b = &chunkBuffer{orgID: orgID, kind: kind, total: total, sha256: sha256, chunks: map[int][]byte{}}
+		b = &chunkBuffer{kind: kind, total: total, sha256: sha256, chunks: map[int][]byte{}}
 		s.bufs[uploadID] = b
 	}
 	if b.total != total {
@@ -87,7 +86,7 @@ func (s *EvidenceService) ChunkUpload(orgID int64, uploadID, kind string, total,
 		delete(s.bufs, uploadID)
 		return 0, false, errs.New(errs.CodeEvidenceTampered, "分片合并后 SHA-256 不一致")
 	}
-	id, err := s.CreateFromBytes(orgID, b.kind, merged)
+	id, err := s.CreateFromBytes(b.kind, merged)
 	delete(s.bufs, uploadID)
 	if err != nil {
 		return 0, false, err
@@ -96,11 +95,11 @@ func (s *EvidenceService) ChunkUpload(orgID int64, uploadID, kind string, total,
 }
 
 // CreateFromBytes 保存内联证据（gzip 落盘 + MD5 去重 + SHA-256 入库）。
-func (s *EvidenceService) CreateFromBytes(orgID int64, kind string, data []byte) (int64, error) {
+func (s *EvidenceService) CreateFromBytes(kind string, data []byte) (int64, error) {
 	// MD5 去重。
 	md5Hex := utils.MD5Hex(string(data))
 	var existing models.Evidence
-	if err := s.DB.Where("org_id = ? AND md5 = ?", orgID, md5Hex).First(&existing).Error; err == nil {
+	if err := s.DB.Where("md5 = ?", md5Hex).First(&existing).Error; err == nil {
 		return existing.ID, nil
 	}
 	rel, size, sha256, err := s.Store.Save(data)
@@ -108,14 +107,14 @@ func (s *EvidenceService) CreateFromBytes(orgID int64, kind string, data []byte)
 		return 0, err
 	}
 	ev := &models.Evidence{
-		OrgID: orgID, MD5: md5Hex, SHA256: sha256, FilePath: rel,
+		MD5: md5Hex, SHA256: sha256, FilePath: rel,
 		MimeType: mimeFor(kind), Size: size,
 	}
 	if err := s.DB.Create(ev).Error; err != nil {
 		return 0, err
 	}
 	ef := &models.EvidenceFile{
-		EvidenceID: ev.ID, OrgID: orgID, Kind: kind, FilePath: rel,
+		EvidenceID: ev.ID, Kind: kind, FilePath: rel,
 		MD5: md5Hex, SHA256: sha256, Size: size, MimeType: mimeFor(kind),
 		ExpiresAt: time.Now().AddDate(0, 0, s.TTLDays),
 	}
@@ -126,9 +125,9 @@ func (s *EvidenceService) CreateFromBytes(orgID int64, kind string, data []byte)
 }
 
 // Get 证据元数据。
-func (s *EvidenceService) Get(orgID, id int64) (*models.Evidence, error) {
+func (s *EvidenceService) Get(id int64) (*models.Evidence, error) {
 	var ev models.Evidence
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&ev).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&ev).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.New(errs.CodeNotFound, "")
 		}
@@ -138,17 +137,17 @@ func (s *EvidenceService) Get(orgID, id int64) (*models.Evidence, error) {
 }
 
 // Files 证据链子文件列表。
-func (s *EvidenceService) Files(orgID, id int64) ([]models.EvidenceFile, error) {
+func (s *EvidenceService) Files(id int64) ([]models.EvidenceFile, error) {
 	var files []models.EvidenceFile
-	if err := s.DB.Where("evidence_id = ? AND org_id = ?", id, orgID).Order("kind ASC").Find(&files).Error; err != nil {
+	if err := s.DB.Where("evidence_id = ?", id).Order("kind ASC").Find(&files).Error; err != nil {
 		return nil, err
 	}
 	return files, nil
 }
 
 // Read 读取证据并强制校验 SHA-256，不一致返回 EVIDENCE_TAMPERED。
-func (s *EvidenceService) Read(orgID, id int64) ([]byte, *models.Evidence, error) {
-	ev, err := s.Get(orgID, id)
+func (s *EvidenceService) Read(id int64) ([]byte, *models.Evidence, error) {
+	ev, err := s.Get(id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -163,8 +162,8 @@ func (s *EvidenceService) Read(orgID, id int64) ([]byte, *models.Evidence, error
 }
 
 // Download 下载证据文件（下载前同样校验 Hash）。
-func (s *EvidenceService) Download(orgID, id int64, format string) ([]byte, string, error) {
-	ev, err := s.Get(orgID, id)
+func (s *EvidenceService) Download(id int64, format string) ([]byte, string, error) {
+	ev, err := s.Get(id)
 	if err != nil {
 		return nil, "", err
 	}
@@ -182,7 +181,7 @@ func (s *EvidenceService) Download(orgID, id int64, format string) ([]byte, stri
 }
 
 // UploadScreenshot 截图上传：MIME 校验（png/jpeg/webp）+ 大小 ≤10MB + 防路径穿越。
-func (s *EvidenceService) UploadScreenshot(orgID int64, kind string, header *multipart.FileHeader) (*models.Evidence, error) {
+func (s *EvidenceService) UploadScreenshot(kind string, header *multipart.FileHeader) (*models.Evidence, error) {
 	if header == nil {
 		return nil, errs.New(errs.CodeValidationFailed, "缺少文件")
 	}
@@ -202,11 +201,11 @@ func (s *EvidenceService) UploadScreenshot(orgID int64, kind string, header *mul
 	if _, err := f.Read(data); err != nil {
 		return nil, err
 	}
-	id, err := s.CreateFromBytes(orgID, "screenshot", data)
+	id, err := s.CreateFromBytes("screenshot", data)
 	if err != nil {
 		return nil, err
 	}
-	return s.Get(orgID, id)
+	return s.Get(id)
 }
 
 func isAllowedImageMIME(mime string) bool {

@@ -1,4 +1,4 @@
-// Package middleware 提供请求追踪、认证、RBAC、组织隔离等 Gin 中间件。
+// Package middleware 提供请求追踪、认证、RBAC、授权等 Gin 中间件。
 package middleware
 
 import (
@@ -38,9 +38,6 @@ func RequestID(logger func(level, msg string, fields map[string]any)) gin.Handle
 		if uid, ok := c.Get("user_id"); ok {
 			fields["user_id"] = uid
 		}
-		if org, ok := c.Get("org_id"); ok {
-			fields["org_id"] = org
-		}
 		fields["request_id"] = rid
 		if logger != nil {
 			logger("info", "request", fields)
@@ -72,7 +69,7 @@ func CORS() gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Org-Id, X-Request-ID, If-Match")
+			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID, If-Match")
 			c.Header("Access-Control-Max-Age", "86400")
 		}
 		if c.Request.Method == "OPTIONS" {

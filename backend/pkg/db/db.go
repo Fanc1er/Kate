@@ -50,9 +50,8 @@ func Migrate(gdb *gorm.DB) error {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 	if err := gdb.AutoMigrate(
-		&models.Organization{},
 		&models.User{},
-		&models.UserOrg{},
+		&models.License{},
 		&models.Asset{},
 		&models.WechatAsset{},
 		&models.ScanPolicy{},

@@ -10,12 +10,12 @@ import (
 func TestTaskStopCancelsPending(t *testing.T) {
 	gdb := newTestDB(t)
 	s := NewTaskService(gdb, nil, nil)
-	task := models.ScanTask{OrgID: 1, AssetID: 1, PolicyID: 1, Status: models.StatusPending}
+	task := models.ScanTask{AssetID: 1, PolicyID: 1, Status: models.StatusPending}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 
-	updated, err := s.Stop(1, task.ID, 99, "op", "127.0.0.1", "test")
+	updated, err := s.Stop(task.ID, 99, "op", "127.0.0.1", "test")
 	if err != nil {
 		t.Fatalf("stop: %v", err)
 	}
@@ -34,12 +34,12 @@ func TestTaskStopSkipsCompleted(t *testing.T) {
 	gdb := newTestDB(t)
 	s := NewTaskService(gdb, nil, nil)
 
-	task := models.ScanTask{OrgID: 1, AssetID: 1, PolicyID: 1, Status: models.StatusCompleted}
+	task := models.ScanTask{AssetID: 1, PolicyID: 1, Status: models.StatusCompleted}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 
-	updated, err := s.Stop(1, task.ID, 99, "op", "127.0.0.1", "test")
+	updated, err := s.Stop(task.ID, 99, "op", "127.0.0.1", "test")
 	if err != nil {
 		t.Fatalf("stop: %v", err)
 	}
@@ -51,14 +51,14 @@ func TestTaskStopSkipsCompleted(t *testing.T) {
 func TestReportResultCompleted(t *testing.T) {
 	gdb := newTestDB(t)
 	hub := NewHub()
-	s := NewWorkerService(gdb, nil, nil, hub, 10)
+	s := NewWorkerService(gdb, nil, nil, hub, nil, 10)
 
-	task := models.ScanTask{OrgID: 1, AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
+	task := models.ScanTask{AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "r-1", TaskID: task.ID, Status: models.StatusCompleted, Progress: 100,
 	})
 	if err != nil {
@@ -78,18 +78,18 @@ func TestReportResultDuplicateIdempotent(t *testing.T) {
 	hub := NewHub()
 	assessor := NewResultAssessor(gdb)
 	taskSvc := NewTaskService(gdb, nil, assessor)
-	s := NewWorkerService(gdb, taskSvc, nil, hub, 10)
+	s := NewWorkerService(gdb, taskSvc, nil, hub, nil, 10)
 
-	task := models.ScanTask{OrgID: 1, AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
+	task := models.ScanTask{AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 	finding := WorkerFinding{EngineName: "recon", Type: "info", Severity: "low", Title: "t", URL: "http://x"}
 	first := &WorkerResult{ResultID: "dup-1", TaskID: task.ID, Status: models.StatusCompleted, Progress: 100, Findings: []WorkerFinding{finding}}
-	if _, err := s.ReportResult(1, first); err != nil {
+	if _, err := s.ReportResult(first); err != nil {
 		t.Fatalf("first report: %v", err)
 	}
-	res2, err := s.ReportResult(1, &WorkerResult{
+	res2, err := s.ReportResult(&WorkerResult{
 		ResultID: "dup-1", TaskID: task.ID, Status: models.StatusFailed, Progress: 10, Message: "dup",
 	})
 	if err != nil {
@@ -108,14 +108,14 @@ func TestReportResultDuplicateIdempotent(t *testing.T) {
 func TestReportResultCancelledByUser(t *testing.T) {
 	gdb := newTestDB(t)
 	hub := NewHub()
-	s := NewWorkerService(gdb, nil, nil, hub, 10)
+	s := NewWorkerService(gdb, nil, nil, hub, nil, 10)
 
-	task := models.ScanTask{OrgID: 1, AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
+	task := models.ScanTask{AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "c-1", TaskID: task.ID, Status: models.StatusCancelled, StoppedByUser: true,
 	})
 	if err != nil {
@@ -134,17 +134,17 @@ func TestReportResultCancelledByUser(t *testing.T) {
 func TestReportResultRetryLimitReached(t *testing.T) {
 	gdb := newTestDB(t)
 	hub := NewHub()
-	s := NewWorkerService(gdb, nil, nil, hub, 10)
+	s := NewWorkerService(gdb, nil, nil, hub, nil, 10)
 
 	task := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: 1,
+		AssetID: 1, PolicyID: 1,
 		Status: models.StatusProcessing, RetryCount: 3,
 	}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "r-3", TaskID: task.ID, Status: models.StatusFailed, Message: "boom",
 	})
 	if err != nil {
@@ -166,14 +166,14 @@ func TestReportResultRetryLimitReached(t *testing.T) {
 func TestReportResultRetrySchedulesBackoff(t *testing.T) {
 	gdb := newTestDB(t)
 	hub := NewHub()
-	s := NewWorkerService(gdb, nil, nil, hub, 10)
+	s := NewWorkerService(gdb, nil, nil, hub, nil, 10)
 
-	task := models.ScanTask{OrgID: 1, AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
+	task := models.ScanTask{AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "r-2", TaskID: task.ID, Status: models.StatusFailed, Message: "transient",
 	})
 	if err != nil {
@@ -198,14 +198,14 @@ func TestReportResultRetrySchedulesBackoff(t *testing.T) {
 func TestReportResultTimeoutNoRetry(t *testing.T) {
 	gdb := newTestDB(t)
 	hub := NewHub()
-	s := NewWorkerService(gdb, nil, nil, hub, 10)
+	s := NewWorkerService(gdb, nil, nil, hub, nil, 10)
 
-	task := models.ScanTask{OrgID: 1, AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
+	task := models.ScanTask{AssetID: 1, PolicyID: 1, Status: models.StatusProcessing}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "t-1", TaskID: task.ID, Status: models.StatusFailed, TaskTimeout: true,
 	})
 	if err != nil {

@@ -3,8 +3,6 @@ package service
 import (
 	"testing"
 	"time"
-
-	"github.com/Fanc1er/Kate/backend/pkg/errs"
 )
 
 func TestTokenIssueAndParse(t *testing.T) {
@@ -114,25 +112,18 @@ func TestExpiredToken(t *testing.T) {
 	}
 }
 
-func TestIssueForOrg(t *testing.T) {
+func TestIssueWithRole(t *testing.T) {
 	tm := NewTokenManager("secret", time.Minute, time.Hour)
-	tok, err := tm.IssueForOrg(3, 1, "org_admin")
+	tok, err := tm.IssueWithRole(3, "admin")
 	if err != nil {
-		t.Fatalf("IssueForOrg: %v", err)
+		t.Fatalf("IssueWithRole: %v", err)
 	}
 	claims, err := tm.Parse(tok)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if claims.OrgID != 1 || claims.Role != "org_admin" {
+	if claims.UserID != 3 || claims.Role != "admin" {
 		t.Fatalf("claims = %+v", claims)
-	}
-}
-
-func TestSelectOrgInvalid(t *testing.T) {
-	// 无效 org 由 service 层返回 errs.CodeOrgRequired 语义（此处直接验证 errs 存在）。
-	if errs.CodeOrgRequired == 0 {
-		t.Fatal("CodeOrgRequired 错误码不应为 0")
 	}
 }
 

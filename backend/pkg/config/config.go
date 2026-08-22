@@ -15,8 +15,8 @@ type Config struct {
 	JWTSecret       string        // JWT 签名密钥（必填）
 	JWTTTL          time.Duration // access token 有效期
 	RefreshTTL      time.Duration // refresh token 有效期
-	SuperAdminUser  string        // 初始超管用户名
-	SuperAdminPass  string        // 初始超管密码（空则随机生成）
+	AdminUser       string        // 初始管理员用户名
+	AdminPass       string        // 初始管理员密码（空则随机生成）
 	RulesDir        string        // fsnotify 规则目录
 	SwaggerEnabled  bool          // 是否暴露 /swagger/*
 	Timezone        string        // 定时任务 Cron 时区
@@ -41,6 +41,9 @@ type Config struct {
 	LLMBaseURL string // CINSIGHT_LLM_BASE_URL
 	LLMAPIKey  string // CINSIGHT_LLM_API_KEY
 	LLMModel   string // CINSIGHT_LLM_MODEL
+	// 授权文件路径与验签公钥。
+	LicensePath      string // CINSIGHT_LICENSE_PATH
+	LicensePublicKey string // CINSIGHT_LICENSE_PUBLIC_KEY
 }
 
 // Load 读取环境变量构建 Config。
@@ -52,8 +55,8 @@ func Load() *Config {
 		JWTSecret:       os.Getenv("CINSIGHT_JWT_SECRET"),
 		JWTTTL:          getDuration("CINSIGHT_JWT_TTL", 15*time.Minute),
 		RefreshTTL:      getDuration("CINSIGHT_REFRESH_TTL", 7*24*time.Hour),
-		SuperAdminUser:  getEnv("CINSIGHT_SUPER_ADMIN_USER", "admin"),
-		SuperAdminPass:  os.Getenv("CINSIGHT_SUPER_ADMIN_PASS"),
+		AdminUser:       getEnv("CINSIGHT_SUPER_ADMIN_USER", "admin"),
+		AdminPass:       os.Getenv("CINSIGHT_SUPER_ADMIN_PASS"),
 		RulesDir:        getEnv("CINSIGHT_RULES_DIR", "./data/rules"),
 		SwaggerEnabled:  getBool("CINSIGHT_SWAGGER_ENABLED", false),
 		Timezone:        getEnv("CINSIGHT_TIMEZONE", "Asia/Shanghai"),
@@ -77,6 +80,8 @@ func Load() *Config {
 		LLMBaseURL:      os.Getenv("CINSIGHT_LLM_BASE_URL"),
 		LLMAPIKey:       os.Getenv("CINSIGHT_LLM_API_KEY"),
 		LLMModel:        getEnv("CINSIGHT_LLM_MODEL", "deepseek-chat"),
+		LicensePath:     os.Getenv("CINSIGHT_LICENSE_PATH"),
+		LicensePublicKey: os.Getenv("CINSIGHT_LICENSE_PUBLIC_KEY"),
 	}
 }
 

@@ -27,7 +27,7 @@ func TestSchedulerRequeueStaleProcessing(t *testing.T) {
 
 	// 一个 processing 超过 30min 的任务。
 	task := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: 1,
+		AssetID: 1, PolicyID: 1,
 		Status:    models.StatusProcessing,
 		StartedAt: ptrTime(time.Now().Add(-40 * time.Minute)),
 	}
@@ -36,7 +36,7 @@ func TestSchedulerRequeueStaleProcessing(t *testing.T) {
 	}
 	// 一个刚 processing 的任务不应被重置。
 	fresh := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: 1,
+		AssetID: 1, PolicyID: 1,
 		Status:    models.StatusProcessing,
 		StartedAt: ptrTime(time.Now()),
 	}
@@ -68,12 +68,12 @@ func TestSchedulerTimeoutToFailed(t *testing.T) {
 	s := NewMasterScheduler(gdb, nil, nil)
 
 	// 平台默认策略，timeout=60min；任务 pending 超过 70min → failed。
-	policy := models.ScanPolicy{OrgID: 0, Name: "default", Timeout: 60}
+	policy := models.ScanPolicy{Name: "default", Timeout: 60}
 	if err := gdb.Create(&policy).Error; err != nil {
 		t.Fatalf("create policy: %v", err)
 	}
 	task := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: policy.ID,
+		AssetID: 1, PolicyID: policy.ID,
 		Status:    models.StatusPending,
 		CreatedAt: time.Now().Add(-70 * time.Minute),
 	}
@@ -83,7 +83,7 @@ func TestSchedulerTimeoutToFailed(t *testing.T) {
 
 	// 未超时的任务保留。
 	task2 := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: policy.ID,
+		AssetID: 1, PolicyID: policy.ID,
 		Status:    models.StatusPending,
 		CreatedAt: time.Now(),
 	}
@@ -116,7 +116,7 @@ func TestSchedulerNoPolicySkipped(t *testing.T) {
 
 	// 找不到策略时跳过，任务保持原状态不 panic。
 	task := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: 99999,
+		AssetID: 1, PolicyID: 99999,
 		Status:    models.StatusPending,
 		CreatedAt: time.Now().Add(-5 * time.Hour),
 	}
@@ -140,7 +140,7 @@ func TestSchedulerRetryAtClearedWhenDue(t *testing.T) {
 	// 重试等待中的任务（retry_at 已到）应被清除 retry_at 使其可被拉取。
 	due := time.Now().Add(-time.Minute)
 	task := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: 1,
+		AssetID: 1, PolicyID: 1,
 		Status:    models.StatusPending,
 		RetryAt:   &due,
 		CreatedAt: time.Now(),
@@ -164,7 +164,7 @@ func TestSchedulerRetryAtNotDueKept(t *testing.T) {
 
 	future := time.Now().Add(5 * time.Minute)
 	task := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: 1,
+		AssetID: 1, PolicyID: 1,
 		Status:    models.StatusPending,
 		RetryAt:   &future,
 		CreatedAt: time.Now(),
@@ -185,17 +185,17 @@ func TestSchedulerRetryAtNotDueKept(t *testing.T) {
 func TestWorkerReportResultRetryBackoff(t *testing.T) {
 	gdb := newTestDB(t)
 	hub := NewHub()
-	s := NewWorkerService(gdb, nil, nil, hub, 100)
+	s := NewWorkerService(gdb, nil, nil, hub, nil, 100)
 
 	task := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: 1,
+		AssetID: 1, PolicyID: 1,
 		Status: models.StatusProcessing,
 	}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 	// 第一次失败回传 → 应置 pending 并递增 retry_count。
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "r-1", TaskID: task.ID, Status: "failed", Message: "boom", Progress: 50,
 	})
 	if err != nil {
@@ -219,17 +219,17 @@ func TestWorkerReportResultRetryBackoff(t *testing.T) {
 func TestWorkerReportResultTimeoutNoRetry(t *testing.T) {
 	gdb := newTestDB(t)
 	hub := NewHub()
-	s := NewWorkerService(gdb, nil, nil, hub, 100)
+	s := NewWorkerService(gdb, nil, nil, hub, nil, 100)
 
 	task := models.ScanTask{
-		OrgID: 1, AssetID: 1, PolicyID: 1,
+		AssetID: 1, PolicyID: 1,
 		Status: models.StatusProcessing,
 	}
 	if err := gdb.Create(&task).Error; err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 	// 任务超时中止（task_timeout=true）不参与自动重试，直接 failed。
-	_, err := s.ReportResult(1, &WorkerResult{
+	_, err := s.ReportResult(&WorkerResult{
 		ResultID: "r-2", TaskID: task.ID, Status: "failed",
 		TaskTimeout: true, Message: "timeout", Progress: 50,
 	})

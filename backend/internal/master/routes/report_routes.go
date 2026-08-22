@@ -42,7 +42,7 @@ func registerReports(rg *gin.RouterGroup, d *Deps) {
 		}
 		p.From = parseTime(c.Query("from"))
 		p.To = parseTime(c.Query("to"))
-		data, filename, err := d.Report.Export(orgID(c), p)
+		data, filename, err := d.Report.Export(p)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return

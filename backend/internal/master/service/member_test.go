@@ -7,96 +7,127 @@ import (
 	"github.com/Fanc1er/Kate/backend/pkg/errs"
 )
 
-func TestInviteRejectsSuperAdmin(t *testing.T) {
+func TestInviteCreatesInvitedUser(t *testing.T) {
 	gdb := newTestDB(t)
 	s := NewMemberService(gdb, nil, nil)
 
-	org := models.Organization{Name: "org", Status: models.StatusActive, MaxMembers: 10}
-	if err := gdb.Create(&org).Error; err != nil {
-		t.Fatalf("create org: %v", err)
-	}
-	sa := models.User{Username: "sa", Email: "sa@example.com", IsSuperAdmin: true}
-	if err := gdb.Create(&sa).Error; err != nil {
-		t.Fatalf("create super admin: %v", err)
-	}
-
-	_, err := s.Invite(org.ID, sa.Email, models.RoleViewer, 1, "op", "127.0.0.1", "test")
-	if err == nil {
-		t.Fatal("expected error inviting super admin")
-	}
-	if errs.CodeOf(err) != errs.CodeValidationFailed {
-		t.Fatalf("expected CodeValidationFailed, got %v", err)
-	}
-	var count int64
-	gdb.Model(&models.UserOrg{}).Where("org_id = ?", org.ID).Count(&count)
-	if count != 0 {
-		t.Fatalf("expected no user_orgs record, got %d", count)
-	}
-}
-
-func TestInviteNormalUserOK(t *testing.T) {
-	gdb := newTestDB(t)
-	s := NewMemberService(gdb, nil, nil)
-
-	org := models.Organization{Name: "org", Status: models.StatusActive, MaxMembers: 10}
-	if err := gdb.Create(&org).Error; err != nil {
-		t.Fatalf("create org: %v", err)
-	}
-	u := models.User{Username: "u", Email: "u@example.com"}
-	if err := gdb.Create(&u).Error; err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-
-	uo, err := s.Invite(org.ID, u.Email, models.RoleEngineer, 1, "op", "127.0.0.1", "test")
+	u, err := s.Invite("new@example.com", models.RoleUser, 1, "op", "127.0.0.1", "test")
 	if err != nil {
 		t.Fatalf("invite: %v", err)
 	}
-	if uo.Role != models.RoleEngineer {
-		t.Fatalf("expected engineer role, got %s", uo.Role)
+	if u.Status != models.StatusInvited || u.Role != models.RoleUser || u.Username != "new@example.com" {
+		t.Fatalf("invited user = %+v", u)
+	}
+	var count int64
+	gdb.Model(&models.User{}).Count(&count)
+	if count != 1 {
+		t.Fatalf("应创建 1 个用户, got %d", count)
 	}
 }
 
-func TestCreateOrgRejectsSuperAdmin(t *testing.T) {
+func TestInviteUpdatesExistingUserRole(t *testing.T) {
+	gdb := newTestDB(t)
+	s := NewMemberService(gdb, nil, nil)
+	existing := models.User{Username: "u", Email: "u@example.com", Role: models.RoleUser, Status: models.StatusActive}
+	if err := gdb.Create(&existing).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	u, err := s.Invite("u@example.com", models.RoleAdmin, 1, "op", "127.0.0.1", "test")
+	if err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+	if u.ID != existing.ID || u.Role != models.RoleAdmin {
+		t.Fatalf("应更新既有用户角色, got %+v", u)
+	}
+}
+
+func TestInviteInvalidRole(t *testing.T) {
 	gdb := newTestDB(t)
 	s := NewMemberService(gdb, nil, nil)
 
-	sa := models.User{Username: "sa", Email: "sa@example.com", IsSuperAdmin: true}
-	if err := gdb.Create(&sa).Error; err != nil {
-		t.Fatalf("create super admin: %v", err)
-	}
-
-	_, err := s.CreateOrg(sa.ID, "org", "free", "sa", "127.0.0.1", "test")
-	if err == nil {
-		t.Fatal("expected error creating org for super admin")
-	}
-	if errs.CodeOf(err) != errs.CodeValidationFailed {
+	if _, err := s.Invite("x@example.com", "ghost", 1, "op", "127.0.0.1", "test"); err == nil {
+		t.Fatal("非法角色应拒绝")
+	} else if errs.CodeOf(err) != errs.CodeValidationFailed {
 		t.Fatalf("expected CodeValidationFailed, got %v", err)
 	}
-	var orgCount int64
-	gdb.Model(&models.Organization{}).Count(&orgCount)
-	if orgCount != 0 {
-		t.Fatalf("expected no org created, got %d", orgCount)
+}
+
+func TestUpdateRoleLastAdmin(t *testing.T) {
+	gdb := newTestDB(t)
+	s := NewMemberService(gdb, nil, nil)
+	admin := models.User{Username: "sa", Email: "sa@example.com", Role: models.RoleAdmin}
+	if err := gdb.Create(&admin).Error; err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+
+	if err := s.UpdateRole(admin.ID, models.RoleUser, 1, "op", "127.0.0.1", "test"); err == nil {
+		t.Fatal("不能降级最后一个管理员")
+	} else if errs.CodeOf(err) != errs.CodeValidationFailed {
+		t.Fatalf("expected CodeValidationFailed, got %v", err)
 	}
 }
 
-func TestCreateOrgNormalUserOK(t *testing.T) {
+func TestToggleStatus(t *testing.T) {
 	gdb := newTestDB(t)
 	s := NewMemberService(gdb, nil, nil)
-
-	u := models.User{Username: "u", Email: "u@example.com"}
+	u := models.User{Username: "u", Email: "u@example.com", Status: models.StatusActive}
 	if err := gdb.Create(&u).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
 
-	org, err := s.CreateOrg(u.ID, "org", "free", "u", "127.0.0.1", "test")
+	if err := s.ToggleStatus(u.ID, models.StatusDisabled, 1, "op", "127.0.0.1", "test"); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	var got models.User
+	gdb.First(&got, u.ID)
+	if got.Status != models.StatusDisabled {
+		t.Fatalf("status = %s, want disabled", got.Status)
+	}
+	if err := s.ToggleStatus(u.ID, models.StatusActive, 1, "op", "127.0.0.1", "test"); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+}
+
+func TestRemoveSelf(t *testing.T) {
+	gdb := newTestDB(t)
+	s := NewMemberService(gdb, nil, nil)
+
+	if err := s.Remove(7, 7, "op", "127.0.0.1", "test"); err == nil {
+		t.Fatal("不能删除自己")
+	} else if errs.CodeOf(err) != errs.CodeValidationFailed {
+		t.Fatalf("expected CodeValidationFailed, got %v", err)
+	}
+}
+
+func TestRemoveLastAdmin(t *testing.T) {
+	gdb := newTestDB(t)
+	s := NewMemberService(gdb, nil, nil)
+	admin := models.User{Username: "sa", Email: "sa@example.com", Role: models.RoleAdmin}
+	if err := gdb.Create(&admin).Error; err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+
+	if err := s.Remove(admin.ID, 1, "op", "127.0.0.1", "test"); err == nil {
+		t.Fatal("不能删除最后一个管理员")
+	} else if errs.CodeOf(err) != errs.CodeValidationFailed {
+		t.Fatalf("expected CodeValidationFailed, got %v", err)
+	}
+}
+
+func TestListMembers(t *testing.T) {
+	gdb := newTestDB(t)
+	s := NewMemberService(gdb, nil, nil)
+	for _, name := range []string{"a", "b"} {
+		if err := gdb.Create(&models.User{Username: name}).Error; err != nil {
+			t.Fatalf("create user: %v", err)
+		}
+	}
+	list, total, err := s.List(1, 10)
 	if err != nil {
-		t.Fatalf("create org: %v", err)
+		t.Fatalf("list: %v", err)
 	}
-	var uo models.UserOrg
-	if err := gdb.Where("user_id = ? AND org_id = ?", u.ID, org.ID).First(&uo).Error; err != nil {
-		t.Fatalf("expected owner user_orgs record: %v", err)
-	}
-	if uo.Role != models.RoleOrgAdmin {
-		t.Fatalf("expected owner as org_admin, got %s", uo.Role)
+	if total != 2 || len(list) != 2 {
+		t.Fatalf("total=%d list=%d, want 2/2", total, len(list))
 	}
 }

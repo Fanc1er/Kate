@@ -13,7 +13,7 @@ import (
 	"github.com/Fanc1er/Kate/backend/pkg/response"
 )
 
-// workerAuth 校验 Worker 长期凭证（client_id + client_secret），注入 worker_id/org_id。
+// workerAuth 校验 Worker 长期凭证（client_id + client_secret），注入 worker_id。
 func workerAuth(d *Deps) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		clientID := c.GetHeader("X-Client-Id")
@@ -35,7 +35,6 @@ func workerAuth(d *Deps) gin.HandlerFunc {
 			return
 		}
 		c.Set("worker_id", node.ID)
-		c.Set("org_id", node.OrgID)
 		c.Next()
 	}
 }
@@ -68,7 +67,7 @@ func registerWorker(rg *gin.RouterGroup, d *Deps) {
 			Version string  `json:"version"`
 		}
 		_ = c.ShouldBindJSON(&req)
-		if err := d.Worker.Heartbeat(c.GetInt64("worker_id"), c.GetInt64("org_id"), req.Load, req.Version); err != nil {
+		if err := d.Worker.Heartbeat(c.GetInt64("worker_id"), req.Load, req.Version); err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}
@@ -77,7 +76,7 @@ func registerWorker(rg *gin.RouterGroup, d *Deps) {
 
 	// 拉取任务。
 	w.POST("/pull", workerAuth(d), func(c *gin.Context) {
-		m, err := d.Worker.PullTask(c.GetInt64("org_id"), strconv.FormatInt(c.GetInt64("worker_id"), 10))
+		m, err := d.Worker.PullTask(strconv.FormatInt(c.GetInt64("worker_id"), 10))
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -93,7 +92,7 @@ func registerWorker(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		stopped := d.Task.StopCheck(c.GetInt64("org_id"), req.TaskID)
+		stopped := d.Task.StopCheck(req.TaskID)
 		response.OK(c, map[string]any{"stopped": stopped})
 	})
 
@@ -103,7 +102,7 @@ func registerWorker(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &result) {
 			return
 		}
-		m, err := d.Worker.ReportResult(c.GetInt64("org_id"), &result)
+		m, err := d.Worker.ReportResult(&result)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -129,7 +128,7 @@ func registerWorker(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "data 必须为 base64")
 			return
 		}
-		id, complete, err := d.Evidence.ChunkUpload(c.GetInt64("org_id"), req.UploadID, req.Kind,
+		id, complete, err := d.Evidence.ChunkUpload(req.UploadID, req.Kind,
 			req.TotalChunks, req.ChunkIndex, data, req.SHA256)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
@@ -139,12 +138,12 @@ func registerWorker(rg *gin.RouterGroup, d *Deps) {
 	})
 }
 
-// registerWorkerNodes 组织侧 Worker 节点管理（org_admin）。
+// registerWorkerNodes Worker 节点管理（管理员）。
 func registerWorkerNodes(rg *gin.RouterGroup, d *Deps) {
-	g := rg.Group("/worker/nodes", d.Security.AdminOnly())
+	g := rg.Group("/worker/nodes", d.Security.RequireAdmin())
 	g.GET("", func(c *gin.Context) {
 		var list []models.WorkerNode
-		if err := d.DB.Where("org_id = ?", orgID(c)).Order("id DESC").Find(&list).Error; err != nil {
+		if err := d.DB.Order("id DESC").Find(&list).Error; err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}
@@ -158,7 +157,7 @@ func registerWorkerNodes(rg *gin.RouterGroup, d *Deps) {
 		if !bindJSON(c, &req) {
 			return
 		}
-		node, token, err := d.Worker.CreateWorkerNode(orgID(c), req.Name, req.IP)
+		node, token, err := d.Worker.CreateWorkerNode(req.Name, req.IP)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -171,7 +170,7 @@ func registerWorkerNodes(rg *gin.RouterGroup, d *Deps) {
 			response.FailMsg(c, errs.CodeValidationFailed, "id 非法")
 			return
 		}
-		if err := d.DB.Model(&models.WorkerNode{}).Where("id = ? AND org_id = ?", id, orgID(c)).
+		if err := d.DB.Model(&models.WorkerNode{}).Where("id = ?", id).
 			Updates(map[string]any{"status": "offline_removed", "boot_token_hash": ""}).Error; err != nil {
 			response.Fail(c, errs.FromError(err))
 			return

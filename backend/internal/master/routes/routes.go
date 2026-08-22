@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/Fanc1er/Kate/backend/internal/master/routes/docs" // swag 生成文档
 
+	"github.com/Fanc1er/Kate/backend/internal/master/license"
 	"github.com/Fanc1er/Kate/backend/internal/master/middleware"
 	"github.com/Fanc1er/Kate/backend/internal/master/models"
 	"github.com/Fanc1er/Kate/backend/internal/master/service"
@@ -38,6 +39,7 @@ type Deps struct {
 	Report    *service.ReportService
 	Tokens    *service.TokenManager
 	Security  *middleware.Security
+	License   *license.Manager
 	Hub       *service.Hub
 	Logger    func(level, msg string, fields map[string]any)
 }
@@ -61,14 +63,19 @@ func Setup(d *Deps) *gin.Engine {
 	})
 
 	api := r.Group("/api/v1")
-	registerAuth(api, d)
-	registerWorker(api, d)
+	// 授权接口：无门禁（机器码/状态/导入）。
+	registerLicense(api, d)
+
+	// 授权门禁：以下所有接口要求有效授权。
+	gated := api.Group("", d.Security.LicenseRequired())
+	registerAuth(gated, d)
+	registerWorker(gated, d)
 
 	// WebSocket 实时事件：握手认证由 ServeWS 自行处理（浏览器 WS 只能传 query token）。
-	api.GET("/ws/events", d.Hub.ServeWS(d.Tokens))
+	gated.GET("/ws/events", d.Hub.ServeWS(d.Tokens))
 
-	// 认证后（仅 JWT，可无 org）：
-	authed := api.Group("", d.Security.AuthRequired())
+	// 认证后（仅 JWT）：
+	authed := gated.Group("", d.Security.AuthRequired())
 	authed.GET("/auth/me", func(c *gin.Context) {
 		u, err := d.Auth.Me(c.GetInt64("user_id"))
 		if err != nil {
@@ -77,46 +84,26 @@ func Setup(d *Deps) *gin.Engine {
 		}
 		response.OK(c, u)
 	})
-	authed.POST("/auth/select-org", func(c *gin.Context) {
-		var req struct {
-			OrgID int64 `json:"org_id"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil || req.OrgID <= 0 {
-			response.FailMsg(c, errs.CodeValidationFailed, "org_id 必填")
-			return
-		}
-		res, err := d.Auth.SelectOrg(c.GetInt64("user_id"), req.OrgID)
-		if err != nil {
-			response.Fail(c, errs.FromError(err))
-			return
-		}
-		response.OK(c, res)
-	})
 
-	// 平台管理（仅超管，无 org 上下文）。
+	// 平台管理（仅管理员）。
 	registerAdmin(authed, d)
 
-	// 组织上下文（X-Org-Id）+ RBAC。
-	org := api.Group("", d.Security.AuthRequired(), d.Security.OrgRequired())
-	registerAssets(org, d)
-	registerTasks(org, d)
-	registerPolicies(org, d)
-	registerTriage(org, d)
-	registerReports(org, d)
-	registerEvidence(org, d)
-	registerDashboard(org, d)
-	registerMembers(org, d)
-	registerWorkerNodes(org, d)
+	// 业务路由（认证 + RBAC）。
+	registerAssets(authed, d)
+	registerTasks(authed, d)
+	registerPolicies(authed, d)
+	registerTriage(authed, d)
+	registerReports(authed, d)
+	registerEvidence(authed, d)
+	registerDashboard(authed, d)
+	registerMembers(authed, d)
+	registerWorkerNodes(authed, d)
 
 	if d.Seed != nil && !d.Seed.IsInitialized() {
-		// 未初始化时平台管理路由单独暴露（无 org 上下文）。
-		initGroup := api.Group("/init")
-		initGroup.POST("", d.Security.AuthRequired(), func(c *gin.Context) {
-			if !c.GetBool("is_super_admin") {
-				response.FailCode(c, errs.CodeForbidden)
-				return
-			}
-			initialized, pwd, err := d.Seed.EnsureSuperAdmin()
+		// 未初始化时平台管理路由单独暴露。
+		initGroup := gated.Group("/init")
+		initGroup.POST("", d.Security.AuthRequired(), d.Security.RequireAdmin(), func(c *gin.Context) {
+			initialized, pwd, err := d.Seed.EnsureAdmin()
 			if err != nil {
 				response.Fail(c, errs.FromError(err))
 				return
@@ -143,10 +130,6 @@ func swaggerEnabled() bool {
 }
 
 // ctx helper
-func orgID(c *gin.Context) int64 {
-	return c.GetInt64("org_id")
-}
-
 func roleOf(c *gin.Context) string {
 	return c.GetString("role")
 }

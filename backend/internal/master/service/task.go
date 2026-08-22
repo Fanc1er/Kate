@@ -26,13 +26,9 @@ func NewTaskService(db *gorm.DB, audit *AuditWriter, assessor *ResultAssessor) *
 	return &TaskService{DB: db, Audit: audit, Assessor: assessor}
 }
 
-// guard 返回组织隔离守卫（org_id 强制过滤，缺省 org_id 拒绝查询）。
-func (s *TaskService) guard(orgID int64) *repository.Guard {
-	g, err := repository.NewGuard(s.DB, orgID)
-	if err != nil {
-		panic(err)
-	}
-	return g
+// guard 返回单租户查询守卫（无组织隔离）。
+func (s *TaskService) guard() *repository.Guard {
+	return repository.NewGuard(s.DB)
 }
 
 // TaskCreateReq 发起任务请求。
@@ -42,17 +38,17 @@ type TaskCreateReq struct {
 }
 
 // Create 为资产集合批量创建任务。
-// 去重：同 org+asset+policy 存在 pending/processing 时返回 3001 TASK_STATE_CONFLICT。
-func (s *TaskService) Create(orgID int64, req TaskCreateReq, userID int64, username, ip, ua string) ([]models.ScanTask, error) {
+// 去重：同 asset+policy 存在 pending/processing 时返回 3001 TASK_STATE_CONFLICT。
+func (s *TaskService) Create(req TaskCreateReq, userID int64, username, ip, ua string) ([]models.ScanTask, error) {
 	if len(req.AssetIDs) == 0 {
 		return nil, errs.New(errs.CodeValidationFailed, "请选择资产")
 	}
 	if req.PolicyID <= 0 {
 		return nil, errs.New(errs.CodeValidationFailed, "请选择策略模板")
 	}
-	// 校验策略属于本组织（含平台级 org_id=0 模板）。
+	// 校验策略存在。
 	var policy models.ScanPolicy
-	if err := s.DB.Where("id = ? AND org_id IN (0, ?)", req.PolicyID, orgID).First(&policy).Error; err != nil {
+	if err := s.DB.Where("id = ?", req.PolicyID).First(&policy).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.New(errs.CodeNotFound, "策略模板不存在")
 		}
@@ -62,14 +58,14 @@ func (s *TaskService) Create(orgID int64, req TaskCreateReq, userID int64, usern
 	for _, assetID := range req.AssetIDs {
 		var count int64
 		s.DB.Model(&models.ScanTask{}).
-			Where("org_id = ? AND asset_id = ? AND policy_id = ? AND status IN (?, ?)",
-				orgID, assetID, req.PolicyID, models.StatusPending, models.StatusProcessing).
+			Where("asset_id = ? AND policy_id = ? AND status IN (?, ?)",
+				assetID, req.PolicyID, models.StatusPending, models.StatusProcessing).
 			Count(&count)
 		if count > 0 {
 			return nil, errs.New(errs.CodeTaskStateConflict, fmt.Sprintf("资产 %d 已有进行中的任务", assetID))
 		}
 		task := &models.ScanTask{
-			OrgID: orgID, PolicyID: req.PolicyID, AssetID: assetID,
+			PolicyID: req.PolicyID, AssetID: assetID,
 			TaskScope: "root", Status: models.StatusPending,
 		}
 		if err := s.DB.Create(task).Error; err != nil {
@@ -77,28 +73,22 @@ func (s *TaskService) Create(orgID int64, req TaskCreateReq, userID int64, usern
 		}
 		created = append(created, *task)
 		if s.Audit != nil {
-			s.Audit.Write(orgID, userID, username, "task.start", "task", fmt.Sprint(task.ID), "", fmt.Sprintf("policy:%d asset:%d", req.PolicyID, assetID), ip, ua)
+			s.Audit.Write(userID, username, "task.start", "task", fmt.Sprint(task.ID), "", fmt.Sprintf("policy:%d asset:%d", req.PolicyID, assetID), ip, ua)
 		}
 	}
 	return created, nil
 }
 
-// BatchScan 批量加入扫描：为资产集合创建任务，策略取组织首个可用策略（优先组织内，其次平台级模板）。
-func (s *TaskService) BatchScan(orgID int64, assetIDs []int64, userID int64, username, ip, ua string) (int, error) {
+// BatchScan 批量加入扫描：为资产集合创建任务，策略取首个可用策略。
+func (s *TaskService) BatchScan(assetIDs []int64, userID int64, username, ip, ua string) (int, error) {
 	if len(assetIDs) == 0 {
 		return 0, errs.New(errs.CodeValidationFailed, "请选择资产")
 	}
 	var policy models.ScanPolicy
-	if err := s.DB.Where("org_id = ?", orgID).Order("id ASC").First(&policy).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			if err2 := s.DB.Where("org_id = 0").Order("id ASC").First(&policy).Error; err2 != nil {
-				return 0, errs.New(errs.CodeNotFound, "无可用的扫描策略，请先在策略页创建")
-			}
-		} else {
-			return 0, err
-		}
+	if err := s.DB.Order("id ASC").First(&policy).Error; err != nil {
+		return 0, errs.New(errs.CodeNotFound, "无可用的扫描策略，请先在策略页创建")
 	}
-	created, err := s.Create(orgID, TaskCreateReq{AssetIDs: assetIDs, PolicyID: policy.ID}, userID, username, ip, ua)
+	created, err := s.Create(TaskCreateReq{AssetIDs: assetIDs, PolicyID: policy.ID}, userID, username, ip, ua)
 	if err != nil {
 		return 0, err
 	}
@@ -106,8 +96,8 @@ func (s *TaskService) BatchScan(orgID int64, assetIDs []int64, userID int64, use
 }
 
 // List 任务列表。
-func (s *TaskService) List(orgID int64, status string, page, pageSize int) ([]models.ScanTask, int64, error) {
-	q := s.guard(orgID).Scoped(&models.ScanTask{})
+func (s *TaskService) List(status string, page, pageSize int) ([]models.ScanTask, int64, error) {
+	q := s.guard().Scoped(&models.ScanTask{})
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}
@@ -123,9 +113,9 @@ func (s *TaskService) List(orgID int64, status string, page, pageSize int) ([]mo
 }
 
 // Get 任务详情。
-func (s *TaskService) Get(orgID, id int64) (*models.ScanTask, error) {
+func (s *TaskService) Get(id int64) (*models.ScanTask, error) {
 	var t models.ScanTask
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&t).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&t).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.New(errs.CodeNotFound, "")
 		}
@@ -135,8 +125,8 @@ func (s *TaskService) Get(orgID, id int64) (*models.ScanTask, error) {
 }
 
 // Stop 停止任务（置 cancelled + stopped_by_user）。
-func (s *TaskService) Stop(orgID, id int64, userID int64, username, ip, ua string) (*models.ScanTask, error) {
-	t, err := s.Get(orgID, id)
+func (s *TaskService) Stop(id int64, userID int64, username, ip, ua string) (*models.ScanTask, error) {
+	t, err := s.Get(id)
 	if err != nil {
 		return nil, err
 	}
@@ -148,17 +138,17 @@ func (s *TaskService) Stop(orgID, id int64, userID int64, username, ip, ua strin
 			return nil, err
 		}
 		if s.Audit != nil {
-			s.Audit.Write(orgID, userID, username, "task.stop", "task", fmt.Sprint(id), t.Status, "cancelled", ip, ua)
+			s.Audit.Write(userID, username, "task.stop", "task", fmt.Sprint(id), t.Status, "cancelled", ip, ua)
 		}
 	}
-	return s.Get(orgID, id)
+	return s.Get(id)
 }
 
 // BatchStop 批量停止。
-func (s *TaskService) BatchStop(orgID int64, ids []int64, userID int64, username, ip, ua string) BatchResult {
+func (s *TaskService) BatchStop(ids []int64, userID int64, username, ip, ua string) BatchResult {
 	res := BatchResult{Success: 0}
 	for _, id := range ids {
-		if _, err := s.Stop(orgID, id, userID, username, ip, ua); err != nil {
+		if _, err := s.Stop(id, userID, username, ip, ua); err != nil {
 			res.Failed = append(res.Failed, FailedItem{ID: id, Reason: errs.FromError(err).Message})
 		} else {
 			res.Success++
@@ -168,8 +158,8 @@ func (s *TaskService) BatchStop(orgID int64, ids []int64, userID int64, username
 }
 
 // Rerun 失败重跑（复用原参数，重置状态为 pending）。
-func (s *TaskService) Rerun(orgID, id int64, userID int64, username, ip, ua string) (*models.ScanTask, error) {
-	t, err := s.Get(orgID, id)
+func (s *TaskService) Rerun(id int64, userID int64, username, ip, ua string) (*models.ScanTask, error) {
+	t, err := s.Get(id)
 	if err != nil {
 		return nil, err
 	}
@@ -182,16 +172,16 @@ func (s *TaskService) Rerun(orgID, id int64, userID int64, username, ip, ua stri
 		return nil, err
 	}
 	if s.Audit != nil {
-		s.Audit.Write(orgID, userID, username, "task.rerun", "task", fmt.Sprint(id), "", "rerun", ip, ua)
+		s.Audit.Write(userID, username, "task.rerun", "task", fmt.Sprint(id), "", "rerun", ip, ua)
 	}
-	return s.Get(orgID, id)
+	return s.Get(id)
 }
 
 // BatchRerun 批量重跑。
-func (s *TaskService) BatchRerun(orgID int64, ids []int64, userID int64, username, ip, ua string) BatchResult {
+func (s *TaskService) BatchRerun(ids []int64, userID int64, username, ip, ua string) BatchResult {
 	res := BatchResult{Success: 0}
 	for _, id := range ids {
-		if _, err := s.Rerun(orgID, id, userID, username, ip, ua); err != nil {
+		if _, err := s.Rerun(id, userID, username, ip, ua); err != nil {
 			res.Failed = append(res.Failed, FailedItem{ID: id, Reason: errs.FromError(err).Message})
 		} else {
 			res.Success++
@@ -200,26 +190,26 @@ func (s *TaskService) BatchRerun(orgID int64, ids []int64, userID int64, usernam
 	return res
 }
 
-// Delete 删除历史任务（仅 org_admin）。
-func (s *TaskService) Delete(orgID, id int64, userID int64, username, ip, ua string) error {
-	t, err := s.Get(orgID, id)
+// Delete 删除历史任务（仅管理员）。
+func (s *TaskService) Delete(id int64, userID int64, username, ip, ua string) error {
+	t, err := s.Get(id)
 	if err != nil {
 		return err
 	}
 	if t.Status == models.StatusProcessing {
 		return errs.New(errs.CodeTaskStateConflict, "执行中的任务不能删除")
 	}
-	if err := s.DB.Delete(&models.ScanTask{}, "id = ? AND org_id = ?", id, orgID).Error; err != nil {
+	if err := s.DB.Delete(&models.ScanTask{}, "id = ?", id).Error; err != nil {
 		return err
 	}
 	if s.Audit != nil {
-		s.Audit.Write(orgID, userID, username, "task.delete", "task", fmt.Sprint(id), "", "deleted", ip, ua)
+		s.Audit.Write(userID, username, "task.delete", "task", fmt.Sprint(id), "", "deleted", ip, ua)
 	}
 	return nil
 }
 
 // Queue 队列监控。
-func (s *TaskService) Queue(orgID int64) (map[string]any, error) {
+func (s *TaskService) Queue() (map[string]any, error) {
 	type cnt struct {
 		Status string
 		Cnt    int64
@@ -227,7 +217,7 @@ func (s *TaskService) Queue(orgID int64) (map[string]any, error) {
 	var rows []cnt
 	if err := s.DB.Model(&models.ScanTask{}).
 		Select("status, COUNT(*) AS cnt").
-		Where("org_id = ?", orgID).Group("status").Scan(&rows).Error; err != nil {
+		Group("status").Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	m := map[string]int64{"pending": 0, "processing": 0, "completed": 0, "failed": 0, "cancelled": 0}
@@ -236,7 +226,7 @@ func (s *TaskService) Queue(orgID int64) (map[string]any, error) {
 	}
 	// Worker 分配情况。
 	var workers []models.WorkerNode
-	s.DB.Where("org_id = ? AND status = ?", orgID, models.StatusOnline).Find(&workers)
+	s.DB.Where("status = ?", models.StatusOnline).Find(&workers)
 	return map[string]any{
 		"queued":     m["pending"],
 		"processing": m["processing"],
@@ -248,15 +238,15 @@ func (s *TaskService) Queue(orgID int64) (map[string]any, error) {
 }
 
 // Progress 断点续扫状态（任务进度 + 已爬 URL 数）。
-func (s *TaskService) Progress(orgID, id int64) (map[string]any, error) {
-	t, err := s.Get(orgID, id)
+func (s *TaskService) Progress(id int64) (map[string]any, error) {
+	t, err := s.Get(id)
 	if err != nil {
 		return nil, err
 	}
 	var findings int64
-	s.DB.Model(&models.Finding{}).Where("org_id = ? AND task_id = ?", orgID, id).Count(&findings)
+	s.DB.Model(&models.Finding{}).Where("task_id = ?", id).Count(&findings)
 	var crawled int64
-	s.DB.Model(&models.SensitiveInfoHit{}).Where("org_id = ? AND task_id = ?", orgID, id).Count(&crawled)
+	s.DB.Model(&models.SensitiveInfoHit{}).Where("task_id = ?", id).Count(&crawled)
 	out := map[string]any{
 		"task_id":  id,
 		"status":   t.Status,
@@ -276,9 +266,9 @@ func (s *TaskService) Progress(orgID, id int64) (map[string]any, error) {
 }
 
 // StopCheck 供 Worker 轮询判断任务是否被用户停止。
-func (s *TaskService) StopCheck(orgID, id int64) bool {
+func (s *TaskService) StopCheck(id int64) bool {
 	var t models.ScanTask
-	if err := s.DB.Where("id = ? AND org_id = ?", id, orgID).First(&t).Error; err != nil {
+	if err := s.DB.Where("id = ?", id).First(&t).Error; err != nil {
 		return false
 	}
 	return t.Status == models.StatusCancelled
@@ -303,14 +293,14 @@ type Assessment struct {
 }
 
 // Assess 计算 risk_score / risk_level / suggestion。
-func (a *ResultAssessor) Assess(orgID, assetID int64, engineName, severity, vulnType string, confidence float64) (int, string, string, *Assessment, error) {
+func (a *ResultAssessor) Assess(assetID int64, engineName, severity, vulnType string, confidence float64) (int, string, string, *Assessment, error) {
 	base := map[string]int{"critical": 80, "high": 60, "medium": 40, "low": 20, "info": 0}[severity]
 	detail := &Assessment{SeverityBase: base, Confidence: confidence}
 	score := int(float64(base) * confidence)
 
 	// 多引擎重合加成：同一资产已命中的引擎数。
 	var hitCount int64
-	a.DB.Model(&models.Finding{}).Where("org_id = ? AND asset_id = ?", orgID, assetID).Distinct("engine_name").Count(&hitCount)
+	a.DB.Model(&models.Finding{}).Where("asset_id = ?", assetID).Distinct("engine_name").Count(&hitCount)
 	bonus := int(hitCount) * 10
 	if bonus > 30 {
 		bonus = 30
@@ -321,7 +311,7 @@ func (a *ResultAssessor) Assess(orgID, assetID int64, engineName, severity, vuln
 	// 重点资产加成。
 	if assetID > 0 {
 		var asset models.Asset
-		if err := a.DB.Where("id = ? AND org_id = ?", assetID, orgID).First(&asset).Error; err == nil && asset.Importance == "high" {
+		if err := a.DB.Where("id = ?", assetID).First(&asset).Error; err == nil && asset.Importance == "high" {
 			detail.ImportanceBonus = 10
 			score += 10
 		}

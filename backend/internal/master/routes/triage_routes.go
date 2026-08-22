@@ -42,7 +42,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		if v, err := strconv.ParseInt(c.Query("task_id"), 10, 64); err == nil {
 			p.TaskID = v
 		}
-		list, total, err := d.Triage.ListFindings(orgID(c), p)
+		list, total, err := d.Triage.ListFindings(p)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -50,7 +50,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		response.OK(c, response.Page{List: list, Total: total})
 	})
 	f.GET("/overview", func(c *gin.Context) {
-		m, err := d.Triage.TriageOverview(orgID(c))
+		m, err := d.Triage.TriageOverview()
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -62,7 +62,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		if !ok {
 			return
 		}
-		detail, err := d.Triage.GetFindingDetail(orgID(c), id)
+		detail, err := d.Triage.GetFindingDetail(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -81,7 +81,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		fnd, err := d.Triage.UpdateFindingStatus(orgID(c), id, req.Status, uid, uname, ip, ua)
+		fnd, err := d.Triage.UpdateFindingStatus(id, req.Status, uid, uname, ip, ua)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -93,7 +93,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 	e := rg.Group("/events")
 	e.GET("", func(c *gin.Context) {
 		p, ps := page(c)
-		list, total, err := d.Triage.ListEvents(orgID(c), c.Query("status"), c.Query("event_type"), p, ps)
+		list, total, err := d.Triage.ListEvents(c.Query("status"), c.Query("event_type"), p, ps)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -105,7 +105,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		if !ok {
 			return
 		}
-		detail, err := d.Triage.GetEventDetail(orgID(c), id)
+		detail, err := d.Triage.GetEventDetail(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -124,7 +124,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		if err := d.Triage.UpdateEventStatus(orgID(c), id, req.Status, uid, uname, ip, ua); err != nil {
+		if err := d.Triage.UpdateEventStatus(id, req.Status, uid, uname, ip, ua); err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}
@@ -143,7 +143,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		m, err := d.Triage.BatchUpdateEventStatus(orgID(c), req.Ids, req.Status, uid, uname, ip, ua)
+		m, err := d.Triage.BatchUpdateEventStatus(req.Ids, req.Status, uid, uname, ip, ua)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -155,7 +155,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 	a := rg.Group("/alerts")
 	a.GET("", func(c *gin.Context) {
 		p, ps := page(c)
-		list, total, err := d.Triage.ListAlerts(orgID(c), c.Query("status"), c.Query("alert_type"), p, ps)
+		list, total, err := d.Triage.ListAlerts(c.Query("status"), c.Query("alert_type"), p, ps)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -167,7 +167,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		if !ok {
 			return
 		}
-		detail, err := d.Triage.GetAlertDetail(orgID(c), id)
+		detail, err := d.Triage.GetAlertDetail(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -180,7 +180,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		if err := d.Triage.ResolveAlert(orgID(c), id, uid, uname, ip, ua); err != nil {
+		if err := d.Triage.ResolveAlert(id, uid, uname, ip, ua); err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}
@@ -198,7 +198,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		m, err := d.Triage.BatchResolveAlert(orgID(c), req.Ids, uid, uname, ip, ua)
+		m, err := d.Triage.BatchResolveAlert(req.Ids, uid, uname, ip, ua)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -211,7 +211,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 	v.GET("", func(c *gin.Context) {
 		p, ps := page(c)
 		assetID, _ := strconv.ParseInt(c.Query("asset_id"), 10, 64)
-		list, total, err := d.Triage.ListVulns(orgID(c), c.Query("status"), c.Query("severity"), assetID, p, ps)
+		list, total, err := d.Triage.ListVulns(c.Query("status"), c.Query("severity"), assetID, p, ps)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -223,7 +223,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		if !ok {
 			return
 		}
-		detail, err := d.Triage.GetVulnDetail(orgID(c), id)
+		detail, err := d.Triage.GetVulnDetail(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -235,7 +235,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		if !ok {
 			return
 		}
-		evs, err := d.Triage.GetVulnEvidence(orgID(c), id)
+		evs, err := d.Triage.GetVulnEvidence(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -247,7 +247,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 	t := rg.Group("/tickets")
 	t.GET("", func(c *gin.Context) {
 		p, ps := page(c)
-		list, total, err := d.Triage.ListTickets(orgID(c), c.Query("status"), c.Query("source"), p, ps)
+		list, total, err := d.Triage.ListTickets(c.Query("status"), c.Query("source"), p, ps)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -255,7 +255,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		response.OK(c, response.Page{List: list, Total: total})
 	})
 	t.GET("/sources", func(c *gin.Context) {
-		m, err := d.Triage.ListTicketSources(orgID(c))
+		m, err := d.Triage.ListTicketSources()
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -274,7 +274,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		tk, err := d.Triage.CreateTicket(orgID(c), req.EventID, req.VulnID, req.Assignee, req.Notes, req.DueAt, uid, uname, ip, ua)
+		tk, err := d.Triage.CreateTicket(req.EventID, req.VulnID, req.Assignee, req.Notes, req.DueAt, uid, uname, ip, ua)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -286,7 +286,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 		if !ok {
 			return
 		}
-		detail, err := d.Triage.GetTicketDetail(orgID(c), id)
+		detail, err := d.Triage.GetTicketDetail(id)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -306,7 +306,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		tk, err := d.Triage.UpdateTicketStatus(orgID(c), id, req.Status, req.Version, uid, uname, ip, ua)
+		tk, err := d.Triage.UpdateTicketStatus(id, req.Status, req.Version, uid, uname, ip, ua)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -326,7 +326,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		tk, err := d.Triage.AssignTicket(orgID(c), id, req.Assignee, req.Version, uid, uname, ip, ua)
+		tk, err := d.Triage.AssignTicket(id, req.Assignee, req.Version, uid, uname, ip, ua)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -346,7 +346,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		m, err := d.Triage.BatchUpdateTicketStatus(orgID(c), req.Ids, req.Status, uid, uname, ip, ua)
+		m, err := d.Triage.BatchUpdateTicketStatus(req.Ids, req.Status, uid, uname, ip, ua)
 		if err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
@@ -359,7 +359,7 @@ func registerTriage(rg *gin.RouterGroup, d *Deps) {
 			return
 		}
 		uid, uname, ip, ua := meta(c)
-		if err := d.Triage.DeleteTicket(orgID(c), id, uid, uname, ip, ua); err != nil {
+		if err := d.Triage.DeleteTicket(id, uid, uname, ip, ua); err != nil {
 			response.Fail(c, errs.FromError(err))
 			return
 		}

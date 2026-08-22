@@ -3,12 +3,12 @@ package middleware
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/Fanc1er/Kate/backend/internal/master/license"
 	"github.com/Fanc1er/Kate/backend/internal/master/models"
 	"github.com/Fanc1er/Kate/backend/internal/master/service"
 	"github.com/Fanc1er/Kate/backend/pkg/errs"
@@ -17,17 +17,39 @@ import (
 
 // Security 组合认证与 RBAC 所需依赖。
 type Security struct {
-	DB     *gorm.DB
-	Tokens *service.TokenManager
+	DB      *gorm.DB
+	Tokens  *service.TokenManager
+	License *license.Manager
 }
 
 // NewSecurity 构造 Security。
-func NewSecurity(db *gorm.DB, tokens *service.TokenManager) *Security {
-	return &Security{DB: db, Tokens: tokens}
+func NewSecurity(db *gorm.DB, tokens *service.TokenManager, lic *license.Manager) *Security {
+	return &Security{DB: db, Tokens: tokens, License: lic}
 }
 
-// AuthRequired 校验 Bearer JWT 与用户状态，注入 user_id / is_super_admin。
-// 仅依赖 JWT，不需要 X-Org-Id（me 接口使用）。
+// LicenseRequired 校验授权有效，非有效时按状态返回对应错误码。
+func (s *Security) LicenseRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		switch s.License.Check() {
+		case license.StatusValid:
+			c.Next()
+		case license.StatusNotYetActive:
+			response.FailCode(c, errs.CodeLicenseNotYetActive)
+			c.Abort()
+		case license.StatusExpired:
+			response.FailCode(c, errs.CodeLicenseExpired)
+			c.Abort()
+		case license.StatusMachineMismatch:
+			response.FailCode(c, errs.CodeLicenseMachineMismatch)
+			c.Abort()
+		default:
+			response.FailCode(c, errs.CodeLicenseRequired)
+			c.Abort()
+		}
+	}
+}
+
+// AuthRequired 校验 Bearer JWT 与用户状态，注入 user_id / role / username。
 func (s *Security) AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := BearerToken(c)
@@ -59,69 +81,8 @@ func (s *Security) AuthRequired() gin.HandlerFunc {
 			return
 		}
 		c.Set("user_id", user.ID)
-		c.Set("is_super_admin", user.IsSuperAdmin)
+		c.Set("role", user.Role)
 		c.Set("username", user.Username)
-		c.Next()
-	}
-}
-
-// OrgRequired 校验 X-Org-Id 与成员关系，注入 org_id / role。
-// super_admin 允许 org_id=0 走平台查询通道。
-func (s *Security) OrgRequired() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		orgIDStr := c.GetHeader("X-Org-Id")
-		if orgIDStr == "" {
-			response.FailCode(c, errs.CodeOrgRequired)
-			c.Abort()
-			return
-		}
-		orgID, err := strconv.ParseInt(orgIDStr, 10, 64)
-		if err != nil || orgID < 0 {
-			response.FailMsg(c, errs.CodeValidationFailed, "X-Org-Id 不合法")
-			c.Abort()
-			return
-		}
-		uid := c.GetInt64("user_id")
-		isSuper := c.GetBool("is_super_admin")
-
-		if isSuper {
-			// 平台超管可访问全局通道（org_id=0）及任意组织视角。
-			c.Set("org_id", orgID)
-			c.Set("role", models.RoleSuperAdmin)
-			c.Next()
-			return
-		}
-		// 校验组织状态。
-		var org models.Organization
-		if err := s.DB.First(&org, orgID).Error; err != nil {
-			response.FailCode(c, errs.CodeNotFound)
-			c.Abort()
-			return
-		}
-		if org.Status == models.StatusDisabled {
-			response.FailCode(c, errs.CodeOrgDisabled)
-			c.Abort()
-			return
-		}
-		// 校验成员关系与状态。
-		var uo models.UserOrg
-		if err := s.DB.Where("user_id = ? AND org_id = ?", uid, orgID).First(&uo).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				response.FailCode(c, errs.CodeForbidden)
-			} else {
-				response.FailCode(c, 500)
-			}
-			c.Abort()
-			return
-		}
-		if uo.Status == models.StatusDisabled {
-			response.FailMsg(c, errs.CodeUserDisabled, "成员已被禁用")
-			c.Abort()
-			return
-		}
-		c.Set("org_id", orgID)
-		c.Set("role", uo.Role)
-		c.Set("org_name", org.Name)
 		c.Next()
 	}
 }
@@ -134,11 +95,6 @@ func (s *Security) RequireRoles(roles ...string) gin.HandlerFunc {
 	}
 	return func(c *gin.Context) {
 		role := c.GetString("role")
-		if role == models.RoleSuperAdmin {
-			// 超管在平台通道与组织视角下均具备最高权限。
-			c.Next()
-			return
-		}
 		if !allowed[role] {
 			response.FailCode(c, errs.CodeForbidden)
 			c.Abort()
@@ -148,38 +104,19 @@ func (s *Security) RequireRoles(roles ...string) gin.HandlerFunc {
 	}
 }
 
-// RequireWrite 只读用户（viewer）禁止任何写操作。
+// RequireAdmin 仅管理员角色（用户管理、系统配置）。
+func (s *Security) RequireAdmin() gin.HandlerFunc {
+	return s.RequireRoles(models.RoleAdmin)
+}
+
+// RequireWrite 允许任意已认证用户（admin/user）执行业务写操作。
 func (s *Security) RequireWrite() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		role := c.GetString("role")
-		if role == models.RoleSuperAdmin {
-			c.Next()
-			return
-		}
-		if role == models.RoleViewer {
-			response.FailCode(c, errs.CodeForbidden)
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
+	return s.RequireRoles(models.RoleAdmin, models.RoleUser)
 }
 
-// RequireSuperAdmin 平台管理通道（仅 super_admin）。
-func (s *Security) RequireSuperAdmin() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if !c.GetBool("is_super_admin") {
-			response.FailCode(c, errs.CodeForbidden)
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
-}
-
-// AdminOnly 仅 org_admin（管理类配置写操作）。
+// AdminOnly 兼容旧命名，等价于 RequireAdmin。
 func (s *Security) AdminOnly() gin.HandlerFunc {
-	return s.RequireRoles(models.RoleOrgAdmin)
+	return s.RequireAdmin()
 }
 
 // ClientIP 取客户端 IP。

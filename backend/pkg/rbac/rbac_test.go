@@ -1,13 +1,12 @@
 package rbac
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/Fanc1er/Kate/backend/internal/master/models"
 )
 
-// 表驱动：四角色 × 关键读写权限，断言 viewer 无写权限、super_admin 仅平台权限。
+// 表驱动：admin/user 两角色 × 关键读写权限，断言 user 无成员与平台管理权限。
 func TestPermissionsMatrix(t *testing.T) {
 	cases := []struct {
 		name string
@@ -15,33 +14,24 @@ func TestPermissionsMatrix(t *testing.T) {
 		perm string
 		want bool
 	}{
-		// org_admin 拥有全部权限码。
-		{"org_admin-asset-write", models.RoleOrgAdmin, "asset:write", true},
-		{"org_admin-member-write", models.RoleOrgAdmin, "member:write", true},
-		{"org_admin-task-delete", models.RoleOrgAdmin, "task:delete", true},
-		{"org_admin-worker-write", models.RoleOrgAdmin, "worker:write", true},
-		{"org_admin-evidence-upload", models.RoleOrgAdmin, "evidence:upload", true},
-		{"org_admin-platform-read", models.RoleOrgAdmin, "platform:read", false},
-		// engineer 拥有资产/任务/处置写权限，但无成员与策略写权限。
-		{"engineer-asset-write", models.RoleEngineer, "asset:write", true},
-		{"engineer-task-write", models.RoleEngineer, "task:write", true},
-		{"engineer-event-write", models.RoleEngineer, "event:write", true},
-		{"engineer-evidence-upload", models.RoleEngineer, "evidence:upload", true},
-		{"engineer-member-write", models.RoleEngineer, "member:write", false},
-		{"engineer-policy-write", models.RoleEngineer, "policy:write", false},
-		{"engineer-worker-write", models.RoleEngineer, "worker:write", false},
-		// viewer 只读，任何写权限都禁止。
-		{"viewer-asset-read", models.RoleViewer, "asset:read", true},
-		{"viewer-asset-export", models.RoleViewer, "asset:export", true},
-		{"viewer-asset-write", models.RoleViewer, "asset:write", false},
-		{"viewer-event-write", models.RoleViewer, "event:write", false},
-		{"viewer-task-write", models.RoleViewer, "task:write", false},
-		{"viewer-alert-write", models.RoleViewer, "alert:write", false},
-		{"viewer-evidence-upload", models.RoleViewer, "evidence:upload", false},
-		// super_admin 平台通道，权限码含 org:write/platform:read。
-		{"super-admin-org-write", models.RoleSuperAdmin, "org:write", true},
-		{"super-admin-platform-read", models.RoleSuperAdmin, "platform:read", true},
-		{"super-admin-asset-write", models.RoleSuperAdmin, "asset:write", true},
+		// admin 拥有全部权限码 + 平台权限。
+		{"admin-asset-write", models.RoleAdmin, "asset:write", true},
+		{"admin-member-write", models.RoleAdmin, "member:write", true},
+		{"admin-task-delete", models.RoleAdmin, "task:delete", true},
+		{"admin-worker-write", models.RoleAdmin, "worker:write", true},
+		{"admin-evidence-upload", models.RoleAdmin, "evidence:upload", true},
+		{"admin-platform-read", models.RoleAdmin, "platform:read", true},
+		{"admin-org-write", models.RoleAdmin, "org:write", false},
+		// user 拥有业务读写权限，但无成员与平台管理权限。
+		{"user-asset-write", models.RoleUser, "asset:write", true},
+		{"user-task-write", models.RoleUser, "task:write", true},
+		{"user-task-delete", models.RoleUser, "task:delete", true},
+		{"user-event-write", models.RoleUser, "event:write", true},
+		{"user-evidence-upload", models.RoleUser, "evidence:upload", true},
+		{"user-policy-write", models.RoleUser, "policy:write", true},
+		{"user-worker-write", models.RoleUser, "worker:write", true},
+		{"user-member-write", models.RoleUser, "member:write", false},
+		{"user-platform-read", models.RoleUser, "platform:read", false},
 	}
 
 	for _, c := range cases {
@@ -53,11 +43,11 @@ func TestPermissionsMatrix(t *testing.T) {
 	}
 }
 
-// viewer 的全部权限码集合不得包含任何 *:write。
-func TestViewerNoWritePermissions(t *testing.T) {
-	for _, p := range PermissionsOf(models.RoleViewer) {
-		if strings.HasSuffix(p, ":write") {
-			t.Fatalf("viewer 不应拥有写权限 %q", p)
+// user 的权限码集合不得包含任何 member:write 或 platform:read。
+func TestUserNoMemberOrPlatformPermissions(t *testing.T) {
+	for _, p := range PermissionsOf(models.RoleUser) {
+		if p == "member:write" || p == "platform:read" {
+			t.Fatalf("user 不应拥有权限码 %q", p)
 		}
 	}
 }
