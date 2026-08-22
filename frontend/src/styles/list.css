@@ -138,3 +138,39 @@
     order: -1;
   }
 }
+
+/* 弹窗移动端适配 */
+@media (max-width: 768px) {
+  .drawer-mask,
+  .modal-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+  }
+  
+  .drawer {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  
+  .modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(100% - 32px) !important;
+    max-width: none !important;
+    max-height: 90vh;
+    overflow-y: auto;
+    margin: 0;
+  }
+  
+  .modal.wide {
+    width: calc(100% - 32px) !important;
+  }
+}
