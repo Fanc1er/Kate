@@ -90,6 +90,9 @@ func Setup(d *Deps) *gin.Engine {
 		response.OK(c, res)
 	})
 
+	// 平台管理（仅超管，无 org 上下文）。
+	registerAdmin(authed, d)
+
 	// 组织上下文（X-Org-Id）+ RBAC。
 	org := api.Group("", d.Security.AuthRequired(), d.Security.OrgRequired())
 	registerAssets(org, d)
@@ -101,7 +104,6 @@ func Setup(d *Deps) *gin.Engine {
 	registerDashboard(org, d)
 	registerMembers(org, d)
 	registerWorkerNodes(org, d)
-	registerAdmin(org, d)
 
 	if d.Seed != nil && !d.Seed.IsInitialized() {
 		// 未初始化时平台管理路由单独暴露（无 org 上下文）。

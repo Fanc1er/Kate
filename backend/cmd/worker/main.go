@@ -357,7 +357,14 @@ func (w *worker) execute(ctx context.Context, t *taskPayload, p *policyPayload, 
 			"end_down": uaRes.EndDown, "end_diff": uaRes.EndDiff,
 			"spa_suspected": uaRes.SPASuspected, "dom_similarity": uaRes.DOMSimilarity,
 		}
-		if len(uaRes.EndDown) > 0 || len(uaRes.EndDiff) > 0 {
+		// 端级敏感词/敏感信息命中：移动端定向投毒/劫持场景（各端 200 但内容污染）。
+		var pollutedEnds []string
+		for _, pr := range uaRes.Probes {
+			if len(pr.SensitiveHits) > 0 || len(pr.SensitiveInfoHits) > 0 {
+				pollutedEnds = append(pollutedEnds, pr.Name)
+			}
+		}
+		if len(uaRes.EndDown) > 0 || len(uaRes.EndDiff) > 0 || len(pollutedEnds) > 0 {
 			// 异常：生成 finding。
 			sev := engines.SeverityMedium
 			title := "端间状态码/延迟不一致"
@@ -367,6 +374,11 @@ func (w *worker) execute(ctx context.Context, t *taskPayload, p *policyPayload, 
 				title = "端差异化宕机: " + strings.Join(uaRes.EndDown, ",")
 				desc = fmt.Sprintf("部分探针可用性异常（%s），其余端正常，疑似端差异化宕机/移动端拦截",
 					strings.Join(uaRes.EndDown, ","))
+			} else if len(pollutedEnds) > 0 {
+				sev = engines.SeverityMedium
+				title = "端级内容污染: " + strings.Join(pollutedEnds, ",")
+				desc = fmt.Sprintf("端 %s 命中敏感内容（敏感词/敏感信息），其余端正常，疑似移动端劫持或定向投毒",
+					strings.Join(pollutedEnds, ","))
 			}
 			result.Findings = append(result.Findings, findingPayload{
 				EngineName: "multi_ua", Type: "multi_ua_availability", Severity: sev,

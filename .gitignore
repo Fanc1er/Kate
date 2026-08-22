@@ -8,6 +8,9 @@ backend/bin/
 backend/kate-backend
 backend/worker
 
+# Runtime data
+backend/data/
+
 # Editor / OS
 .vscode/
 .idea/

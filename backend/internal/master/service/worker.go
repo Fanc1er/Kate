@@ -160,6 +160,8 @@ func (s *WorkerService) PullTask(orgID int64, workerID string) (map[string]any, 
 			enabledEngines = append(enabledEngines, name)
 		}
 	}
+	// 高级开关展开为 Worker 细粒度引擎名（policy 开关 → 实际引擎）。
+	enabledEngines = expandEngineSwitches(enabledEngines)
 	// 缺省 availability 开关（兼容旧策略）。
 	hasAvailability := false
 	for _, n := range enabledEngines {
@@ -169,6 +171,24 @@ func (s *WorkerService) PullTask(orgID int64, workerID string) (map[string]any, 
 	}
 	if !hasAvailability {
 		enabledEngines = append(enabledEngines, "availability")
+	}
+	// 缺省 multi_ua 开关：未显式配置则默认启用（多端 UA 综合评估为高价值能力）。
+	hasMultiUA := false
+	for _, n := range enabledEngines {
+		if n == "multi_ua" {
+			hasMultiUA = true
+		}
+	}
+	if !hasMultiUA {
+		if m, ok := switches["multi_ua"].(map[string]any); ok {
+			if en, ok := m["enabled"].(bool); ok && !en {
+				// 显式关闭。
+			} else {
+				enabledEngines = append(enabledEngines, "multi_ua")
+			}
+		} else {
+			enabledEngines = append(enabledEngines, "multi_ua")
+		}
 	}
 	// 关键词规则：rule_definitions.kind=keyword 且 loaded 的启用规则随任务下发。
 	keywordRules := []map[string]any{}
@@ -827,6 +847,35 @@ func (s *WorkerService) isNoisy(orgID int64, url, engineName string) bool {
 		}
 	}
 	return false
+}
+
+// expandEngineSwitches 把策略高级开关展开为 Worker 侧细粒度引擎名。
+// 保留可直接识别的引擎名，映射 content/sensitive 等高级开关为对应子引擎。
+func expandEngineSwitches(enabled []string) []string {
+	expansion := map[string][]string{
+		"sensitive": {"sensitive_word", "sensitive_info"},
+		"content":   {"ai_classify", "dead_link", "keyword", "image_ocr", "external_link", "content_integrity"},
+		"multi_ua":  {"multi_ua"},
+		"webshell":  {"webshell"},
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(n string) {
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	for _, name := range enabled {
+		if subs, ok := expansion[name]; ok {
+			for _, s := range subs {
+				add(s)
+			}
+		} else {
+			add(name)
+		}
+	}
+	return out
 }
 
 func mapEvent(engine, findingType, severity string) (eventType, title string) {
