@@ -414,24 +414,24 @@ onMounted(load)
 .tabs {
   display: flex;
   gap: 6px;
-  border-bottom: 1px solid #e5e6eb;
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 8px;
   flex-wrap: wrap;
 }
 .tab {
   height: 32px;
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--color-border);
   background: #fff;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0 14px;
   cursor: pointer;
   font-size: 13px;
-  color: #4e5969;
+  color: var(--color-text-secondary);
 }
 .tab.active {
-  border-color: #4e83fd;
-  color: #4e83fd;
-  background: #f0f5ff;
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: var(--color-brand-light);
 }
 .toolbar {
   display: flex;
@@ -440,8 +440,8 @@ onMounted(load)
 }
 .input {
   height: 34px;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 0 10px;
   outline: none;
   width: 130px;
@@ -451,9 +451,9 @@ onMounted(load)
 }
 .btn {
   height: 34px;
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--color-border);
   background: #fff;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0 14px;
   cursor: pointer;
   font-size: 13px;
@@ -470,25 +470,25 @@ onMounted(load)
   text-align: left;
   padding: 10px 12px;
   background: #f7f8fa;
-  color: #4e5969;
-  border-bottom: 1px solid #e5e6eb;
-  font-weight: 500;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--font-weight-semibold);
   white-space: nowrap;
 }
 .table td {
   padding: 10px 12px;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--color-border-light);
   vertical-align: top;
 }
 .title {
-  font-weight: 500;
+  font-weight: var(--font-weight-semibold);
   max-width: 420px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .sub {
-  color: #86909c;
+  color: var(--color-text-tertiary);
   font-size: 12px;
   margin-top: 2px;
   max-width: 420px;
@@ -497,21 +497,21 @@ onMounted(load)
   white-space: nowrap;
 }
 .ocr {
-  color: #4e5969;
+  color: var(--color-text-secondary);
 }
 .sev {
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   color: #fff;
 }
-.sev.critical { background: #d03050; }
+.sev.critical { background: var(--color-danger); }
 .sev.high { background: #ff8000; }
 .sev.medium { background: #ff9f0a; }
 .sev.low { background: #52c41a; }
 .sev.info { background: #909399; }
 .mono {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   max-width: 260px;
   overflow: hidden;
@@ -521,47 +521,47 @@ onMounted(load)
 .link {
   border: none;
   background: none;
-  color: #4e83fd;
+  color: var(--color-brand);
   cursor: pointer;
   font-size: 13px;
   padding: 0;
 }
 .empty {
   text-align: center;
-  color: #86909c;
+  color: var(--color-text-tertiary);
   padding: 40px 0;
 }
 .pager {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #4e5969;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 .score {
   display: inline-block;
   width: 40px;
   text-align: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: #fff;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   padding: 2px 0;
   margin-right: 6px;
 }
-.score-critical { background: #d03050; }
+.score-critical { background: var(--color-danger); }
 .score-high { background: #ff8000; }
 .score-medium { background: #ff9f0a; }
 .score-low { background: #52c41a; }
 .lv {
   font-size: 12px;
-  color: #4e5969;
+  color: var(--color-text-secondary);
 }
 .tag {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: #f0f5ff;
-  color: #4e83fd;
+  color: var(--color-info);
   font-size: 12px;
 }
 .modal-mask {
@@ -575,7 +575,7 @@ onMounted(load)
 }
 .modal {
   background: #fff;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   width: 640px;
   max-width: 92vw;
   max-height: 82vh;
@@ -588,8 +588,8 @@ onMounted(load)
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  border-bottom: 1px solid #e5e6eb;
-  font-weight: 600;
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--font-weight-semibold);
 }
 .modal-body {
   padding: 16px;
@@ -604,7 +604,7 @@ onMounted(load)
   font-size: 13px;
 }
 .kv label {
-  color: #86909c;
+  color: var(--color-text-tertiary);
   width: 70px;
   flex-shrink: 0;
 }
@@ -618,16 +618,16 @@ onMounted(load)
   gap: 10px;
   font-size: 12px;
   align-items: center;
-  border: 1px solid #f2f3f5;
+  border: 1px solid var(--color-border-light);
   padding: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 .err {
-  color: #d03050;
+  color: var(--color-danger);
 }
 .json {
   background: #f7f8fa;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 12px;
   font-size: 12px;
   max-height: 50vh;

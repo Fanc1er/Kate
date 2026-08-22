@@ -91,17 +91,17 @@ onMounted(() => {
 }
 .stat-card {
   background: #fff;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 16px 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-card);
 }
 .label {
-  color: #86909c;
+  color: var(--color-text-tertiary);
   font-size: 13px;
 }
 .value {
   font-size: 28px;
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   margin-top: 6px;
 }
 h3 {
@@ -109,9 +109,9 @@ h3 {
 }
 .table-wrap {
   background: #fff;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-card);
   min-height: 100px;
 }
 .table {
@@ -123,15 +123,15 @@ h3 {
 .table td {
   text-align: left;
   padding: 10px;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--color-border-light);
 }
 .mono {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
 }
 .empty {
   text-align: center;
-  color: #86909c;
+  color: var(--color-text-tertiary);
   padding: 30px 0;
 }
 </style>

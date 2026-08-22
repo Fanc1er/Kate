@@ -121,25 +121,25 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1d2129 0%, #3370ff 100%);
+  background: linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-brand) 100%);
   padding: 24px;
 }
 .license-card {
   width: 520px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 40px 32px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 .title {
   margin: 0 0 4px;
   font-size: 24px;
-  color: #1d2129;
+  color: var(--color-text-primary);
   text-align: center;
 }
 .subtitle {
   margin: 0 0 24px;
-  color: #86909c;
+  color: var(--color-text-tertiary);
   text-align: center;
   font-size: 13px;
 }
@@ -149,66 +149,66 @@ onMounted(() => {
   justify-content: space-between;
   padding: 12px 16px;
   background: #f7f8fa;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   margin-bottom: 20px;
 }
 .status-label {
-  color: #4e5969;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 .status-value {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .status-value.valid {
-  color: #00b42a;
+  color: var(--color-success);
 }
 .status-value.missing,
 .status-value.invalid,
 .status-value.expired,
 .status-value.machine_mismatch {
-  color: #d03050;
+  color: var(--color-danger);
 }
 .status-value.not_yet_active {
-  color: #ff7d00;
+  color: var(--color-warning);
 }
 .section {
   margin-bottom: 20px;
 }
 .section-title {
   font-size: 14px;
-  font-weight: 600;
-  color: #1d2129;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
   margin-bottom: 8px;
 }
 .machine-code {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   word-break: break-all;
   background: #f7f8fa;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 10px;
   margin-bottom: 8px;
 }
 .source {
-  color: #86909c;
+  color: var(--color-text-tertiary);
   font-size: 12px;
   margin-bottom: 8px;
 }
 .btn {
   height: 34px;
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--color-border);
   background: #fff;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0 14px;
   cursor: pointer;
   font-size: 13px;
 }
 .btn.primary {
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
-  border-color: #3370ff;
+  border-color: var(--color-brand);
   display: inline-block;
   line-height: 34px;
 }
@@ -220,19 +220,19 @@ onMounted(() => {
   display: none;
 }
 .error {
-  color: #d03050;
+  color: var(--color-danger);
   font-size: 13px;
   margin: 8px 0 0;
 }
 .notice {
   background: #fff7e6;
-  color: #d46b08;
-  border-radius: 8px;
+  color: var(--color-warning);
+  border-radius: var(--radius-md);
   padding: 10px 14px;
   font-size: 13px;
 }
 .notice.success {
   background: #e8ffea;
-  color: #00b42a;
+  color: var(--color-success);
 }
 </style>

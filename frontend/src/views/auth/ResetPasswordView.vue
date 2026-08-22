@@ -72,14 +72,14 @@ async function submit(): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
 }
 .card {
   width: 380px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 32px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-hover);
 }
 .field {
   margin-bottom: 16px;
@@ -92,21 +92,21 @@ async function submit(): Promise<void> {
 .input {
   width: 100%;
   height: 36px;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 0 10px;
   outline: none;
 }
 .input:focus {
-  border-color: #3370ff;
+  border-color: var(--color-brand);
 }
 .submit-btn {
   width: 100%;
   height: 38px;
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   margin-bottom: 8px;
 }
@@ -114,15 +114,15 @@ async function submit(): Promise<void> {
   width: 100%;
   border: none;
   background: transparent;
-  color: #3370ff;
+  color: var(--color-brand);
   cursor: pointer;
 }
 .error {
-  color: #d03050;
+  color: var(--color-danger);
   font-size: 13px;
 }
 .success {
-  color: #00b42a;
+  color: var(--color-success);
   font-size: 13px;
 }
 </style>

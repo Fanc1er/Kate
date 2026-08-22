@@ -40,7 +40,7 @@ function reload(): void {
   padding: 32px 40px;
   border-radius: 10px;
   background: #fff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-hover);
 }
 h3 {
   margin: 0 0 8px;
@@ -48,21 +48,21 @@ h3 {
 }
 .msg {
   margin: 0 0 16px;
-  color: #86909c;
+  color: var(--color-text-tertiary);
   font-size: 13px;
   max-width: 420px;
   word-break: break-all;
 }
 .retry {
   border: none;
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 6px 18px;
   font-size: 13px;
   cursor: pointer;
 }
 .retry:hover {
-  background: #2b5fd9;
+  background: var(--color-brand-hover);
 }
 </style>

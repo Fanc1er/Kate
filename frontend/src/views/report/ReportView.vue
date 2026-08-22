@@ -106,27 +106,27 @@ onMounted(() => void generate())
 }
 .btn {
   height: 34px;
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--color-border);
   background: #fff;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0 14px;
   cursor: pointer;
   font-size: 13px;
   margin-left: 8px;
 }
 .btn.primary {
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
-  border-color: #3370ff;
+  border-color: var(--color-brand);
 }
 .report {
   background: #fff;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-card);
 }
 .meta {
-  color: #86909c;
+  color: var(--color-text-tertiary);
   font-size: 12px;
 }
 .table {
@@ -139,10 +139,10 @@ onMounted(() => void generate())
 .table td {
   text-align: left;
   padding: 8px 10px;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--color-border-light);
 }
 .mono {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
 }
 </style>

@@ -33,7 +33,7 @@ defineProps<{
 .skeleton-bar {
   display: block;
   height: 14px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: linear-gradient(90deg, #eef0f3 25%, #f7f8fa 50%, #eef0f3 75%);
   background-size: 200% 100%;
   animation: skeleton-pulse 1.4s ease-in-out infinite;
@@ -44,8 +44,8 @@ defineProps<{
 .skeleton-cards .skeleton-col {
   min-width: 220px;
   height: 96px;
-  border-radius: 8px;
-  border: 1px solid #f2f3f5;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
   background: #fff;
 }
 @keyframes skeleton-pulse {

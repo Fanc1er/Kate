@@ -23,14 +23,14 @@ const router = useRouter()
 h1 {
   margin: 0;
   font-size: 64px;
-  color: #1d2129;
+  color: var(--color-text-primary);
 }
 .btn {
   border: none;
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
   padding: 8px 20px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 </style>

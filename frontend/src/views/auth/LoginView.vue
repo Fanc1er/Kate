@@ -67,24 +67,24 @@ async function submit(): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1d2129 0%, #3370ff 100%);
+  background: linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-brand) 100%);
 }
 .login-card {
   width: 360px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 40px 32px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 .title {
   margin: 0 0 4px;
   font-size: 24px;
-  color: #1d2129;
+  color: var(--color-text-primary);
   text-align: center;
 }
 .subtitle {
   margin: 0 0 24px;
-  color: #86909c;
+  color: var(--color-text-tertiary);
   text-align: center;
   font-size: 13px;
 }
@@ -95,32 +95,32 @@ async function submit(): Promise<void> {
   display: block;
   margin-bottom: 6px;
   font-size: 13px;
-  color: #4e5969;
+  color: var(--color-text-secondary);
 }
 .input {
   width: 100%;
   height: 36px;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 0 10px;
   font-size: 14px;
   outline: none;
 }
 .input:focus {
-  border-color: #3370ff;
+  border-color: var(--color-brand);
 }
 .error {
-  color: #d03050;
+  color: var(--color-danger);
   font-size: 13px;
   margin: 0 0 12px;
 }
 .submit-btn {
   width: 100%;
   height: 38px;
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 14px;
   cursor: pointer;
 }
@@ -133,7 +133,7 @@ async function submit(): Promise<void> {
   text-align: center;
 }
 .links a {
-  color: #3370ff;
+  color: var(--color-brand);
   font-size: 13px;
 }
 </style>

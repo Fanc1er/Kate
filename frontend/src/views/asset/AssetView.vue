@@ -556,8 +556,8 @@ onMounted(() => {
 }
 .input {
   height: 34px;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 0 10px;
   outline: none;
 }
@@ -572,21 +572,21 @@ onMounted(() => {
 }
 .btn {
   height: 34px;
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--color-border);
   background: #fff;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0 14px;
   cursor: pointer;
   font-size: 13px;
 }
 .btn.primary {
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
-  border-color: #3370ff;
+  border-color: var(--color-brand);
 }
 .btn.danger {
-  color: #d03050;
-  border-color: #d03050;
+  color: var(--color-danger);
+  border-color: var(--color-danger);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -595,19 +595,19 @@ onMounted(() => {
 .link {
   border: none;
   background: transparent;
-  color: #3370ff;
+  color: var(--color-brand);
   cursor: pointer;
   font-size: 13px;
   margin-right: 8px;
 }
 .link.danger {
-  color: #d03050;
+  color: var(--color-danger);
 }
 .table-wrap {
   background: #fff;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-card);
   min-height: 200px;
 }
 .table {
@@ -619,15 +619,15 @@ onMounted(() => {
 .table td {
   text-align: left;
   padding: 10px;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--color-border-light);
 }
 .mono {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
 }
 .empty {
   text-align: center;
-  color: #86909c;
+  color: var(--color-text-tertiary);
   padding: 40px 0;
 }
 .pager {
@@ -674,13 +674,13 @@ onMounted(() => {
   margin-top: 16px;
 }
 .error {
-  color: #d03050;
+  color: var(--color-danger);
   font-size: 13px;
 }
 .profile-json {
   background: #f7f8fa;
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 12px;
   max-height: 50vh;
   overflow: auto;
@@ -689,18 +689,18 @@ onMounted(() => {
 .divider {
   width: 1px;
   height: 20px;
-  background: #e5e6eb;
+  background: var(--color-border);
   margin: 0 4px;
 }
 .tab-active {
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
-  border-color: #3370ff;
+  border-color: var(--color-brand);
 }
 .avatar {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   object-fit: cover;
 }
 .field-row {
@@ -714,7 +714,7 @@ onMounted(() => {
   display: flex;
   gap: 4px;
   margin-bottom: 12px;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--color-border-light);
   padding-bottom: 8px;
 }
 .profile-grid {
@@ -729,7 +729,7 @@ onMounted(() => {
 }
 .p-label {
   width: 80px;
-  color: #86909c;
+  color: var(--color-text-tertiary);
   flex: none;
 }
 .chips {

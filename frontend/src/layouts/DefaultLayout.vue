@@ -109,8 +109,9 @@ onBeforeUnmount(() => {
 }
 .sider {
   width: 200px;
-  background: #1d2129;
-  color: #c9cdd4;
+  background: var(--color-bg-card);
+  border-right: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
   display: flex;
   flex-direction: column;
   transition: width 0.2s;
@@ -125,45 +126,49 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   padding: 0 16px;
-  border-bottom: 1px solid #2e3340;
+  border-bottom: 1px solid var(--color-border);
 }
 .logo-dot {
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   width: 28px;
   height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
 }
 .logo-text {
-  color: #fff;
-  font-size: 16px;
-  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
 }
 .menu {
   flex: 1;
-  padding: 8px;
+  padding: var(--spacing-2);
   overflow-y: auto;
 }
 .menu-item {
   display: block;
   padding: 10px 12px;
-  margin-bottom: 4px;
-  border-radius: 6px;
-  font-size: 14px;
+  margin-bottom: var(--spacing-1);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
   cursor: pointer;
-  color: #c9cdd4;
+  color: var(--color-text-secondary);
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 .menu-item:hover {
-  background: #2b313c;
-  color: #fff;
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
 .menu-item.active {
-  background: #3370ff;
-  color: #fff;
+  background: var(--color-bg-selected);
+  color: var(--color-brand);
+  font-weight: var(--font-weight-semibold);
 }
 .collapsed-tip {
   display: block;
@@ -178,8 +183,8 @@ onBeforeUnmount(() => {
 }
 .topbar {
   height: 56px;
-  background: #fff;
-  border-bottom: 1px solid #e5e6eb;
+  background: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   padding: 0 16px;
@@ -189,45 +194,45 @@ onBeforeUnmount(() => {
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 16px;
-  color: #666;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
 }
 .topbar-title {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .topbar-right {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .org-name {
-  color: #333;
+  color: var(--color-text-primary);
 }
 .role-tag {
-  background: #e8f3ff;
-  color: #3370ff;
-  border-radius: 4px;
+  background: var(--color-brand-light);
+  color: var(--color-brand);
+  border-radius: var(--radius-sm);
   padding: 2px 8px;
 }
 .btn-link {
   border: none;
   background: transparent;
-  color: #3370ff;
+  color: var(--color-brand);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .btn-link:hover {
   text-decoration: underline;
 }
 .ws-banner {
   background: #fff7e6;
-  color: #d46b08;
+  color: var(--color-warning);
   text-align: center;
   padding: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .content {
   flex: 1;

@@ -13,10 +13,10 @@ const radarOption = ref<Record<string, unknown>>({})
 const loading = ref(true)
 
 const cards = ref([
-  { key: 'assets', label: '资产', color: '#3370ff' },
-  { key: 'findings', label: '发现', color: '#ff7d00' },
-  { key: 'events_today', label: '今日事件', color: '#00b42a' },
-  { key: 'alerts_open', label: '未处理告警', color: '#d03050' },
+  { key: 'assets', label: '资产' },
+  { key: 'findings', label: '发现' },
+  { key: 'events_today', label: '今日事件' },
+  { key: 'alerts_open', label: '未处理告警' },
 ])
 
 async function load(): Promise<void> {
@@ -37,8 +37,8 @@ async function load(): Promise<void> {
       xAxis: { type: 'category', data: t.dates },
       yAxis: { type: 'value', minInterval: 1 },
       series: [
-        { name: '发现', type: 'line', smooth: true, data: t.findings, itemStyle: { color: '#3370ff' } },
-        { name: '告警', type: 'line', smooth: true, data: t.alerts, itemStyle: { color: '#d03050' } },
+        { name: '发现', type: 'line', smooth: true, data: t.findings, itemStyle: { color: '#1890ff' } },
+        { name: '告警', type: 'line', smooth: true, data: t.alerts, itemStyle: { color: '#ff4d4f' } },
       ],
     }
     const engineNames = cov.map((e) => e.name)
@@ -52,7 +52,8 @@ async function load(): Promise<void> {
         {
           type: 'radar',
           data: [{ value: cov.map((e) => e.findings), name: '引擎覆盖率' }],
-          areaStyle: { opacity: 0.2 },
+          itemStyle: { color: '#00b578' },
+          areaStyle: { color: '#00b578', opacity: 0.2 },
         },
       ],
     }
@@ -80,7 +81,7 @@ onBeforeUnmount(() => {
     <div class="cards">
       <div v-for="c in cards" :key="c.key" class="card">
         <div class="card-label">{{ c.label }}</div>
-        <div class="card-value" :style="{ color: c.color }">
+        <div class="card-value">
           {{ stats ? String((stats as Record<string, number>)[c.key] ?? 0) : '–' }}
         </div>
       </div>
@@ -137,19 +138,21 @@ onBeforeUnmount(() => {
   gap: 16px;
 }
 .card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-5);
+  box-shadow: var(--shadow-card);
 }
 .card-label {
-  color: #86909c;
-  font-size: 13px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
 }
 .card-value {
-  font-size: 32px;
-  font-weight: 700;
-  margin-top: 8px;
+  font-size: var(--font-size-number);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-top: var(--spacing-2);
 }
 .row {
   display: grid;
@@ -157,29 +160,31 @@ onBeforeUnmount(() => {
   gap: 16px;
 }
 .panel {
-  background: #fff;
-  border-radius: 8px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 16px 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-card);
 }
 .panel h3 {
   margin: 0 0 12px;
   font-size: 15px;
+  font-weight: var(--font-weight-semibold);
 }
 .risk-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 .risk-table th,
 .risk-table td {
   text-align: left;
   padding: 8px;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--color-border-light);
 }
 .mono {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  color: #4e5969;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
 }
 </style>

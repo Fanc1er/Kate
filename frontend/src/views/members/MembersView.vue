@@ -161,40 +161,40 @@ onMounted(load)
 }
 .btn {
   height: 34px;
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--color-border);
   background: #fff;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0 14px;
   cursor: pointer;
   font-size: 13px;
 }
 .btn.primary {
-  background: #3370ff;
+  background: var(--color-brand);
   color: #fff;
-  border-color: #3370ff;
+  border-color: var(--color-brand);
 }
 .link {
   border: none;
   background: transparent;
-  color: #3370ff;
+  color: var(--color-brand);
   cursor: pointer;
   font-size: 13px;
   margin-right: 8px;
 }
 .link.danger {
-  color: #d03050;
+  color: var(--color-danger);
 }
 .role-select {
-  border: 1px solid #e5e6eb;
-  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   padding: 4px 6px;
   font-size: 13px;
 }
 .table-wrap {
   background: #fff;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-card);
   min-height: 200px;
 }
 .table {
@@ -206,11 +206,11 @@ onMounted(load)
 .table td {
   text-align: left;
   padding: 10px;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--color-border-light);
 }
 .empty {
   text-align: center;
-  color: #86909c;
+  color: var(--color-text-tertiary);
   padding: 40px 0;
 }
 .modal-mask {
@@ -239,8 +239,8 @@ onMounted(load)
 .input {
   width: 100%;
   height: 34px;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 0 10px;
   outline: none;
 }
@@ -251,7 +251,7 @@ onMounted(load)
   margin-top: 16px;
 }
 .error {
-  color: #d03050;
+  color: var(--color-danger);
   font-size: 13px;
 }
 </style>

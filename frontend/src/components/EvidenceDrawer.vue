@@ -271,8 +271,8 @@ function close(): void {
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid #e5e6eb;
-  font-weight: 600;
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--font-weight-semibold);
 }
 .close {
   border: none;
@@ -292,30 +292,30 @@ function close(): void {
   margin-bottom: 12px;
 }
 .tab {
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--color-border);
   background: #fff;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 4px 12px;
   cursor: pointer;
   font-size: 13px;
 }
 .tab.active {
-  border-color: #3370ff;
-  color: #3370ff;
+  border-color: var(--color-brand);
+  color: var(--color-brand);
 }
 .meta {
   display: flex;
   align-items: center;
   gap: 12px;
   font-size: 12px;
-  color: #86909c;
+  color: var(--color-text-tertiary);
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
 .btn {
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--color-border);
   background: #fff;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 2px 10px;
   cursor: pointer;
   font-size: 12px;
@@ -327,26 +327,26 @@ function close(): void {
   margin-bottom: 12px;
 }
 .file-chip {
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--color-border);
   background: #fff;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 2px 12px;
   cursor: pointer;
   font-size: 12px;
 }
 .file-chip.active {
-  border-color: #3370ff;
-  color: #3370ff;
-  background: #e8f3ff;
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: var(--color-brand-light);
 }
 .chip-mono {
   margin-left: 6px;
-  color: #86909c;
+  color: var(--color-text-tertiary);
 }
 .tamper-banner {
   background: #ffece8;
-  color: #d03050;
-  border-radius: 6px;
+  color: var(--color-danger);
+  border-radius: var(--radius-md);
   padding: 10px 12px;
   margin-bottom: 12px;
   font-size: 13px;
@@ -362,8 +362,8 @@ function close(): void {
 }
 .code {
   background: #f7f8fa;
-  border: 1px solid #f2f3f5;
-  border-radius: 6px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
   padding: 12px;
   font-size: 12px;
   line-height: 1.6;
@@ -371,16 +371,16 @@ function close(): void {
   word-break: break-all;
   max-height: 50vh;
   overflow: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-family-mono);
 }
 .screenshot-wrap {
   background: #f7f8fa;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px;
 }
 .screenshot {
   max-width: 100%;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 .html-toolbar {
   display: flex;
@@ -390,11 +390,11 @@ function close(): void {
 }
 .html-lines {
   background: #f7f8fa;
-  border-radius: 6px;
-  border: 1px solid #f2f3f5;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
   max-height: 50vh;
   overflow: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-family-mono);
 }
 .code-line {
   display: flex;
@@ -408,7 +408,7 @@ function close(): void {
   padding-right: 12px;
   color: #c0c4cc;
   user-select: none;
-  border-right: 1px solid #f2f3f5;
+  border-right: 1px solid var(--color-border-light);
   margin-right: 12px;
 }
 .line-text {
@@ -417,11 +417,11 @@ function close(): void {
   word-break: break-all;
 }
 .hint {
-  color: #86909c;
+  color: var(--color-text-tertiary);
   font-size: 13px;
 }
 .error {
-  color: #d03050;
+  color: var(--color-danger);
   font-size: 13px;
 }
 .text-wrap {
