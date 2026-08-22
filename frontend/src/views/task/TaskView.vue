@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, toRef } from 'vue'
 import {
   listTasks,
   createTask,
@@ -15,6 +15,8 @@ import { listAssets, type Asset } from '../../api/asset'
 import { formatTime, statusLabel } from '../../utils/format'
 import { toast, confirmDialog } from '../../utils/toast'
 import Skeleton from '../../components/Skeleton.vue'
+import FilterPanel from '../../components/FilterPanel.vue'
+import { useQuerySync } from '../../composables/useQuerySync'
 
 const list = ref<ScanTask[]>([])
 const total = ref(0)
@@ -22,6 +24,15 @@ const loading = ref(false)
 const statusFilter = ref('')
 const selected = ref<number[]>([])
 const page = reactive({ page: 1, page_size: 20 })
+
+useQuerySync(
+  [
+    ['status', statusFilter],
+    ['page', toRef(page, 'page')],
+    ['page_size', toRef(page, 'page_size')],
+  ],
+  { numberKeys: ['page', 'page_size'], defaults: { page: 1, page_size: 20 } },
+)
 
 const showCreate = ref(false)
 const assets = ref<Asset[]>([])
@@ -39,6 +50,12 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+function clearFilters(): void {
+  statusFilter.value = ''
+  page.page = 1
+  void load()
 }
 
 async function openCreate(): Promise<void> {
@@ -127,69 +144,76 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="task-page">
-    <div class="toolbar">
-      <select v-model="statusFilter" class="input select" @change="load">
-        <option value="">全部状态</option>
-        <option value="pending">待执行</option>
-        <option value="processing">执行中</option>
-        <option value="completed">已完成</option>
-        <option value="failed">失败</option>
-        <option value="cancelled">已取消</option>
-      </select>
-      <button class="btn" @click="load">查询</button>
-      <span class="spacer" />
-      <button class="btn primary" @click="openCreate">新建任务</button>
-      <button class="btn" :disabled="selected.length === 0" @click="doBatchStop">批量停止</button>
-    </div>
+  <div class="list-page task-page">
+    <FilterPanel clearable @clear="clearFilters">
+      <div class="filter-group">
+        <div class="filter-label">状态</div>
+        <select v-model="statusFilter" class="filter-select" @change="page.page = 1; load()">
+          <option value="">全部状态</option>
+          <option value="pending">待执行</option>
+          <option value="processing">执行中</option>
+          <option value="completed">已完成</option>
+          <option value="failed">失败</option>
+          <option value="cancelled">已取消</option>
+        </select>
+      </div>
+    </FilterPanel>
 
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th style="width: 40px"></th>
-            <th>ID</th>
-            <th>资产</th>
-            <th>策略</th>
-            <th>状态</th>
-            <th>进度</th>
-            <th>发现数</th>
-            <th>创建时间</th>
-            <th style="width: 180px">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="t in list" :key="t.id">
-            <td><input type="checkbox" :checked="selected.includes(t.id)" @change="toggleSelect(t.id)" /></td>
-            <td>#{{ t.id }}</td>
-            <td>{{ t.asset_name || t.asset_id }}</td>
-            <td>#{{ t.policy_id }}</td>
-            <td>
-              {{ statusLabel(t.status) }}
-              <span v-if="t.task_timeout" class="tag">超时</span>
-              <span v-if="t.stopped_by_user" class="tag">手动停止</span>
-            </td>
-            <td>{{ t.progress }}%</td>
-            <td>{{ t.findings_count ?? 0 }}</td>
-            <td>{{ formatTime(t.created_at) }}</td>
-            <td>
-              <button v-if="canStop(t)" class="link" @click="doStop(t)">停止</button>
-              <button class="link" @click="doRerun(t)">重跑</button>
-              <button class="link danger" @click="doDelete(t)">删除</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div v-if="!loading && list.length === 0" class="empty">暂无任务</div>
-      <Skeleton v-if="loading" :rows="6" :cols="5" />
-    </div>
+    <section class="list-main">
+      <div class="list-toolbar">
+        <span class="spacer" />
+        <button class="btn primary" @click="openCreate">新建任务</button>
+        <button class="btn" :disabled="selected.length === 0" @click="doBatchStop">批量停止</button>
+      </div>
 
-    <div class="pager">
-      <span>共 {{ total }} 条</span>
-      <button class="btn" :disabled="page.page <= 1" @click="page.page--; load()">上一页</button>
-      <span>{{ page.page }}</span>
-      <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
-    </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width: 40px"></th>
+              <th>ID</th>
+              <th>资产</th>
+              <th>策略</th>
+              <th>状态</th>
+              <th>进度</th>
+              <th>发现数</th>
+              <th>创建时间</th>
+              <th style="width: 180px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="t in list" :key="t.id">
+              <td><input type="checkbox" :checked="selected.includes(t.id)" @change="toggleSelect(t.id)" /></td>
+              <td>#{{ t.id }}</td>
+              <td>{{ t.asset_name || t.asset_id }}</td>
+              <td>#{{ t.policy_id }}</td>
+              <td>
+                {{ statusLabel(t.status) }}
+                <span v-if="t.task_timeout" class="tag">超时</span>
+                <span v-if="t.stopped_by_user" class="tag">手动停止</span>
+              </td>
+              <td>{{ t.progress }}%</td>
+              <td>{{ t.findings_count ?? 0 }}</td>
+              <td>{{ formatTime(t.created_at) }}</td>
+              <td>
+                <button v-if="canStop(t)" class="link" @click="doStop(t)">停止</button>
+                <button class="link" @click="doRerun(t)">重跑</button>
+                <button class="link danger" @click="doDelete(t)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="!loading && list.length === 0" class="empty">暂无任务</div>
+        <Skeleton v-if="loading" :rows="6" :cols="5" />
+      </div>
+
+      <div class="pager">
+        <span>共 {{ total }} 条</span>
+        <button class="btn" :disabled="page.page <= 1" @click="page.page--; load()">上一页</button>
+        <span>{{ page.page }}</span>
+        <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
+      </div>
+    </section>
 
     <div v-if="showCreate" class="modal-mask" @click.self="showCreate = false">
       <div class="modal">
@@ -221,16 +245,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.task-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.toolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
 .input {
   height: 34px;
   border: 1px solid var(--color-border);

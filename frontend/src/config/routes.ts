@@ -11,6 +11,8 @@ export interface AppRoute {
   path: string
   name: string
   component: () => Promise<unknown>
+  redirect?: string
+  children?: AppRoute[]
   meta: {
     title: string
     roles?: string[]
@@ -65,28 +67,37 @@ export const APP_ROUTES: AppRoute[] = [
     meta: { title: '任务' },
   },
   {
-    path: '/events',
-    name: 'events',
-    component: () => import('../views/event/EventView.vue'),
-    meta: { title: '安全事件' },
-  },
-  {
-    path: '/alerts',
-    name: 'alerts',
-    component: () => import('../views/alert/AlertView.vue'),
-    meta: { title: '告警' },
-  },
-  {
-    path: '/vulnerabilities',
-    name: 'vulnerabilities',
-    component: () => import('../views/vulnerability/VulnerabilityView.vue'),
-    meta: { title: '漏洞' },
-  },
-  {
-    path: '/findings',
-    name: 'findings',
-    component: () => import('../views/event/FindingView.vue'),
-    meta: { title: '发现' },
+    path: '/risk',
+    name: 'risk',
+    component: () => import('../views/risk/RiskCenterView.vue'),
+    redirect: '/risk/findings',
+    meta: { title: '风险中心' },
+    children: [
+      {
+        path: 'findings',
+        name: 'risk-findings',
+        component: () => import('../views/event/FindingView.vue'),
+        meta: { title: '发现' },
+      },
+      {
+        path: 'events',
+        name: 'risk-events',
+        component: () => import('../views/event/EventView.vue'),
+        meta: { title: '安全事件' },
+      },
+      {
+        path: 'alerts',
+        name: 'risk-alerts',
+        component: () => import('../views/alert/AlertView.vue'),
+        meta: { title: '告警' },
+      },
+      {
+        path: 'vulnerabilities',
+        name: 'risk-vulnerabilities',
+        component: () => import('../views/vulnerability/VulnerabilityView.vue'),
+        meta: { title: '漏洞' },
+      },
+    ],
   },
   {
     path: '/content-security',
@@ -136,10 +147,7 @@ export const MENU: MenuItem[] = [
   { title: '仪表盘', path: '/', roles: ['admin', 'user'] },
   { title: '资产', path: '/assets', roles: ['admin', 'user'] },
   { title: '任务', path: '/tasks', roles: ['admin', 'user'] },
-  { title: '安全事件', path: '/events', roles: ['admin', 'user'] },
-  { title: '告警', path: '/alerts', roles: ['admin', 'user'] },
-  { title: '漏洞', path: '/vulnerabilities', roles: ['admin', 'user'] },
-  { title: '发现', path: '/findings', roles: ['admin', 'user'] },
+  { title: '风险中心', path: '/risk', roles: ['admin', 'user'] },
   { title: '内容安全', path: '/content-security', roles: ['admin', 'user'] },
   { title: '可用性监测', path: '/availability', roles: ['admin', 'user'] },
   { title: '工单', path: '/tickets', roles: ['admin', 'user'] },

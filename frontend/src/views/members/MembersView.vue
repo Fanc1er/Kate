@@ -1,14 +1,23 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, toRef } from 'vue'
 import { listMembers, inviteMember, setMemberRole, setMemberStatus, removeMember, type Member } from '../../api/admin'
 import { formatTime, statusLabel } from '../../utils/format'
 import { ROLE_LABELS } from '../../config/permissions'
 import { toast, confirmDialog } from '../../utils/toast'
+import { useQuerySync } from '../../composables/useQuerySync'
 
 const list = ref<Member[]>([])
 const total = ref(0)
 const loading = ref(false)
 const page = reactive({ page: 1, page_size: 20 })
+
+useQuerySync(
+  [
+    ['page', toRef(page, 'page')],
+    ['page_size', toRef(page, 'page_size')],
+  ],
+  { numberKeys: ['page', 'page_size'], defaults: { page: 1, page_size: 20 } },
+)
 
 const showInvite = ref(false)
 const form = reactive({ email: '', role: 'user' })

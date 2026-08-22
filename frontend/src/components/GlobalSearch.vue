@@ -89,7 +89,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </div>
         <div v-if="findings.length" class="group">
           <div class="group-title">发现</div>
-          <button v-for="f in findings" :key="f.id" class="result" @click="go('/findings')">
+          <button v-for="f in findings" :key="f.id" class="result" @click="go('/risk/findings')">
             <span class="result-name">{{ f.title }}</span>
             <span class="result-url">{{ f.url }}</span>
           </button>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, toRef } from 'vue'
 import {
   listAssets,
   createAsset,
@@ -23,6 +23,8 @@ import {
 import { formatTime } from '../../utils/format'
 import { toast, confirmDialog } from '../../utils/toast'
 import Skeleton from '../../components/Skeleton.vue'
+import FilterPanel from '../../components/FilterPanel.vue'
+import { useQuerySync } from '../../composables/useQuerySync'
 
 const list = ref<Asset[]>([])
 const total = ref(0)
@@ -33,6 +35,16 @@ const selected = ref<number[]>([])
 const groups = ref<string[]>([])
 
 const page = reactive({ page: 1, page_size: 20 })
+
+useQuerySync(
+  [
+    ['keyword', keyword],
+    ['group_name', groupName],
+    ['page', toRef(page, 'page')],
+    ['page_size', toRef(page, 'page_size')],
+  ],
+  { numberKeys: ['page', 'page_size'], defaults: { page: 1, page_size: 20 } },
+)
 
 const showCreate = ref(false)
 const showGroupDialog = ref(false)
@@ -69,6 +81,13 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+function clearFilters(): void {
+  keyword.value = ''
+  groupName.value = ''
+  page.page = 1
+  void load()
 }
 
 async function loadGroups(): Promise<void> {
@@ -295,19 +314,26 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="asset-page">
-    <div class="toolbar">
-      <button class="btn" :class="{ 'tab-active': !wechatTab }" @click="wechatTab = false">Web 资产</button>
-      <button class="btn" :class="{ 'tab-active': wechatTab }" @click="wechatTab = true; loadWechat()">微信公众号</button>
-      <span class="divider" />
-      <template v-if="!wechatTab">
-        <input v-model="keyword" class="input search" placeholder="搜索名称 / URL" @keyup.enter="load" />
-        <select v-model="groupName" class="input select" @change="load">
+  <div class="asset-page" :class="{ 'list-page': !wechatTab }">
+    <FilterPanel v-if="!wechatTab" clearable @clear="clearFilters">
+      <div class="filter-group">
+        <div class="filter-label">分组</div>
+        <select v-model="groupName" class="filter-select" @change="page.page = 1; load()">
           <option value="">全部分组</option>
           <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
         </select>
-        <button class="btn" @click="load">查询</button>
-        <span class="spacer" />
+      </div>
+    </FilterPanel>
+
+    <section class="list-main">
+      <div class="list-toolbar">
+        <button class="btn" :class="{ 'tab-active': !wechatTab }" @click="wechatTab = false">Web 资产</button>
+        <button class="btn" :class="{ 'tab-active': wechatTab }" @click="wechatTab = true; loadWechat()">微信公众号</button>
+        <span class="divider" />
+        <template v-if="!wechatTab">
+          <input v-model="keyword" class="input search" placeholder="搜索名称 / URL" @keyup.enter="page.page = 1; load()" />
+          <button class="btn" @click="load">查询</button>
+          <span class="spacer" />
         <button class="btn primary" @click="openCreate">新增资产</button>
         <button class="btn" :disabled="selected.length === 0" @click="doBatchScan">批量扫描</button>
         <button class="btn" :disabled="selected.length === 0" @click="openGroupDialog">批量分组</button>
@@ -403,6 +429,7 @@ onMounted(() => {
       <span>{{ page.page }}</span>
       <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
     </div>
+    </section>
 
     <div v-if="showCreate" class="modal-mask" @click.self="showCreate = false">
       <div class="modal">
@@ -543,17 +570,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.asset-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.toolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
 .input {
   height: 34px;
   border: 1px solid var(--color-border);

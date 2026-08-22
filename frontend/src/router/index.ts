@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useLicenseStore } from '../stores/license'
 import { APP_ROUTES, STATIC_ROUTES, canAccess } from '../config/routes'
@@ -18,7 +18,7 @@ const router = createRouter({
       component: () => import('../views/error/NotFoundView.vue'),
       meta: { title: '404' },
     },
-  ],
+  ] as RouteRecordRaw[],
 })
 
 router.beforeEach(async (to) => {

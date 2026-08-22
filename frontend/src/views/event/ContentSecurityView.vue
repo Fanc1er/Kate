@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, toRef } from 'vue'
 import { listFindings, type Finding } from '../../api/event'
 import { listAssets, type Asset } from '../../api/asset'
 import { formatTime, severityLabel, statusLabel } from '../../utils/format'
 import { parseExtra } from '../../api/finding'
 import EvidenceDrawer from '../../components/EvidenceDrawer.vue'
 import Skeleton from '../../components/Skeleton.vue'
+import FilterPanel from '../../components/FilterPanel.vue'
+import { useQuerySync } from '../../composables/useQuerySync'
 
 // Tab 定义：每个 tab 对应一类内容安全 finding。
 // engine_name 为空时按 type 过滤（跨引擎同名 type）。
@@ -79,6 +81,21 @@ const status = ref('')
 const keyword = ref('')
 const page = reactive({ page: 1, page_size: 20 })
 
+useQuerySync(
+  [
+    ['tab', activeTab],
+    ['severity', severity],
+    ['status', status],
+    ['keyword', keyword],
+    ['page', toRef(page, 'page')],
+    ['page_size', toRef(page, 'page_size')],
+  ],
+  {
+    numberKeys: ['page', 'page_size'],
+    defaults: { page: 1, page_size: 20, tab: tabs[0].key },
+  },
+)
+
 const drawerVisible = ref(false)
 const drawerIds = ref<number[]>([])
 const detailVisible = ref(false)
@@ -150,6 +167,14 @@ function switchTab(key: string): void {
   activeTab.value = key
   page.page = 1
   load()
+}
+
+function clearFilters(): void {
+  severity.value = ''
+  status.value = ''
+  keyword.value = ''
+  page.page = 1
+  void load()
 }
 
 function parseEvidenceIds(raw?: string): number[] {
@@ -251,39 +276,48 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="cs-page">
-    <div class="tabs">
-      <button
-        v-for="t in tabs"
-        :key="t.key"
-        class="tab"
-        :class="{ active: t.key === activeTab }"
-        @click="switchTab(t.key)"
-      >
-        {{ t.label }}
-      </button>
-    </div>
+  <div class="list-page cs-page">
+    <FilterPanel clearable @clear="clearFilters">
+      <div class="filter-group">
+        <div class="filter-label">等级</div>
+        <select v-model="severity" class="filter-select" @change="page.page = 1; load()">
+          <option value="">全部等级</option>
+          <option value="critical">严重</option>
+          <option value="high">高危</option>
+          <option value="medium">中危</option>
+          <option value="low">低危</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">状态</div>
+        <select v-model="status" class="filter-select" @change="page.page = 1; load()">
+          <option value="">全部状态</option>
+          <option value="open">待处理</option>
+          <option value="confirmed">已确认</option>
+          <option value="closed">已关闭</option>
+          <option value="ignored">已忽略</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">关键字</div>
+        <input v-model="keyword" class="filter-select" placeholder="搜索标题 / URL" @keyup.enter="page.page = 1; load()" />
+      </div>
+    </FilterPanel>
 
-    <div class="toolbar">
-      <select v-model="severity" class="input" @change="load">
-        <option value="">全部等级</option>
-        <option value="critical">严重</option>
-        <option value="high">高危</option>
-        <option value="medium">中危</option>
-        <option value="low">低危</option>
-      </select>
-      <select v-model="status" class="input" @change="load">
-        <option value="">全部状态</option>
-        <option value="open">待处理</option>
-        <option value="confirmed">已确认</option>
-        <option value="closed">已关闭</option>
-        <option value="ignored">已忽略</option>
-      </select>
-      <input v-model="keyword" class="input search" placeholder="搜索标题 / URL" @keyup.enter="load" />
-      <button class="btn" @click="load">查询</button>
-    </div>
+    <section class="list-main">
+      <div class="tabs">
+        <button
+          v-for="t in tabs"
+          :key="t.key"
+          class="tab"
+          :class="{ active: t.key === activeTab }"
+          @click="switchTab(t.key)"
+        >
+          {{ t.label }}
+        </button>
+      </div>
 
-    <div class="table-wrap">
+      <div class="table-wrap">
       <!-- 资产发现表格 -->
       <table v-if="activeTab === 'asset_discovery'" class="table">
         <thead>
@@ -368,6 +402,7 @@ onMounted(load)
       <span>{{ page.page }}</span>
       <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
     </div>
+    </section>
 
     <!-- 详情抽屉 -->
     <div v-if="detailVisible && detailFinding" class="modal-mask" @click.self="closeDetail">
@@ -406,11 +441,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.cs-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 .tabs {
   display: flex;
   gap: 6px;
@@ -432,11 +462,6 @@ onMounted(load)
   border-color: var(--color-brand);
   color: var(--color-brand);
   background: var(--color-brand-light);
-}
-.toolbar {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 .input {
   height: 34px;

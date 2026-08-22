@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, toRef } from 'vue'
 import { listFindings, updateFindingStatus, type Finding } from '../../api/event'
 import { formatTime, severityLabel, statusLabel } from '../../utils/format'
 import EvidenceDrawer from '../../components/EvidenceDrawer.vue'
 import Skeleton from '../../components/Skeleton.vue'
+import FilterPanel from '../../components/FilterPanel.vue'
 import { toast } from '../../utils/toast'
+import { useQuerySync } from '../../composables/useQuerySync'
 
 const list = ref<Finding[]>([])
 const total = ref(0)
@@ -12,6 +14,16 @@ const loading = ref(false)
 const severity = ref('')
 const status = ref('')
 const page = reactive({ page: 1, page_size: 20 })
+
+useQuerySync(
+  [
+    ['severity', severity],
+    ['status', status],
+    ['page', toRef(page, 'page')],
+    ['page_size', toRef(page, 'page_size')],
+  ],
+  { numberKeys: ['page', 'page_size'], defaults: { page: 1, page_size: 20 } },
+)
 
 const drawerVisible = ref(false)
 const drawerIds = ref<number[]>([])
@@ -62,94 +74,95 @@ async function setStatus(f: Finding, s: string): Promise<void> {
   }
 }
 
+function clearFilters(): void {
+  severity.value = ''
+  status.value = ''
+  page.page = 1
+  void load()
+}
+
 onMounted(load)
 </script>
 
 <template>
-  <div class="finding-page">
-    <div class="toolbar">
-      <select v-model="severity" class="input" @change="load">
-        <option value="">全部等级</option>
-        <option value="critical">严重</option>
-        <option value="high">高危</option>
-        <option value="medium">中危</option>
-        <option value="low">低危</option>
-      </select>
-      <select v-model="status" class="input" @change="load">
-        <option value="">全部状态</option>
-        <option value="open">待处理</option>
-        <option value="confirmed">已确认</option>
-        <option value="closed">已关闭</option>
-        <option value="ignored">已忽略</option>
-      </select>
-      <button class="btn" @click="load">查询</button>
-    </div>
+  <div class="list-page finding-page">
+    <FilterPanel clearable @clear="clearFilters">
+      <div class="filter-group">
+        <div class="filter-label">等级</div>
+        <select v-model="severity" class="filter-select" @change="page.page = 1; load()">
+          <option value="">全部等级</option>
+          <option value="critical">严重</option>
+          <option value="high">高危</option>
+          <option value="medium">中危</option>
+          <option value="low">低危</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">状态</div>
+        <select v-model="status" class="filter-select" @change="page.page = 1; load()">
+          <option value="">全部状态</option>
+          <option value="open">待处理</option>
+          <option value="confirmed">已确认</option>
+          <option value="closed">已关闭</option>
+          <option value="ignored">已忽略</option>
+        </select>
+      </div>
+    </FilterPanel>
 
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>等级</th>
-            <th>标题</th>
-            <th>引擎</th>
-            <th>URL</th>
-            <th>风险分</th>
-            <th>置信度</th>
-            <th>状态</th>
-            <th>时间</th>
-            <th style="width: 140px">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="f in list" :key="f.id">
-            <td><span class="sev" :class="f.severity">{{ severityLabel(f.severity) }}</span></td>
-            <td>{{ f.title }}</td>
-            <td>{{ f.engine_name }}</td>
-            <td class="mono">{{ f.url }}</td>
-            <td>{{ f.risk_score }}</td>
-            <td>{{ Math.round(f.confidence * 100) }}%</td>
-            <td>{{ statusLabel(f.status) }}</td>
-            <td>{{ formatTime(f.created_at) }}</td>
-            <td>
-              <button class="link" @click="openEvidence(f)">证据</button>
-              <button v-permission="'event:write'" v-if="f.status !== 'closed'" class="link" @click="setStatus(f, 'closed')">关闭</button>
-              <button v-permission="'event:write'" v-if="f.status !== 'ignored'" class="link" @click="setStatus(f, 'ignored')">忽略</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div v-if="!loading && list.length === 0" class="empty">暂无发现</div>
-      <Skeleton v-if="loading" :rows="6" :cols="6" />
-    </div>
+    <section class="list-main">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>等级</th>
+              <th>标题</th>
+              <th>引擎</th>
+              <th>URL</th>
+              <th>风险分</th>
+              <th>置信度</th>
+              <th>状态</th>
+              <th>时间</th>
+              <th style="width: 140px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="f in list" :key="f.id">
+              <td><span class="sev" :class="f.severity">{{ severityLabel(f.severity) }}</span></td>
+              <td>{{ f.title }}</td>
+              <td>{{ f.engine_name }}</td>
+              <td class="mono">{{ f.url }}</td>
+              <td>{{ f.risk_score }}</td>
+              <td>{{ Math.round(f.confidence * 100) }}%</td>
+              <td>{{ statusLabel(f.status) }}</td>
+              <td>{{ formatTime(f.created_at) }}</td>
+              <td>
+                <button class="link" @click="openEvidence(f)">证据</button>
+                <button v-permission="'event:write'" v-if="f.status !== 'closed'" class="link" @click="setStatus(f, 'closed')">关闭</button>
+                <button v-permission="'event:write'" v-if="f.status !== 'ignored'" class="link" @click="setStatus(f, 'ignored')">忽略</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="!loading && list.length === 0" class="empty">暂无发现</div>
+        <Skeleton v-if="loading" :rows="6" :cols="6" />
+      </div>
 
-    <div class="pager">
-      <span>共 {{ total }} 条</span>
-      <button class="btn" :disabled="page.page <= 1" @click="page.page--; load()">上一页</button>
-      <span>{{ page.page }}</span>
-      <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
-    </div>
+      <div class="pager">
+        <span>共 {{ total }} 条</span>
+        <button class="btn" :disabled="page.page <= 1" @click="page.page--; load()">上一页</button>
+        <span>{{ page.page }}</span>
+        <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
+      </div>
+    </section>
 
     <EvidenceDrawer v-model:visible="drawerVisible" :evidence-ids="drawerIds" />
   </div>
 </template>
 
 <style scoped>
-.finding-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 .toolbar {
   display: flex;
   gap: 8px;
-}
-.input {
-  height: 34px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 0 10px;
-  outline: none;
-  width: 130px;
 }
 .btn {
   height: 34px;

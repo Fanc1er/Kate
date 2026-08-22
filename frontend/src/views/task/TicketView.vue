@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, toRef } from 'vue'
 import {
   listTickets, getTicket, createTicket, updateTicketStatus, assignTicket,
   deleteTicket, type Ticket, type TicketDetail,
@@ -8,6 +8,8 @@ import { listEvents, type EventItem } from '../../api/event'
 import { formatTime } from '../../utils/format'
 import { toast } from '../../utils/toast'
 import Skeleton from '../../components/Skeleton.vue'
+import FilterPanel from '../../components/FilterPanel.vue'
+import { useQuerySync } from '../../composables/useQuerySync'
 
 const list = ref<Ticket[]>([])
 const total = ref(0)
@@ -15,6 +17,16 @@ const loading = ref(false)
 const status = ref('')
 const source = ref('')
 const page = reactive({ page: 1, page_size: 20 })
+
+useQuerySync(
+  [
+    ['status', status],
+    ['source', source],
+    ['page', toRef(page, 'page')],
+    ['page_size', toRef(page, 'page_size')],
+  ],
+  { numberKeys: ['page', 'page_size'], defaults: { page: 1, page_size: 20 } },
+)
 
 const STATUS_OPTIONS: Record<string, string> = {
   open: '待派发',
@@ -49,6 +61,13 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+function clearFilters(): void {
+  status.value = ''
+  source.value = ''
+  page.page = 1
+  void load()
 }
 
 async function openDetail(t: Ticket): Promise<void> {
@@ -139,72 +158,83 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="ticket-page">
-    <div class="toolbar">
-      <select v-model="status" class="input" @change="load">
-        <option value="">全部状态</option>
-        <option value="open">待派发</option>
-        <option value="dispatched">已派发</option>
-        <option value="fixing">修复中</option>
-        <option value="retest">复测中</option>
-        <option value="archived">已归档</option>
-      </select>
-      <select v-model="source" class="input" @change="load">
-        <option value="">全部来源</option>
-        <option value="event">事件</option>
-        <option value="vuln">漏洞</option>
-      </select>
-      <button class="btn" @click="load">查询</button>
-      <button class="btn primary" @click="openCreate">新建工单</button>
-    </div>
+  <div class="list-page ticket-page">
+    <FilterPanel clearable @clear="clearFilters">
+      <div class="filter-group">
+        <div class="filter-label">状态</div>
+        <select v-model="status" class="filter-select" @change="page.page = 1; load()">
+          <option value="">全部状态</option>
+          <option value="open">待派发</option>
+          <option value="dispatched">已派发</option>
+          <option value="fixing">修复中</option>
+          <option value="retest">复测中</option>
+          <option value="archived">已归档</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">来源</div>
+        <select v-model="source" class="filter-select" @change="page.page = 1; load()">
+          <option value="">全部来源</option>
+          <option value="event">事件</option>
+          <option value="vuln">漏洞</option>
+        </select>
+      </div>
+    </FilterPanel>
 
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>来源</th>
-            <th>处理人</th>
-            <th>状态</th>
-            <th>备注</th>
-            <th>创建时间</th>
-            <th style="width: 180px">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="t in list" :key="t.id">
-            <td>#{{ t.id }}</td>
-            <td>
-              <span v-if="t.event_id" class="tag">事件 #{{ t.event_id }}</span>
-              <span v-if="t.vuln_id" class="tag vuln">漏洞 #{{ t.vuln_id }}</span>
-              <span v-if="!t.event_id && !t.vuln_id" class="tag">-</span>
-            </td>
-            <td>{{ t.assignee || '-' }}</td>
-            <td><span class="st" :class="t.status">{{ statusLabel(t.status) }}</span></td>
-            <td class="note">{{ t.notes || '-' }}</td>
-            <td>{{ formatTime(t.created_at) }}</td>
-            <td>
-              <button class="link" @click="openDetail(t)">详情</button>
-              <button v-if="t.status === 'open'" class="link" @click="doAssign(t)">派发</button>
-              <button v-if="t.status === 'open'" class="link" @click="doStatus(t, 'dispatched')">确认</button>
-              <button v-if="t.status === 'dispatched'" class="link" @click="doStatus(t, 'fixing')">修复中</button>
-              <button v-if="t.status === 'fixing'" class="link" @click="doStatus(t, 'retest')">复测</button>
-              <button v-if="t.status === 'retest'" class="link" @click="doStatus(t, 'archived')">归档</button>
-              <button class="link danger" @click="doDelete(t)">删除</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div v-if="!loading && list.length === 0" class="empty">暂无工单</div>
-      <Skeleton v-if="loading" :rows="6" :cols="5" />
-    </div>
+    <section class="list-main">
+      <div class="list-toolbar">
+        <span class="spacer" />
+        <button class="btn primary" @click="openCreate">新建工单</button>
+      </div>
 
-    <div class="pager">
-      <span>共 {{ total }} 条</span>
-      <button class="btn" :disabled="page.page <= 1" @click="page.page--; load()">上一页</button>
-      <span>{{ page.page }}</span>
-      <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
-    </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>来源</th>
+              <th>处理人</th>
+              <th>状态</th>
+              <th>备注</th>
+              <th>创建时间</th>
+              <th style="width: 180px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="t in list" :key="t.id">
+              <td>#{{ t.id }}</td>
+              <td>
+                <span v-if="t.event_id" class="tag">事件 #{{ t.event_id }}</span>
+                <span v-if="t.vuln_id" class="tag vuln">漏洞 #{{ t.vuln_id }}</span>
+                <span v-if="!t.event_id && !t.vuln_id" class="tag">-</span>
+              </td>
+              <td>{{ t.assignee || '-' }}</td>
+              <td><span class="st" :class="t.status">{{ statusLabel(t.status) }}</span></td>
+              <td class="note">{{ t.notes || '-' }}</td>
+              <td>{{ formatTime(t.created_at) }}</td>
+              <td>
+                <button class="link" @click="openDetail(t)">详情</button>
+                <button v-if="t.status === 'open'" class="link" @click="doAssign(t)">派发</button>
+                <button v-if="t.status === 'open'" class="link" @click="doStatus(t, 'dispatched')">确认</button>
+                <button v-if="t.status === 'dispatched'" class="link" @click="doStatus(t, 'fixing')">修复中</button>
+                <button v-if="t.status === 'fixing'" class="link" @click="doStatus(t, 'retest')">复测</button>
+                <button v-if="t.status === 'retest'" class="link" @click="doStatus(t, 'archived')">归档</button>
+                <button class="link danger" @click="doDelete(t)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="!loading && list.length === 0" class="empty">暂无工单</div>
+        <Skeleton v-if="loading" :rows="6" :cols="5" />
+      </div>
+
+      <div class="pager">
+        <span>共 {{ total }} 条</span>
+        <button class="btn" :disabled="page.page <= 1" @click="page.page--; load()">上一页</button>
+        <span>{{ page.page }}</span>
+        <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
+      </div>
+    </section>
 
     <!-- 详情抽屉 -->
     <div v-if="detailVisible && detail" class="modal-mask" @click.self="detailVisible = false">
@@ -262,16 +292,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.ticket-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.toolbar {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 .input {
   height: 34px;
   border: 1px solid var(--color-border);

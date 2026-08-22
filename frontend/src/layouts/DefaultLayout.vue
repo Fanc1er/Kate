@@ -46,7 +46,7 @@ onMounted(() => {
   eventStream.onStatusChange(document.body, onWsStatusChange)
   unsub = eventStream.subscribe((e) => {
     if (e.kind === 'alert.new') {
-      router.push('/alerts')
+      router.push('/risk/alerts')
     }
   })
 })
@@ -70,7 +70,7 @@ onBeforeUnmount(() => {
           :key="m.path"
           :to="m.path"
           class="menu-item"
-          :class="{ active: route.path === m.path }"
+          :class="{ active: route.path === m.path || route.path.startsWith(m.path + '/') }"
         >
           <span v-if="!collapsed">{{ m.title }}</span>
           <span v-else class="collapsed-tip">{{ m.title }}</span>

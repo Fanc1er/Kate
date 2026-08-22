@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, toRef } from 'vue'
 import {
   getAvailabilityList,
   getAvailabilityTimeseries,
@@ -17,6 +17,8 @@ import { toast } from '../../utils/toast'
 import Skeleton from '../../components/Skeleton.vue'
 import EChart from '../../components/EChart.vue'
 import WorkerTopology from './WorkerTopology.vue'
+import FilterPanel from '../../components/FilterPanel.vue'
+import { useQuerySync } from '../../composables/useQuerySync'
 
 const tab = ref<'list' | 'topology'>('list')
 
@@ -29,6 +31,22 @@ const codeGroupFilter = ref('')
 const page = reactive({ page: 1, page_size: 20 })
 const sortField = ref('')
 const sortOrder = ref<'asc' | 'desc'>('asc')
+
+useQuerySync(
+  [
+    ['keyword', keyword],
+    ['status', statusFilter],
+    ['code_group', codeGroupFilter],
+    ['sort', sortField],
+    ['sort_order', sortOrder],
+    ['page', toRef(page, 'page')],
+    ['page_size', toRef(page, 'page_size')],
+  ],
+  {
+    numberKeys: ['page', 'page_size'],
+    defaults: { page: 1, page_size: 20, sort: '', sort_order: 'asc' },
+  },
+)
 
 const selected = ref<number[]>([])
 
@@ -314,6 +332,14 @@ function sortIndicator(field: string): string {
   return sortOrder.value === 'asc' ? '↑' : '↓'
 }
 
+function clearFilters(): void {
+  keyword.value = ''
+  statusFilter.value = ''
+  codeGroupFilter.value = ''
+  page.page = 1
+  void load()
+}
+
 onMounted(() => {
   void load()
   window.addEventListener('keydown', onKeydown)
@@ -325,56 +351,63 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="availability-page">
-    <div class="tabs">
-      <button class="tab" :class="{ active: tab === 'list' }" @click="tab = 'list'">站点可用性</button>
-      <button class="tab" :class="{ active: tab === 'topology' }" @click="tab = 'topology'">工作节点拓扑</button>
-    </div>
+  <div :class="['availability-page', { 'list-page': tab === 'list' }]">
+    <FilterPanel v-if="tab === 'list'" clearable @clear="clearFilters">
+      <div class="filter-group">
+        <div class="filter-label">关键字</div>
+        <input v-model="keyword" class="filter-select" placeholder="搜索站点名 / URL" @input="onKeywordInput" />
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">可用性状态</div>
+        <div class="chips">
+          <button
+            v-for="o in statusOptions"
+            :key="o.value"
+            class="chip"
+            :class="{ active: statusFilter === o.value }"
+            @click="toggleStatus(o.value)"
+          >
+            {{ o.label }}
+          </button>
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">状态码</div>
+        <div class="chips">
+          <button
+            v-for="g in codeGroupOptions"
+            :key="g"
+            class="chip"
+            :class="{ active: codeGroupFilter === g }"
+            @click="toggleCodeGroup(g)"
+          >
+            {{ g }}
+          </button>
+        </div>
+      </div>
+    </FilterPanel>
 
-    <WorkerTopology v-if="tab === 'topology'" />
-
-    <template v-else>
-      <div class="toolbar">
-        <input v-model="keyword" class="input search" placeholder="搜索站点名 / URL" @input="onKeywordInput" />
-        <span class="spacer" />
-        <button class="btn" @click="openWhitelistForm()">白名单管理</button>
-        <button class="btn" @click="load">刷新</button>
+    <section class="list-main">
+      <div class="tabs">
+        <button class="tab" :class="{ active: tab === 'list' }" @click="tab = 'list'">站点可用性</button>
+        <button class="tab" :class="{ active: tab === 'topology' }" @click="tab = 'topology'">工作节点拓扑</button>
       </div>
 
-      <div v-if="selected.length" class="batch-bar">
-        <span>已选 {{ selected.length }} 项</span>
-        <button class="btn primary" @click="batchReprobe">批量重新探测</button>
-        <button class="btn" @click="batchWhitelist">批量加入白名单</button>
-        <button class="btn link" @click="clearSelection">取消选择</button>
-      </div>
+      <WorkerTopology v-if="tab === 'topology'" />
 
-      <div class="body">
-        <aside class="filters">
-          <div class="filter-group">
-            <div class="filter-title">可用性状态</div>
-            <button
-              v-for="o in statusOptions"
-              :key="o.value"
-              class="chip"
-              :class="{ active: statusFilter === o.value }"
-              @click="toggleStatus(o.value)"
-            >
-              {{ o.label }}
-            </button>
-          </div>
-          <div class="filter-group">
-            <div class="filter-title">状态码</div>
-            <button
-              v-for="g in codeGroupOptions"
-              :key="g"
-              class="chip"
-              :class="{ active: codeGroupFilter === g }"
-              @click="toggleCodeGroup(g)"
-            >
-              {{ g }}
-            </button>
-          </div>
-        </aside>
+      <template v-else>
+        <div class="list-toolbar">
+          <span class="spacer" />
+          <button class="btn" @click="openWhitelistForm()">白名单管理</button>
+          <button class="btn" @click="load">刷新</button>
+        </div>
+
+        <div v-if="selected.length" class="batch-bar">
+          <span>已选 {{ selected.length }} 项</span>
+          <button class="btn primary" @click="batchReprobe">批量重新探测</button>
+          <button class="btn" @click="batchWhitelist">批量加入白名单</button>
+          <button class="btn link" @click="clearSelection">取消选择</button>
+        </div>
 
         <div class="table-wrap">
           <table class="table">
@@ -431,9 +464,8 @@ onBeforeUnmount(() => {
           <div v-if="!loading && list.length === 0" class="empty">暂无可用性监测数据</div>
           <Skeleton v-if="loading" :rows="6" :cols="8" />
         </div>
-      </div>
 
-      <div class="pager">
+        <div class="pager">
         <span>共 {{ total }} 条</span>
         <span class="page-size">
           每页
@@ -446,7 +478,8 @@ onBeforeUnmount(() => {
         <span>{{ page.page }}</span>
         <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
       </div>
-    </template>
+      </template>
+    </section>
 
     <div v-if="detailOpen && detailItem" class="drawer-mask" @click.self="closeDetail">
       <div class="drawer">
@@ -521,11 +554,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.availability-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 .tabs {
   display: flex;
   gap: 4px;
@@ -544,11 +572,6 @@ onBeforeUnmount(() => {
   color: var(--color-brand);
   border-bottom-color: var(--color-brand);
   font-weight: var(--font-weight-semibold);
-}
-.toolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
 }
 .input {
   height: 34px;
@@ -597,33 +620,10 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: var(--color-brand);
 }
-.body {
+.chips {
   display: flex;
-  gap: 16px;
-  align-items: flex-start;
-}
-.filters {
-  flex: none;
-  width: 180px;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  box-shadow: var(--shadow-card);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-.filter-title {
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
-  margin-bottom: 10px;
-  color: var(--color-text-secondary);
-}
-.filter-group {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .chip {
   border: 1px solid var(--color-border);
