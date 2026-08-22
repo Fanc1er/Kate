@@ -95,6 +95,41 @@ func (s *TaskService) BatchScan(assetIDs []int64, userID int64, username, ip, ua
 	return len(created), nil
 }
 
+// CreateAvailabilityProbe 为资产集合创建轻量可用性探测任务（task_scope=availability_probe）。
+// 去重：同资产已存在 availability_probe pending/processing 任务时跳过（幂等，不报错）。
+// 策略取首个可用策略（仅用于下发的引擎开关与超时配置），无策略时 policy_id=0（Worker 侧兜底默认）。
+func (s *TaskService) CreateAvailabilityProbe(assetIDs []int64) ([]models.ScanTask, error) {
+	if len(assetIDs) == 0 {
+		return nil, nil
+	}
+	var policy models.ScanPolicy
+	if err := s.DB.Order("id ASC").First(&policy).Error; err != nil {
+		policy = models.ScanPolicy{}
+	}
+	var created []models.ScanTask
+	for _, assetID := range assetIDs {
+		var count int64
+		s.DB.Model(&models.ScanTask{}).
+			Where("asset_id = ? AND task_scope = ? AND status IN (?, ?)",
+				assetID, "availability_probe", models.StatusPending, models.StatusProcessing).
+			Count(&count)
+		if count > 0 {
+			continue
+		}
+		task := &models.ScanTask{
+			PolicyID:  policy.ID,
+			AssetID:   assetID,
+			TaskScope: "availability_probe",
+			Status:    models.StatusPending,
+		}
+		if err := s.DB.Create(task).Error; err != nil {
+			return nil, err
+		}
+		created = append(created, *task)
+	}
+	return created, nil
+}
+
 // List 任务列表。
 func (s *TaskService) List(status string, page, pageSize int) ([]models.ScanTask, int64, error) {
 	q := s.guard().Scoped(&models.ScanTask{})

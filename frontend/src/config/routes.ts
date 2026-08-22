@@ -95,6 +95,12 @@ export const APP_ROUTES: AppRoute[] = [
     meta: { title: '内容安全' },
   },
   {
+    path: '/availability',
+    name: 'availability',
+    component: () => import('../views/availability/AvailabilityView.vue'),
+    meta: { title: '可用性监测' },
+  },
+  {
     path: '/tickets',
     name: 'tickets',
     component: () => import('../views/task/TicketView.vue'),
@@ -135,6 +141,7 @@ export const MENU: MenuItem[] = [
   { title: '漏洞', path: '/vulnerabilities', roles: ['admin', 'user'] },
   { title: '发现', path: '/findings', roles: ['admin', 'user'] },
   { title: '内容安全', path: '/content-security', roles: ['admin', 'user'] },
+  { title: '可用性监测', path: '/availability', roles: ['admin', 'user'] },
   { title: '工单', path: '/tickets', roles: ['admin', 'user'] },
   { title: '报告', path: '/reports', roles: ['admin', 'user'] },
   { title: '策略模板', path: '/policy', roles: ['admin', 'user'] },

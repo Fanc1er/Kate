@@ -70,6 +70,7 @@ func Run() {
 	worker := service.NewWorkerService(gdb, task, evidence, hub, lic, cfg.StormLimitHour)
 	triage := service.NewTriageService(gdb, audit, evidence)
 	dashboard := service.NewDashboardService(gdb)
+	availability := service.NewAvailabilityService(gdb)
 	member := service.NewMemberService(gdb, audit, mail)
 	report := service.NewReportService(gdb)
 
@@ -86,10 +87,12 @@ func Run() {
 
 	sched := service.NewMasterScheduler(gdb, cache, evidence)
 	cron := service.NewCronScheduler(gdb, task, lic)
+	probe := service.NewProbeScheduler(gdb, task, lic)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go sched.Run(ctx)
 	go cron.Run(ctx)
+	go probe.Run(ctx)
 
 	engine := routes.Setup(&routes.Deps{
 		DB:        gdb,
@@ -100,9 +103,10 @@ func Run() {
 		Policy:    policy,
 		Triage:    triage,
 		Evidence:  evidence,
-		Worker:    worker,
-		Dashboard: dashboard,
-		Member:    member,
+		Worker:       worker,
+		Dashboard:    dashboard,
+		Availability: availability,
+		Member:       member,
 		Report:    report,
 		Tokens:    tokens,
 		Security:  sec,

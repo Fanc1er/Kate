@@ -340,6 +340,11 @@ func (w *worker) execute(ctx context.Context, t *taskPayload, p *policyPayload, 
 	result.Metrics["latency_ms"] = ms
 	result.Metrics["fail_count"] = failCount
 
+	// 轻量可用性探针任务：仅探测 HTTP 状态与耗时，跳过重逻辑（多端 UA/内容/递归/证据）。
+	if t.TaskScope == "availability_probe" {
+		return result
+	}
+
 	// 多端 UA 综合评估：四探针抓取比对端间状态码/延迟，标记端差异化宕机。
 	if p != nil && p.engineEnabled("multi_ua") {
 		assessor := engines.NewMultiUAAssessor()
@@ -863,10 +868,11 @@ func (w *worker) uploadEvidenceChunked(ev inlineEvidence) (int64, bool) {
 // ---- 协议结构 ----
 
 type taskPayload struct {
-	ID       int64  `json:"id"`
-	AssetID  int64  `json:"asset_id"`
-	PolicyID int64  `json:"policy_id"`
-	Status   string `json:"status"`
+	ID        int64  `json:"id"`
+	AssetID   int64  `json:"asset_id"`
+	PolicyID  int64  `json:"policy_id"`
+	Status    string `json:"status"`
+	TaskScope string `json:"task_scope"`
 }
 
 type policyPayload struct {

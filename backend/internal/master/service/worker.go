@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -343,6 +344,20 @@ func (s *WorkerService) ReportResult(result *WorkerResult) (map[string]any, erro
 	}
 	s.DB.Model(&task).Updates(updates)
 
+	// 轻量可用性探测任务：写可用性时序点（status_code / latency_ms 从 Metrics 提取）。
+	if task.TaskScope == "availability_probe" {
+		point := models.AvailabilityPoint{
+			AssetID:    task.AssetID,
+			Engine:     "availability",
+			StatusCode: int(metricsFloat(result.Metrics, "status_code")),
+			ResponseMs: int(metricsFloat(result.Metrics, "latency_ms")),
+			SampledAt:  now,
+		}
+		if err := s.DB.Create(&point).Error; err != nil {
+			log.Printf("worker: persist availability point: %v", err)
+		}
+	}
+
 	// 递归扫描发现的子资产落库：source_type 标注 + 配额校验。
 	// 达到 max_assets 停止写入新发现并标记 discovery_stopped: quota_exceeded。
 	if len(result.Discovered) > 0 {
@@ -389,6 +404,22 @@ func (s *WorkerService) ReportResult(result *WorkerResult) (map[string]any, erro
 		})
 	}
 	return map[string]any{"received": true, "findings_created": created}, nil
+}
+
+// metricsFloat 从回传 metrics 中提取数值（JSON 反序列化为 float64，兼容 int）。
+func metricsFloat(m map[string]any, key string) float64 {
+	if m == nil {
+		return 0
+	}
+	switch v := m[key].(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	}
+	return 0
 }
 
 func (s *WorkerService) processFinding(taskID, assetID int64, resultID string, wf WorkerFinding) error {

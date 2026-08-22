@@ -33,9 +33,10 @@ type Deps struct {
 	Policy    *service.PolicyService
 	Triage    *service.TriageService
 	Evidence  *service.EvidenceService
-	Worker    *service.WorkerService
-	Dashboard *service.DashboardService
-	Member    *service.MemberService
+	Worker       *service.WorkerService
+	Dashboard    *service.DashboardService
+	Availability *service.AvailabilityService
+	Member       *service.MemberService
 	Report    *service.ReportService
 	Tokens    *service.TokenManager
 	Security  *middleware.Security
@@ -96,6 +97,7 @@ func Setup(d *Deps) *gin.Engine {
 	registerReports(authed, d)
 	registerEvidence(authed, d)
 	registerDashboard(authed, d)
+	registerAvailability(authed, d)
 	registerMembers(authed, d)
 	registerWorkerNodes(authed, d)
 
