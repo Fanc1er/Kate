@@ -23,7 +23,6 @@ import {
 import { formatTime } from '../../utils/format'
 import { toast, confirmDialog } from '../../utils/toast'
 import Skeleton from '../../components/Skeleton.vue'
-import FilterPanel from '../../components/FilterPanel.vue'
 import { useQuerySync } from '../../composables/useQuerySync'
 
 const list = ref<Asset[]>([])
@@ -83,12 +82,6 @@ async function load(): Promise<void> {
   }
 }
 
-function clearFilters(): void {
-  keyword.value = ''
-  groupName.value = ''
-  page.page = 1
-  void load()
-}
 
 async function loadGroups(): Promise<void> {
   try {
@@ -314,19 +307,14 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="asset-page" :class="{ 'list-page': !wechatTab }">
-    <FilterPanel v-if="!wechatTab" clearable @clear="clearFilters">
-      <div class="filter-group">
-        <div class="filter-label">分组</div>
-        <select v-model="groupName" class="filter-select" @change="page.page = 1; load()">
+  <div class="asset-page list-main">
+
+      <div class="toolbar">
+        <select v-model="groupName" class="filter-input" @change="page.page = 1; load()">
           <option value="">全部分组</option>
           <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
         </select>
-      </div>
-    </FilterPanel>
-
-    <section class="list-main">
-      <div class="list-toolbar">
+        <span class="spacer" />
         <button class="btn" :class="{ 'tab-active': !wechatTab }" @click="wechatTab = false">Web 资产</button>
         <button class="btn" :class="{ 'tab-active': wechatTab }" @click="wechatTab = true; loadWechat()">微信公众号</button>
         <span class="divider" />
@@ -429,7 +417,7 @@ onMounted(() => {
       <span>{{ page.page }}</span>
       <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
     </div>
-    </section>
+
 
     <div v-if="showCreate" class="modal-mask" @click.self="showCreate = false">
       <div class="modal">
