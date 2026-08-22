@@ -84,16 +84,11 @@ func (s *Security) OrgRequired() gin.HandlerFunc {
 		uid := c.GetInt64("user_id")
 		isSuper := c.GetBool("is_super_admin")
 
-		if isSuper && orgID == 0 {
-			c.Set("org_id", int64(0))
+		if isSuper {
+			// 平台超管可访问全局通道（org_id=0）及任意组织视角。
+			c.Set("org_id", orgID)
 			c.Set("role", models.RoleSuperAdmin)
 			c.Next()
-			return
-		}
-		if isSuper {
-			// 超管以 org_id=0 全局通道访问平台；其他组织需要显式成员关系。
-			response.FailMsg(c, errs.CodeForbidden, "平台超管仅能访问全局通道（org_id=0）")
-			c.Abort()
 			return
 		}
 		// 校验组织状态。

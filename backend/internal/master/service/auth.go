@@ -92,7 +92,7 @@ type UserDTO struct {
 	AvatarURL string   `json:"avatar_url"`
 	Status    string   `json:"status"`
 	Role      string   `json:"role,omitempty"`
-	OrgID     int64    `json:"org_id,omitempty"`
+	OrgID     int64    `json:"org_id"`
 	OrgName   string   `json:"org_name,omitempty"`
 	IsSuperAdmin bool  `json:"is_super_admin"`
 	Permissions []string `json:"permissions"`
@@ -196,16 +196,27 @@ func (s *AuthService) Login(username, password, ip string) (*LoginResult, error)
 }
 
 // SelectOrg 多组织用户选择组织，换取带 org_id 的 JWT。
+// super_admin 不受 user_orgs 约束，可选择任意有效组织进入组织视角。
 func (s *AuthService) SelectOrg(userID, orgID int64) (*LoginResult, error) {
-	var uo models.UserOrg
-	if err := s.DB.Where("user_id = ? AND org_id = ?", userID, orgID).First(&uo).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errs.New(errs.CodeForbidden, "非该组织成员")
-		}
+	var user models.User
+	if err := s.DB.First(&user, userID).Error; err != nil {
 		return nil, err
 	}
-	if uo.Status != models.StatusActive {
-		return nil, errs.New(errs.CodeUserDisabled, "成员已被禁用")
+	role := ""
+	if user.IsSuperAdmin {
+		role = models.RoleSuperAdmin
+	} else {
+		var uo models.UserOrg
+		if err := s.DB.Where("user_id = ? AND org_id = ?", userID, orgID).First(&uo).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, errs.New(errs.CodeForbidden, "非该组织成员")
+			}
+			return nil, err
+		}
+		if uo.Status != models.StatusActive {
+			return nil, errs.New(errs.CodeUserDisabled, "成员已被禁用")
+		}
+		role = uo.Role
 	}
 	var org models.Organization
 	if err := s.DB.First(&org, orgID).Error; err != nil {
@@ -214,11 +225,7 @@ func (s *AuthService) SelectOrg(userID, orgID int64) (*LoginResult, error) {
 	if org.Status == models.StatusDisabled {
 		return nil, errs.New(errs.CodeOrgDisabled, "")
 	}
-	var user models.User
-	if err := s.DB.First(&user, userID).Error; err != nil {
-		return nil, err
-	}
-	access, err := s.Tokens.IssueForOrg(userID, orgID, uo.Role)
+	access, err := s.Tokens.IssueForOrg(userID, orgID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +238,7 @@ func (s *AuthService) SelectOrg(userID, orgID int64) (*LoginResult, error) {
 	pair.AccessToken = access
 	return &LoginResult{
 		TokenPair:     *pair,
-		User:          s.buildUserDTO(&user, uo.Role, orgID, org.Name),
+		User:          s.buildUserDTO(&user, role, orgID, org.Name),
 		IsSuperAdmin:  user.IsSuperAdmin,
 		NeedSelectOrg: false,
 	}, nil

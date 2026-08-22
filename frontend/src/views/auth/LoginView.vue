@@ -22,7 +22,7 @@ async function submit(): Promise<void> {
     await auth.login(username.value, password.value)
     if (auth.needSelectOrg || auth.organizations.length > 1) {
       router.replace('/select-org')
-    } else if (auth.isSuperAdmin && !auth.orgId) {
+    } else if (auth.isSuperAdmin) {
       router.replace('/platform')
     } else {
       router.replace('/')

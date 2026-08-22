@@ -34,7 +34,7 @@ export const useAuthStore = defineStore('auth', () => {
     organizations.value = res.organizations ?? []
     isSuperAdmin.value = res.is_super_admin
     needSelectOrg.value = res.need_select_org
-    if (!res.need_select_org && res.user?.org_id) {
+    if (!res.need_select_org && res.user?.org_id != null) {
       setOrgId(res.user.org_id)
       orgId.value = String(res.user.org_id)
       orgName.value = res.user.org_name ?? ''
@@ -45,7 +45,7 @@ export const useAuthStore = defineStore('auth', () => {
     const me = await authApi.me()
     user.value = me
     isSuperAdmin.value = me.is_super_admin
-    if (me.org_id) {
+    if (me.org_id != null) {
       setOrgId(me.org_id)
       orgId.value = String(me.org_id)
       orgName.value = me.org_name ?? ''
@@ -55,15 +55,12 @@ export const useAuthStore = defineStore('auth', () => {
   async function selectOrg(id: number): Promise<void> {
     const res = await authApi.selectOrg(id)
     applyLogin(res)
-    setOrgId(res.org_id)
-    orgId.value = String(res.org_id)
-    orgName.value = res.org_name
-    const userInfo = user.value
-    if (userInfo) {
-      userInfo.role = res.role
-      userInfo.org_id = res.org_id
-      userInfo.org_name = res.org_name
-    }
+    const u = res.user
+    setOrgId(u.org_id ?? id)
+    orgId.value = String(u.org_id ?? id)
+    orgName.value = u.org_name ?? ''
+    user.value = u
+    isSuperAdmin.value = res.is_super_admin
     needSelectOrg.value = false
   }
 

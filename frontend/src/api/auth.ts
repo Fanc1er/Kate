@@ -1,5 +1,5 @@
 import { get, post } from './http'
-import type { SelectOrgResult, UserInfo } from '../types'
+import type { UserInfo } from '../types'
 
 export interface OrgEntry {
   org_id: number
@@ -33,7 +33,13 @@ export function me(): Promise<UserInfo> {
   return get('/auth/me')
 }
 
-export function selectOrg(orgId: number): Promise<SelectOrgResult> {
+export function selectOrg(orgId: number): Promise<{
+  access_token: string
+  refresh_token: string
+  user: UserInfo
+  is_super_admin: boolean
+  need_select_org: boolean
+}> {
   return post('/auth/select-org', { org_id: orgId })
 }
 

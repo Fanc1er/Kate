@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import { listOrganizations } from '../../api/platform'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -9,14 +10,19 @@ const auth = useAuthStore()
 const loading = ref(false)
 const error = ref('')
 const activeOrgId = ref<number | null>(null)
+const adminOrgs = ref<Array<{ id: number; name: string }>>([])
 
 const cards = computed(() => {
   const list: Array<{ org_id: number; name: string; role: string }> = []
   if (auth.isSuperAdmin) {
     list.push({ org_id: 0, name: '平台管理', role: 'super_admin' })
-  }
-  for (const o of auth.organizations) {
-    list.push({ org_id: o.org_id, name: o.name, role: o.role })
+    for (const o of adminOrgs.value) {
+      list.push({ org_id: o.id, name: o.name, role: 'super_admin' })
+    }
+  } else {
+    for (const o of auth.organizations) {
+      list.push({ org_id: o.org_id, name: o.name, role: o.role })
+    }
   }
   return list
 })
@@ -38,9 +44,21 @@ async function pick(orgId: number): Promise<void> {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (!auth.isLoggedIn) {
     router.replace('/login')
+    return
+  }
+  if (auth.isSuperAdmin) {
+    loading.value = true
+    try {
+      const res = await listOrganizations({ page: 1, page_size: 100 })
+      adminOrgs.value = res.list ?? []
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      loading.value = false
+    }
   }
   if (!auth.isSuperAdmin && auth.organizations.length === 1) {
     void pick(auth.organizations[0].org_id)

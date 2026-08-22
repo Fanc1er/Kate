@@ -43,11 +43,3 @@ export interface UserInfo {
   role: string
   permissions: string[]
 }
-
-export interface SelectOrgResult {
-  access_token: string
-  refresh_token: string
-  org_id: number
-  org_name: string
-  role: string
-}

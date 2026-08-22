@@ -18,7 +18,11 @@ let wsBannerTimer = 0
 
 const menus = computed(() => MENU.filter((m) => canAccess(m.roles, auth.role)))
 
-const orgLabel = computed(() => (auth.isSuperAdmin && !auth.orgId ? '平台管理' : auth.orgName || '未选择组织'))
+const orgLabel = computed(() =>
+  auth.isSuperAdmin && (auth.orgId === '0' || auth.orgId === null)
+    ? '平台管理'
+    : auth.orgName || '未选择组织',
+)
 const roleLabel = computed(() => ROLE_LABELS[auth.role] ?? auth.role)
 
 function switchOrg(): void {
