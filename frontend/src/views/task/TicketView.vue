@@ -8,7 +8,6 @@ import { listEvents, type EventItem } from '../../api/event'
 import { formatTime } from '../../utils/format'
 import { toast } from '../../utils/toast'
 import Skeleton from '../../components/Skeleton.vue'
-import FilterPanel from '../../components/FilterPanel.vue'
 import { useQuerySync } from '../../composables/useQuerySync'
 
 const list = ref<Ticket[]>([])
@@ -63,12 +62,6 @@ async function load(): Promise<void> {
   }
 }
 
-function clearFilters(): void {
-  status.value = ''
-  source.value = ''
-  page.page = 1
-  void load()
-}
 
 async function openDetail(t: Ticket): Promise<void> {
   try {
@@ -158,11 +151,10 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="list-page ticket-page">
-    <FilterPanel clearable @clear="clearFilters">
-      <div class="filter-group">
-        <div class="filter-label">状态</div>
-        <select v-model="status" class="filter-select" @change="page.page = 1; load()">
+  <div class="ticket-page list-main">
+
+      <div class="list-toolbar">
+        <select v-model="status" class="filter-input" @change="page.page = 1; load()">
           <option value="">全部状态</option>
           <option value="open">待派发</option>
           <option value="dispatched">已派发</option>
@@ -170,19 +162,11 @@ onMounted(load)
           <option value="retest">复测中</option>
           <option value="archived">已归档</option>
         </select>
-      </div>
-      <div class="filter-group">
-        <div class="filter-label">来源</div>
-        <select v-model="source" class="filter-select" @change="page.page = 1; load()">
+        <select v-model="source" class="filter-input" @change="page.page = 1; load()">
           <option value="">全部来源</option>
           <option value="event">事件</option>
           <option value="vuln">漏洞</option>
         </select>
-      </div>
-    </FilterPanel>
-
-    <section class="list-main">
-      <div class="list-toolbar">
         <span class="spacer" />
         <button class="btn primary" @click="openCreate">新建工单</button>
       </div>
@@ -234,7 +218,6 @@ onMounted(load)
         <span>{{ page.page }}</span>
         <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
       </div>
-    </section>
 
     <!-- 详情抽屉 -->
     <div v-if="detailVisible && detail" class="modal-mask" @click.self="detailVisible = false">

@@ -15,7 +15,6 @@ import { listAssets, type Asset } from '../../api/asset'
 import { formatTime, statusLabel } from '../../utils/format'
 import { toast, confirmDialog } from '../../utils/toast'
 import Skeleton from '../../components/Skeleton.vue'
-import FilterPanel from '../../components/FilterPanel.vue'
 import { useQuerySync } from '../../composables/useQuerySync'
 
 const list = ref<ScanTask[]>([])
@@ -52,11 +51,6 @@ async function load(): Promise<void> {
   }
 }
 
-function clearFilters(): void {
-  statusFilter.value = ''
-  page.page = 1
-  void load()
-}
 
 async function openCreate(): Promise<void> {
   showCreate.value = true
@@ -144,11 +138,10 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="list-page task-page">
-    <FilterPanel clearable @clear="clearFilters">
-      <div class="filter-group">
-        <div class="filter-label">状态</div>
-        <select v-model="statusFilter" class="filter-select" @change="page.page = 1; load()">
+  <div class="task-page list-main">
+
+      <div class="list-toolbar">
+        <select v-model="statusFilter" class="filter-input" @change="page.page = 1; load()">
           <option value="">全部状态</option>
           <option value="pending">待执行</option>
           <option value="processing">执行中</option>
@@ -156,11 +149,7 @@ onMounted(load)
           <option value="failed">失败</option>
           <option value="cancelled">已取消</option>
         </select>
-      </div>
-    </FilterPanel>
-
-    <section class="list-main">
-      <div class="list-toolbar">
+        <button class="btn" @click="load">查询</button>
         <span class="spacer" />
         <button class="btn primary" @click="openCreate">新建任务</button>
         <button class="btn" :disabled="selected.length === 0" @click="doBatchStop">批量停止</button>
@@ -213,7 +202,6 @@ onMounted(load)
         <span>{{ page.page }}</span>
         <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
       </div>
-    </section>
 
     <div v-if="showCreate" class="modal-mask" @click.self="showCreate = false">
       <div class="modal">

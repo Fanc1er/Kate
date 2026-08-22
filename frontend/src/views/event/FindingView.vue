@@ -4,7 +4,6 @@ import { listFindings, updateFindingStatus, type Finding } from '../../api/event
 import { formatTime, severityLabel, statusLabel } from '../../utils/format'
 import EvidenceDrawer from '../../components/EvidenceDrawer.vue'
 import Skeleton from '../../components/Skeleton.vue'
-import FilterPanel from '../../components/FilterPanel.vue'
 import { toast } from '../../utils/toast'
 import { useQuerySync } from '../../composables/useQuerySync'
 
@@ -74,43 +73,32 @@ async function setStatus(f: Finding, s: string): Promise<void> {
   }
 }
 
-function clearFilters(): void {
-  severity.value = ''
-  status.value = ''
-  page.page = 1
-  void load()
-}
 
 onMounted(load)
 </script>
 
 <template>
-  <div class="list-page finding-page">
-    <FilterPanel clearable @clear="clearFilters">
-      <div class="filter-group">
-        <div class="filter-label">等级</div>
-        <select v-model="severity" class="filter-select" @change="page.page = 1; load()">
-          <option value="">全部等级</option>
-          <option value="critical">严重</option>
-          <option value="high">高危</option>
-          <option value="medium">中危</option>
-          <option value="low">低危</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <div class="filter-label">状态</div>
-        <select v-model="status" class="filter-select" @change="page.page = 1; load()">
-          <option value="">全部状态</option>
-          <option value="open">待处理</option>
-          <option value="confirmed">已确认</option>
-          <option value="closed">已关闭</option>
-          <option value="ignored">已忽略</option>
-        </select>
-      </div>
-    </FilterPanel>
+  <div class="finding-page list-main">
 
-    <section class="list-main">
-      <div class="table-wrap">
+      <div class="list-toolbar">
+      <select v-model="severity" class="filter-input" @change="page.page = 1; load()">
+        <option value="">全部等级</option>
+        <option value="critical">严重</option>
+        <option value="high">高危</option>
+        <option value="medium">中危</option>
+        <option value="low">低危</option>
+      </select>
+      <select v-model="status" class="filter-input" @change="page.page = 1; load()">
+        <option value="">全部状态</option>
+        <option value="open">待处理</option>
+        <option value="confirmed">已确认</option>
+        <option value="closed">已关闭</option>
+        <option value="ignored">已忽略</option>
+      </select>
+      <span class="spacer" />
+      <button class="btn" @click="load">查询</button>
+    </div>
+    <div class="table-wrap">
         <table class="table">
           <thead>
             <tr>
@@ -153,7 +141,6 @@ onMounted(load)
         <span>{{ page.page }}</span>
         <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
       </div>
-    </section>
 
     <EvidenceDrawer v-model:visible="drawerVisible" :evidence-ids="drawerIds" />
   </div>
