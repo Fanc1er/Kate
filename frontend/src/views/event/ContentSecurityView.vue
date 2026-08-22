@@ -282,7 +282,7 @@ onMounted(load)
         </button>
       </div>
 
-      <div class="list-toolbar">
+      <div class="toolbar">
       <select v-model="severity" class="filter-input" @change="page.page = 1; load()">
         <option value="">全部等级</option>
         <option value="critical">严重</option>
@@ -424,6 +424,16 @@ onMounted(load)
 </template>
 
 <style scoped>
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+}
 .tabs {
   display: flex;
   gap: 6px;

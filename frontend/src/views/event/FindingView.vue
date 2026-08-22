@@ -80,7 +80,7 @@ onMounted(load)
 <template>
   <div class="finding-page list-main">
 
-      <div class="list-toolbar">
+      <div class="toolbar">
       <select v-model="severity" class="filter-input" @change="page.page = 1; load()">
         <option value="">全部等级</option>
         <option value="critical">严重</option>

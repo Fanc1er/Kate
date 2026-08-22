@@ -153,7 +153,7 @@ onMounted(load)
 <template>
   <div class="ticket-page list-main">
 
-      <div class="list-toolbar">
+      <div class="toolbar">
         <select v-model="status" class="filter-input" @change="page.page = 1; load()">
           <option value="">全部状态</option>
           <option value="open">待派发</option>
@@ -275,6 +275,16 @@ onMounted(load)
 </template>
 
 <style scoped>
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+}
 .input {
   height: 34px;
   border: 1px solid var(--color-border);
