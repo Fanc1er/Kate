@@ -413,6 +413,15 @@ func (w *worker) execute(ctx context.Context, t *taskPayload, p *policyPayload, 
 		}
 	}
 
+	// 安全扫描子能力：漏洞路径探测、DNS 检查、暗链、Webshell、端口、钓鱼、情报（骨架）。
+	if resp != nil && p != nil {
+		securityFindings := runSecurityEngines(ctx, a.URL, respBody, p, respHeaders)
+		result.Findings = append(result.Findings, securityFindings...)
+		if len(securityFindings) > 0 {
+			result.Metrics["security_findings"] = len(securityFindings)
+		}
+	}
+
 	// 递归扫描与资产发现：按策略深度抓取子页面，解析静态资源/子域名/接口路径写 assets，
 	// 子页面执行内容子能力（crawl_subpages）。crawl_subpages=false 时深度强制 1 仅测种子页。
 	if resp != nil && p != nil {
@@ -706,6 +715,119 @@ func runContentEngines(ctx context.Context, pageURL string, body []byte, p *poli
 			},
 		})
 	}
+	return out
+}
+
+// runSecurityEngines 执行安全扫描子能力（漏洞探测 / DNS / 暗链 / Webshell / 端口 / 钓鱼 / 情报）。
+func runSecurityEngines(ctx context.Context, pageURL string, body []byte, p *policyPayload, hdr http.Header) []findingPayload {
+	var out []findingPayload
+	if p == nil {
+		return out
+	}
+	html := string(body)
+
+	// 漏洞路径探测（vuln_scan）。
+	if p.engineEnabled("vuln_scan") {
+		engine := engines.NewVulnScanEngine()
+		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
+		for _, f := range fs {
+			out = append(out, findingPayload{
+				EngineName: "vuln_scan", Type: f.Type, Severity: f.Severity,
+				Title: f.Title, Description: f.Description, URL: f.URL,
+				Confidence: f.Confidence, Extra: f.Extra,
+			})
+		}
+	}
+
+	// DNS 安全检测（dns_security）：解析检查与内网劫持判定。
+	if p.engineEnabled("dns_security") {
+		engine := engines.NewDNSSecurityEngine()
+		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
+		for _, f := range fs {
+			out = append(out, findingPayload{
+				EngineName: "dns_security", Type: f.Type, Severity: f.Severity,
+				Title: f.Title, Description: f.Description, URL: f.URL,
+				Confidence: f.Confidence, Extra: f.Extra,
+			})
+		}
+	}
+
+	// 暗链检测（hidden_link）：隐藏样式 / 外部 iframe / javascript: 协议。
+	if p.engineEnabled("hidden_link") && len(html) > 0 {
+		engine := engines.NewHiddenLinkEngine()
+		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
+		for _, f := range fs {
+			out = append(out, findingPayload{
+				EngineName: "hidden_link", Type: f.Type, Severity: f.Severity,
+				Title: f.Title, Description: f.Description, URL: f.URL,
+				Confidence: f.Confidence, Extra: f.Extra,
+			})
+		}
+	}
+
+	// Webshell 特征检测（webshell）：HTML 响应中扫描危险模式，骨架实现。
+	if p.engineEnabled("webshell") && len(html) > 0 {
+		for _, f := range engines.CheckContent(html) {
+			out = append(out, findingPayload{
+				EngineName: "webshell", Type: f.Type, Severity: f.Severity,
+				Title: f.Title, Description: f.Description, URL: pageURL,
+				Confidence: f.Confidence, Extra: f.Extra,
+			})
+		}
+	}
+
+	// 钓鱼检测（phishing）：域名相似度与证书异常骨架。
+	if p.engineEnabled("phishing") {
+		engine := engines.NewPhishingEngine()
+		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
+		for _, f := range fs {
+			out = append(out, findingPayload{
+				EngineName: "phishing", Type: f.Type, Severity: f.Severity,
+				Title: f.Title, Description: f.Description, URL: f.URL,
+				Confidence: f.Confidence, Extra: f.Extra,
+			})
+		}
+	}
+
+	// 端口服务检测（port_service）：骨架实现，暂不执行端口扫描。
+	if p.engineEnabled("port_service") {
+		engine := engines.NewPortServiceEngine()
+		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
+		for _, f := range fs {
+			out = append(out, findingPayload{
+				EngineName: "port_service", Type: f.Type, Severity: f.Severity,
+				Title: f.Title, Description: f.Description, URL: f.URL,
+				Confidence: f.Confidence, Extra: f.Extra,
+			})
+		}
+	}
+
+	// 威胁情报（reputation）：骨架实现，暂无外部数据源。
+	if p.engineEnabled("reputation") {
+		engine := engines.NewReputationEngine()
+		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
+		for _, f := range fs {
+			out = append(out, findingPayload{
+				EngineName: "reputation", Type: f.Type, Severity: f.Severity,
+				Title: f.Title, Description: f.Description, URL: f.URL,
+				Confidence: f.Confidence, Extra: f.Extra,
+			})
+		}
+	}
+
+	// 情报关联（intelligence）：骨架实现，待接入 CVE/CNVD 订阅。
+	if p.engineEnabled("intelligence") {
+		engine := engines.NewIntelligenceEngine()
+		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
+		for _, f := range fs {
+			out = append(out, findingPayload{
+				EngineName: "intelligence", Type: f.Type, Severity: f.Severity,
+				Title: f.Title, Description: f.Description, URL: f.URL,
+				Confidence: f.Confidence, Extra: f.Extra,
+			})
+		}
+	}
+
 	return out
 }
 
