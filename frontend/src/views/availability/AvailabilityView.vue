@@ -1,99 +1,53 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, toRef } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import {
   getAvailabilityList,
   getAvailabilityTimeseries,
-  reprobe,
-  getWhitelist,
-  addWhitelist,
-  removeWhitelist,
   type AvailabilityItem,
-  type AvailabilityStatus,
   type AvailabilityPoint,
-  type WhitelistRule,
 } from '../../api/availability'
-import { formatTime } from '../../utils/format'
-import { toast } from '../../utils/toast'
 import Skeleton from '../../components/Skeleton.vue'
 import EChart from '../../components/EChart.vue'
-import WorkerTopology from './WorkerTopology.vue'
+import { formatTime } from '../../utils/format'
 import { useQuerySync } from '../../composables/useQuerySync'
+import { reactive, toRef } from 'vue'
 
-const tab = ref<'list' | 'topology'>('list')
-
+const tab = ref<'list' | 'timing'>('list')
 const list = ref<AvailabilityItem[]>([])
 const total = ref(0)
 const loading = ref(false)
 const keyword = ref('')
 const statusFilter = ref('')
-const codeGroupFilter = ref('')
 const page = reactive({ page: 1, page_size: 20 })
-const sortField = ref('')
-const sortOrder = ref<'asc' | 'desc'>('asc')
 
 useQuerySync(
   [
     ['keyword', keyword],
     ['status', statusFilter],
-    ['code_group', codeGroupFilter],
-    ['sort', sortField],
-    ['sort_order', sortOrder],
     ['page', toRef(page, 'page')],
     ['page_size', toRef(page, 'page_size')],
   ],
-  {
-    numberKeys: ['page', 'page_size'],
-    defaults: { page: 1, page_size: 20, sort: '', sort_order: 'asc' },
-  },
+  { numberKeys: ['page', 'page_size'], defaults: { page: 1, page_size: 20 } },
 )
 
-const selected = ref<number[]>([])
+const detail = ref<AvailabilityItem | null>(null)
+const timingData = ref<AvailabilityPoint[]>([])
+const timingLoading = ref(false)
 
-const statusOptions: { value: AvailabilityStatus; label: string }[] = [
-  { value: 'normal', label: '正常' },
-  { value: 'abnormal', label: '异常' },
-  { value: 'unknown', label: '未知' },
-]
-const codeGroupOptions = ['2xx', '3xx', '4xx', '5xx']
-const pageSizeOptions = [10, 20, 50, 100]
-
-const detailOpen = ref(false)
-const detailItem = ref<AvailabilityItem | null>(null)
-const detailPoints = ref<AvailabilityPoint[]>([])
-const detailLoading = ref(false)
-
-const whitelistOpen = ref(false)
-const whitelistRules = ref<WhitelistRule[]>([])
-const whitelistLoading = ref(false)
-const wlForm = reactive({ kind: 'domain', value: '', remark: '' })
-
-const confirmState = ref<{ message: string; onConfirm: () => Promise<void> } | null>(null)
-
-let debounceTimer: number | undefined
-
-function onKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape') {
-    if (confirmState.value) {
-      confirmState.value = null
-    } else if (detailOpen.value) {
-      closeDetail()
-    } else if (whitelistOpen.value) {
-      whitelistOpen.value = false
-    }
-  }
+const statusColor: Record<string, string> = {
+  normal: '#22c55e',
+  abnormal: '#ef4444',
+  unknown: '#9ca3af',
 }
 
 async function load(): Promise<void> {
   loading.value = true
   try {
     const res = await getAvailabilityList({
+      keyword: keyword.value,
+      status: statusFilter.value || undefined,
       page: page.page,
       page_size: page.page_size,
-      keyword: keyword.value || undefined,
-      status: statusFilter.value || undefined,
-      status_code_group: codeGroupFilter.value || undefined,
-      sort: sortField.value || undefined,
-      sort_order: sortField.value ? sortOrder.value : undefined,
     })
     list.value = res.list
     total.value = res.total
@@ -102,819 +56,191 @@ async function load(): Promise<void> {
   }
 }
 
-function toggleStatus(v: string): void {
-  statusFilter.value = statusFilter.value === v ? '' : v
-  page.page = 1
-  void load()
-}
-
-function toggleCodeGroup(v: string): void {
-  codeGroupFilter.value = codeGroupFilter.value === v ? '' : v
-  page.page = 1
-  void load()
-}
-
-function onKeywordInput(): void {
-  window.clearTimeout(debounceTimer)
-  debounceTimer = window.setTimeout(() => {
-    page.page = 1
-    void load()
-  }, 300)
-}
-
-function statusLabel(s: AvailabilityStatus): string {
-  return statusOptions.find((o) => o.value === s)?.label ?? s
-}
-
-function statusClass(s: AvailabilityStatus): string {
-  return `status-${s}`
-}
-
-// 内联 SVG sparkline 折线点串。
-function sparklinePoints(data: number[]): string {
-  if (!data || data.length < 2) return ''
-  const w = 120
-  const h = 28
-  const pad = 2
-  const max = Math.max(...data, 1)
-  const min = Math.min(...data, 0)
-  const range = max - min || 1
-  return data
-    .map((v, i) => {
-      const x = pad + (i * (w - pad * 2)) / (data.length - 1)
-      const y = h - pad - ((v - min) / range) * (h - pad * 2)
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
-}
-
-function toggleSelect(id: number): void {
-  const i = selected.value.indexOf(id)
-  if (i >= 0) selected.value.splice(i, 1)
-  else selected.value.push(id)
-}
-
-const allSelected = computed(
-  () => list.value.length > 0 && list.value.every((i) => selected.value.includes(i.asset_id)),
-)
-
-function toggleSelectAll(): void {
-  if (allSelected.value) {
-    selected.value = selected.value.filter((id) => !list.value.some((i) => i.asset_id === id))
-  } else {
-    for (const i of list.value) {
-      if (!selected.value.includes(i.asset_id)) selected.value.push(i.asset_id)
-    }
-  }
-}
-
-function clearSelection(): void {
-  selected.value = []
-}
-
-async function batchReprobe(): Promise<void> {
-  if (selected.value.length === 0) return
+async function openDetail(item: AvailabilityItem): Promise<void> {
+  detail.value = item
+  timingLoading.value = true
   try {
-    await reprobe(selected.value)
-    toast.success(`已下发 ${selected.value.length} 个重新探测任务`)
-    clearSelection()
-  } catch {
-    /* 全局拦截器已提示 */
-  }
-}
-
-async function batchWhitelist(): Promise<void> {
-  if (selected.value.length === 0) return
-  const targets = list.value.filter((i) => selected.value.includes(i.asset_id))
-  let n = 0
-  try {
-    for (const t of targets) {
-      const host = hostOf(t.url)
-      if (!host) continue
-      await addWhitelist('domain', host, '')
-      n += 1
-    }
-    toast.success(`已加入 ${n} 条白名单规则`)
-    clearSelection()
-  } catch {
-    /* 全局拦截器已提示 */
-  }
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return url
-  }
-}
-
-function openDetail(item: AvailabilityItem): void {
-  detailItem.value = item
-  detailOpen.value = true
-  detailPoints.value = []
-  void loadTimeseries(item.asset_id)
-}
-
-function closeDetail(): void {
-  detailOpen.value = false
-  detailItem.value = null
-}
-
-async function loadTimeseries(assetId: number): Promise<void> {
-  detailLoading.value = true
-  try {
-    detailPoints.value = await getAvailabilityTimeseries(assetId, 24)
+    timingData.value = await getAvailabilityTimeseries(item.asset_id, 24)
   } finally {
-    detailLoading.value = false
+    timingLoading.value = false
   }
 }
 
-const detailChartOption = computed<Record<string, unknown>>(() => {
-  const pts = detailPoints.value
-  if (!pts.length) return {}
-  return {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 48, right: 20, top: 20, bottom: 40 },
-    xAxis: {
-      type: 'category',
-      data: pts.map((p) => formatTime(p.sampled_at)),
-      axisLabel: { fontSize: 11 },
-    },
-    yAxis: { type: 'value', name: 'ms' },
-    series: [
-      {
-        type: 'line',
-        name: '响应耗时',
-        data: pts.map((p) => p.response_ms),
-        smooth: true,
-        showSymbol: false,
-        areaStyle: { opacity: 0.08 },
-      },
-    ],
-  }
+const chartData = computed(() => {
+  if (!timingData.value.length) return null
+  const labels = timingData.value.map((p) => formatTime(p.sampled_at))
+  const responseMs = timingData.value.map((p) => p.response_ms)
+  const statusColors = timingData.value.map((p) =>
+    p.status_code >= 500 ? '#ef4444' : p.status_code >= 400 ? '#f97316' : '#22c55e',
+  )
+  return { labels, responseMs, statusColors }
 })
-
-async function reprobeRow(item: AvailabilityItem): Promise<void> {
-  try {
-    await reprobe([item.asset_id])
-    toast.success(`已下发 ${item.name || item.url} 重新探测任务`)
-  } catch {
-    /* 全局拦截器已提示 */
-  }
-}
-
-function openWhitelistForm(item?: AvailabilityItem): void {
-  wlForm.kind = 'domain'
-  wlForm.value = item ? hostOf(item.url) : ''
-  wlForm.remark = ''
-  whitelistOpen.value = true
-  void loadWhitelist()
-}
-
-async function loadWhitelist(): Promise<void> {
-  whitelistLoading.value = true
-  try {
-    whitelistRules.value = await getWhitelist()
-  } finally {
-    whitelistLoading.value = false
-  }
-}
-
-async function submitWhitelist(): Promise<void> {
-  if (!wlForm.value.trim()) return
-  try {
-    await addWhitelist(wlForm.kind, wlForm.value.trim(), wlForm.remark.trim())
-    toast.success('已加入白名单')
-    wlForm.value = ''
-    wlForm.remark = ''
-    void loadWhitelist()
-  } catch {
-    /* 全局拦截器已提示 */
-  }
-}
-
-function requestDeleteWhitelist(rule: WhitelistRule): void {
-  confirmState.value = {
-    message: `确定删除白名单规则「${rule.value}」吗？`,
-    onConfirm: async () => {
-      await removeWhitelist(rule.id)
-      toast.success('已删除白名单规则')
-      confirmState.value = null
-      void loadWhitelist()
-    },
-  }
-}
-
-function toggleSort(field: string): void {
-  if (sortField.value !== field) {
-    sortField.value = field
-    sortOrder.value = 'asc'
-  } else if (sortOrder.value === 'asc') {
-    sortOrder.value = 'desc'
-  } else {
-    sortField.value = ''
-    sortOrder.value = 'asc'
-  }
-  page.page = 1
-  void load()
-}
-
-function changePageSize(size: number): void {
-  page.page_size = size
-  page.page = 1
-  void load()
-}
-
-function sortIndicator(field: string): string {
-  if (sortField.value !== field) return ''
-  return sortOrder.value === 'asc' ? '↑' : '↓'
-}
 
 onMounted(() => {
   void load()
-  window.addEventListener('keydown', onKeydown)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeydown)
 })
 </script>
 
 <template>
-  <div class="availability-page list-main">
-
-      <div class="tabs">
-        <button class="tab" :class="{ active: tab === 'list' }" @click="tab = 'list'">站点可用性</button>
-        <button class="tab" :class="{ active: tab === 'topology' }" @click="tab = 'topology'">工作节点拓扑</button>
-      </div>
-
-      <WorkerTopology v-if="tab === 'topology'" />
-
-      <template v-else>
-        <div class="toolbar">
-          <input v-model="keyword" class="input search" placeholder="搜索站点名 / URL" @input="onKeywordInput" />
-          <span class="spacer" />
-          <button class="btn" @click="openWhitelistForm()">白名单管理</button>
-          <button class="btn" @click="load">刷新</button>
-        </div>
-
-        <div v-if="selected.length" class="batch-bar">
-          <span>已选 {{ selected.length }} 项</span>
-          <button class="btn primary" @click="batchReprobe">批量重新探测</button>
-          <button class="btn" @click="batchWhitelist">批量加入白名单</button>
-          <button class="btn link" @click="clearSelection">取消选择</button>
-        </div>
-
-        <div class="body">
-          <aside class="filters">
-            <div class="filter-group">
-              <div class="filter-title">可用性状态</div>
-              <button
-                v-for="o in statusOptions"
-                :key="o.value"
-                class="chip"
-                :class="{ active: statusFilter === o.value }"
-                @click="toggleStatus(o.value)"
-              >
-                {{ o.label }}
-              </button>
-            </div>
-            <div class="filter-group">
-              <div class="filter-title">状态码</div>
-              <button
-                v-for="g in codeGroupOptions"
-                :key="g"
-                class="chip"
-                :class="{ active: codeGroupFilter === g }"
-                @click="toggleCodeGroup(g)"
-              >
-                {{ g }}
-              </button>
-            </div>
-          </aside>
-
-          <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th class="check-col">
-                  <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" />
-                </th>
-                <th class="sortable" @click="toggleSort('name')">站点名 <span class="sort-ind">{{ sortIndicator('name') }}</span></th>
-                <th class="sortable" @click="toggleSort('url')">URL <span class="sort-ind">{{ sortIndicator('url') }}</span></th>
-                <th class="sortable" @click="toggleSort('availability_status')">状态 <span class="sort-ind">{{ sortIndicator('availability_status') }}</span></th>
-                <th class="sortable" @click="toggleSort('status_code')">状态码 <span class="sort-ind">{{ sortIndicator('status_code') }}</span></th>
-                <th class="sortable" @click="toggleSort('response_ms')">响应耗时 <span class="sort-ind">{{ sortIndicator('response_ms') }}</span></th>
-                <th class="sortable" @click="toggleSort('sampled_at')">最后探测时间 <span class="sort-ind">{{ sortIndicator('sampled_at') }}</span></th>
-                <th>24h 趋势</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in list" :key="item.asset_id">
-                <td class="check-col">
-                  <input
-                    type="checkbox"
-                    :checked="selected.includes(item.asset_id)"
-                    @change="toggleSelect(item.asset_id)"
-                  />
-                </td>
-                <td class="name">{{ item.name || '-' }}</td>
-                <td class="mono url">{{ item.url }}</td>
-                <td>
-                  <span class="badge" :class="statusClass(item.availability_status)">
-                    {{ statusLabel(item.availability_status) }}
-                  </span>
-                </td>
-                <td>{{ item.availability_status === 'unknown' ? '-' : item.status_code }}</td>
-                <td>{{ item.availability_status === 'unknown' ? '-' : `${item.response_ms} ms` }}</td>
-                <td class="mono">{{ item.sampled_at ? formatTime(item.sampled_at) : '-' }}</td>
-                <td>
-                  <svg v-if="item.sparkline.length >= 2" class="sparkline" viewBox="0 0 120 28" preserveAspectRatio="none">
-                    <polyline :points="sparklinePoints(item.sparkline)" fill="none" stroke="var(--color-brand)" stroke-width="1.5" />
-                  </svg>
-                  <span v-else class="muted">-</span>
-                </td>
-                <td>
-                  <div class="row-actions">
-                    <button class="btn-mini" @click="openDetail(item)">详情</button>
-                    <button class="btn-mini" @click="reprobeRow(item)">重新探测</button>
-                    <button class="btn-mini" @click="openWhitelistForm(item)">加入白名单</button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-if="!loading && list.length === 0" class="empty">暂无可用性监测数据</div>
-          <Skeleton v-if="loading" :rows="6" :cols="8" />
-        </div>
-      </div>
-
-      <div class="pager">
-        <span>共 {{ total }} 条</span>
-        <span class="page-size">
-          每页
-          <select class="input" :value="page.page_size" @change="changePageSize(Number(($event.target as HTMLSelectElement).value))">
-            <option v-for="s in pageSizeOptions" :key="s" :value="s">{{ s }}</option>
-          </select>
-          条
-        </span>
-        <button class="btn" :disabled="page.page <= 1" @click="page.page--; load()">上一页</button>
-        <span>{{ page.page }}</span>
-        <button class="btn" :disabled="page.page * page.page_size >= total" @click="page.page++; load()">下一页</button>
-      </div>
-      </template>
-
-
-    <div v-if="detailOpen && detailItem" class="drawer-mask" @click.self="closeDetail">
-      <div class="drawer">
-        <div class="drawer-head">
-          <div>
-            <div class="drawer-title">{{ detailItem.name || '-' }}</div>
-            <div class="drawer-url mono">{{ detailItem.url }}</div>
-          </div>
-          <button class="btn-mini" @click="closeDetail">关闭</button>
-        </div>
-        <div class="drawer-meta">
-          <span class="badge" :class="statusClass(detailItem.availability_status)">
-            {{ statusLabel(detailItem.availability_status) }}
-          </span>
-          <span>状态码 {{ detailItem.availability_status === 'unknown' ? '-' : detailItem.status_code }}</span>
-          <span>{{ detailItem.availability_status === 'unknown' ? '-' : `${detailItem.response_ms} ms` }}</span>
-          <span>{{ detailItem.sampled_at ? formatTime(detailItem.sampled_at) : '-' }}</span>
-        </div>
-        <div class="drawer-actions">
-          <button class="btn primary" @click="reprobeRow(detailItem)">重新探测</button>
-          <button class="btn" @click="openWhitelistForm(detailItem)">加入白名单</button>
-        </div>
-        <div class="drawer-chart">
-          <div v-if="detailLoading" class="muted">加载时序中…</div>
-          <template v-else>
-            <div v-if="detailPoints.length === 0" class="muted">暂无 24h 时序数据</div>
-            <EChart v-else :option="detailChartOption" height="220px" />
-          </template>
-        </div>
+  <div class="flex flex-col gap-4">
+    <div class="flex items-center gap-3">
+      <h2 class="text-lg font-semibold text-gray-800">可用性网络</h2>
+      <div class="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+        <button
+          :class="[
+            'px-3 py-1 text-xs rounded-md transition-colors',
+            tab === 'list' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700',
+          ]"
+          @click="tab = 'list'"
+        >
+          列表
+        </button>
+        <button
+          :class="[
+            'px-3 py-1 text-xs rounded-md transition-colors',
+            tab === 'timing' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700',
+          ]"
+          @click="tab = 'timing'"
+        >
+          时序网络
+        </button>
       </div>
     </div>
 
-    <div v-if="whitelistOpen" class="modal-mask" @click.self="whitelistOpen = false">
-      <div class="modal">
-        <div class="modal-head">
-          <span class="modal-title">白名单管理</span>
-          <button class="btn-mini" @click="whitelistOpen = false">关闭</button>
+    <div v-if="tab === 'list'">
+      <div v-if="loading" class="space-y-2">
+        <Skeleton class="h-10 w-full" />
+        <Skeleton class="h-10 w-full" />
+        <Skeleton class="h-10 w-full" />
+      </div>
+      <div v-else-if="list.length === 0" class="text-center py-12 text-gray-500 text-sm">暂无数据</div>
+      <div v-else class="space-y-2">
+        <div
+          v-for="item in list"
+          :key="item.asset_id"
+          @click="openDetail(item)"
+          class="flex items-center gap-4 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+        >
+          <div
+            class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+            :style="{ background: statusColor[item.availability_status] ?? '#9ca3af' }"
+          />
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-800 truncate">{{ item.name }}</p>
+            <p class="text-xs text-gray-500 truncate">{{ item.url }}</p>
+          </div>
+          <div class="text-right flex-shrink-0">
+            <p class="text-sm text-gray-700">{{ item.status_code }}</p>
+            <p class="text-xs text-gray-400">{{ item.response_ms }}ms</p>
+          </div>
+          <div class="flex-shrink-0">
+            <div v-if="item.sparkline && item.sparkline.length" class="flex items-end gap-0.5 h-6">
+              <div
+                v-for="(v, i) in item.sparkline.slice(-12)"
+                :key="i"
+                class="w-1 rounded-sm"
+                :style="{
+                  height: `${Math.max(4, v * 24)}px`,
+                  background: v >= 0.8 ? '#22c55e' : v >= 0.5 ? '#eab308' : '#ef4444',
+                }"
+              />
+            </div>
+          </div>
+          <span class="text-xs text-gray-400 flex-shrink-0">{{ formatTime(item.sampled_at ?? '') }}</span>
         </div>
-        <div class="wl-form">
-          <select v-model="wlForm.kind" class="input">
-            <option value="domain">domain</option>
-            <option value="ip">ip</option>
-            <option value="cidr">cidr</option>
-          </select>
-          <input v-model="wlForm.value" class="input" placeholder="规则值（域名 / IP / CIDR）" />
-          <input v-model="wlForm.remark" class="input" placeholder="备注（可选）" />
-          <button class="btn primary" :disabled="!wlForm.value.trim()" @click="submitWhitelist">添加</button>
-        </div>
-        <div class="wl-list">
-          <div v-if="whitelistLoading" class="muted">加载中…</div>
-          <div v-else-if="whitelistRules.length === 0" class="muted">暂无白名单规则</div>
-          <div v-for="r in whitelistRules" :key="r.id" class="wl-row">
-            <span class="wl-kind">{{ r.kind }}</span>
-            <span class="wl-value mono">{{ r.value }}</span>
-            <span class="wl-remark">{{ r.remark }}</span>
-            <button class="btn-mini danger" @click="requestDeleteWhitelist(r)">删除</button>
+        <div class="flex items-center justify-between pt-2">
+          <span class="text-xs text-gray-500">共 {{ total }} 条</span>
+          <div class="flex gap-1">
+            <button
+              :disabled="page.page <= 1"
+              class="px-2 py-1 text-xs border border-gray-300 rounded disabled:opacity-40"
+              @click="page.page--"
+            >
+              上一页
+            </button>
+            <button
+              :disabled="page.page * page.page_size >= total"
+              class="px-2 py-1 text-xs border border-gray-300 rounded disabled:opacity-40"
+              @click="page.page++"
+            >
+              下一页
+            </button>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-if="confirmState" class="modal-mask" @click.self="confirmState = null">
-      <div class="modal confirm-modal">
-        <div class="confirm-text">{{ confirmState.message }}</div>
-        <div class="confirm-actions">
-          <button class="btn" @click="confirmState = null">取消</button>
-          <button class="btn danger" @click="confirmState.onConfirm()">确定删除</button>
+    <div v-else-if="tab === 'timing'">
+      <div v-if="!detail" class="text-center py-12 text-gray-500 text-sm">
+        请从列表选择一个资产查看时序网络
+      </div>
+      <div v-else class="space-y-4">
+        <div class="flex items-center gap-3">
+          <button
+            class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+            @click="tab = 'list'"
+          >
+            返回列表
+          </button>
+          <span class="text-sm font-medium text-gray-800">{{ detail.name }}</span>
+          <span class="text-xs text-gray-400">{{ detail.url }}</span>
+        </div>
+
+        <div v-if="timingLoading" class="py-8">
+          <Skeleton class="h-64 w-full" />
+        </div>
+        <div v-else-if="!timingData.length" class="text-center py-8 text-gray-500 text-sm">
+          暂无时序数据
+        </div>
+        <div v-if="chartData">
+          <EChart
+            :option="{
+              tooltip: { trigger: 'axis' },
+              legend: { data: ['响应时间 (ms)'] },
+              grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+              xAxis: { type: 'category', data: chartData.labels, axisLabel: { fontSize: 10 } },
+              yAxis: { type: 'value', name: 'ms' },
+              visualMap: {
+                show: false,
+                pieces: [
+                  { gt: 0, lt: 500, color: '#22c55e' },
+                  { gt: 500, lt: 1000, color: '#eab308' },
+                  { gte: 1000, color: '#ef4444' },
+                ],
+                outOfRange: { color: '#9ca3af' },
+              },
+              series: [
+                {
+                  name: '响应时间 (ms)',
+                  type: 'line',
+                  smooth: true,
+                  symbol: 'circle',
+                  symbolSize: 6,
+                  lineStyle: { width: 2 },
+                  itemStyle: { color: (params: any) => (chartData as NonNullable<typeof chartData>).statusColors[params.dataIndex] },
+                  areaStyle: {
+                    color: {
+                      type: 'linear',
+                      x: 0, y: 0, x2: 0, y2: 1,
+                      colorStops: [
+                        { offset: 0, color: 'rgba(59,130,246,0.2)' },
+                        { offset: 1, color: 'rgba(59,130,246,0)' },
+                      ],
+                    },
+                  },
+                  data: chartData.responseMs,
+                },
+              ],
+            }"
+            style="height: 300px"
+          />
+          <div class="mt-2 flex gap-4 text-xs text-gray-500">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-500" /> &lt; 500ms 正常</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-yellow-500" /> 500-1000ms 警告</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500" /> &gt; 1000ms 异常</span>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--color-border);
-}
-.tab {
-  border: none;
-  background: transparent;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  border-bottom: 2px solid transparent;
-}
-.tab.active {
-  color: var(--color-brand);
-  border-bottom-color: var(--color-brand);
-  font-weight: var(--font-weight-semibold);
-}
-.input {
-  height: 34px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 0 10px;
-  outline: none;
-  font-size: 13px;
-}
-.search {
-  width: 260px;
-}
-.spacer {
-  flex: 1;
-}
-.btn {
-  height: 34px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-card);
-  border-radius: var(--radius-md);
-  padding: 0 14px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.btn.primary {
-  background: var(--color-brand);
-  border-color: var(--color-brand);
-  color: #fff;
-}
-.btn.link {
-  border: none;
-  color: var(--color-brand);
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.toolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.body {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-}
-.filters {
-  flex: none;
-  width: 180px;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  box-shadow: var(--shadow-card);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-.filter-title {
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
-  margin-bottom: 10px;
-  color: var(--color-text-secondary);
-}
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.batch-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--color-brand-light);
-  border: 1px solid var(--color-brand-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: 13px;
-  color: var(--color-brand);
-}
-.chip {
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-card);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-  color: var(--color-text-secondary);
-}
-.chip.active {
-  background: var(--color-bg-selected);
-  border-color: var(--color-brand-border);
-  color: var(--color-brand);
-}
-.table-wrap {
-  flex: 1;
-  min-width: 0;
-  background: var(--color-bg-card);
-  border-radius: var(--radius-md);
-  padding: 8px;
-  box-shadow: var(--shadow-card);
-  min-height: 200px;
-}
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.table th,
-.table td {
-  text-align: left;
-  padding: 10px;
-  border-bottom: 1px solid var(--color-border-light);
-}
-.check-col {
-  width: 32px;
-}
-.name {
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-}
-.url {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-text-secondary);
-}
-.mono {
-  font-family: var(--font-family-mono);
-  font-size: 12px;
-}
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-}
-.status-normal {
-  background: var(--color-brand-light);
-  color: var(--color-brand);
-}
-.status-abnormal {
-  background: #fff1f0;
-  color: var(--color-danger);
-}
-.status-unknown {
-  background: var(--color-bg-hover);
-  color: var(--color-text-tertiary);
-}
-.sparkline {
-  width: 120px;
-  height: 28px;
-  display: block;
-}
-.muted {
-  color: var(--color-text-tertiary);
-}
-.empty {
-  text-align: center;
-  color: var(--color-text-tertiary);
-  padding: 40px 0;
-}
-.pager {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-}
-.row-actions {
-  display: flex;
-  gap: 6px;
-}
-.btn-mini {
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-card);
-  border-radius: var(--radius-sm);
-  padding: 3px 8px;
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-.btn-mini:hover {
-  color: var(--color-brand);
-  border-color: var(--color-brand-border);
-}
-.btn-mini.danger {
-  color: var(--color-danger);
-}
-.drawer-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-}
-.drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 480px;
-  max-width: 92vw;
-  height: 100%;
-  background: var(--color-bg-card);
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-}
-.drawer-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-.drawer-title {
-  font-size: 16px;
-  font-weight: var(--font-weight-semibold);
-}
-.drawer-url {
-  color: var(--color-text-secondary);
-  margin-top: 4px;
-  word-break: break-all;
-}
-.drawer-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-}
-.drawer-actions {
-  display: flex;
-  gap: 8px;
-}
-.drawer-chart {
-  flex: 1;
-  min-height: 220px;
-}
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1100;
-}
-.modal {
-  width: 560px;
-  max-width: 92vw;
-  max-height: 80vh;
-  background: var(--color-bg-card);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.modal-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.modal-title {
-  font-size: 16px;
-  font-weight: var(--font-weight-semibold);
-}
-.wl-form {
-  display: flex;
-  gap: 8px;
-}
-.wl-form .input {
-  flex: 1;
-  min-width: 0;
-}
-.wl-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-.wl-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-}
-.wl-kind {
-  flex: none;
-  background: var(--color-bg-hover);
-  border-radius: var(--radius-sm);
-  padding: 2px 6px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-.wl-value {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wl-remark {
-  flex: none;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-text-tertiary);
-}
-.sortable {
-  cursor: pointer;
-  user-select: none;
-}
-.sortable:hover {
-  color: var(--color-brand);
-}
-.sort-ind {
-  color: var(--color-brand);
-  font-size: 12px;
-}
-.page-size {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.page-size .input {
-  height: 30px;
-  padding: 0 6px;
-}
-.btn.danger {
-  background: var(--color-danger);
-  border-color: var(--color-danger);
-  color: #fff;
-}
-.confirm-modal {
-  width: 400px;
-}
-.confirm-text {
-  font-size: 14px;
-  color: var(--color-text-primary);
-  line-height: 1.6;
-}
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-</style>

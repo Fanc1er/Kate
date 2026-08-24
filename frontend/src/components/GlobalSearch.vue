@@ -3,6 +3,7 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { listAssets, type Asset } from '../api/asset'
 import { listFindings, type Finding } from '../api/event'
+import { globalSearch, type SearchDocument } from '../api/search'
 
 const router = useRouter()
 const open = ref(false)
@@ -44,12 +45,31 @@ function onInput(): void {
   debounceTimer = window.setTimeout(async () => {
     loading.value = true
     try {
-      const [a, f] = await Promise.all([
-        listAssets({ page: 1, page_size: 5, keyword: kw }),
-        listFindings({ page: 1, page_size: 5, keyword: kw }),
+      const [apiRes, localRes] = await Promise.all([
+        globalSearch(kw, 1).catch(() => ({ keyword: kw, total: 0, page: 1, items: [] as SearchDocument[] })),
+        Promise.all([
+          listAssets({ page: 1, page_size: 5, keyword: kw }),
+          listFindings({ page: 1, page_size: 5, keyword: kw }),
+        ]),
       ])
-      assets.value = a.list
-      findings.value = f.list
+
+      const [la, lf] = localRes as [ { list: Asset[] }, { list: Finding[] } ]
+      assets.value = la.list
+      findings.value = lf.list
+
+      const seen = new Set<string>()
+      for (const d of apiRes.items) {
+        const key = `${d.type}:${d.id}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        if (d.type === 'asset') {
+          if (!assets.value.find((a) => a.id === d.id)) {
+            assets.value.push(d as unknown as Asset)
+          }
+        } else if (d.type === 'event' && findings.value.length < 5) {
+          findings.value.push(d as unknown as Finding)
+        }
+      }
     } finally {
       loading.value = false
     }
@@ -72,7 +92,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         ref="inputEl"
         v-model="keyword"
         class="search-input"
-        placeholder="搜索站点 / URL / 发现…"
+        placeholder="搜索站点 / URL / 发现 / 事件…"
         @input="onInput"
       />
       <div v-if="loading" class="hint">搜索中…</div>
@@ -88,7 +108,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           </button>
         </div>
         <div v-if="findings.length" class="group">
-          <div class="group-title">发现</div>
+          <div class="group-title">发现 & 事件</div>
           <button v-for="f in findings" :key="f.id" class="result" @click="go('/risk/findings')">
             <span class="result-name">{{ f.title }}</span>
             <span class="result-url">{{ f.url }}</span>
@@ -192,13 +212,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     padding: 0;
     align-items: stretch;
   }
-  
+
   .search-panel {
     max-height: 100vh;
     border-radius: 0;
     width: 100%;
   }
-  
+
   .search-input {
     font-size: 16px;
     height: 52px;

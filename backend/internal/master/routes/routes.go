@@ -18,6 +18,7 @@ import (
 	"github.com/Fanc1er/Kate/backend/internal/master/license"
 	"github.com/Fanc1er/Kate/backend/internal/master/middleware"
 	"github.com/Fanc1er/Kate/backend/internal/master/models"
+	"github.com/Fanc1er/Kate/backend/internal/master/search"
 	"github.com/Fanc1er/Kate/backend/internal/master/service"
 	"github.com/Fanc1er/Kate/backend/pkg/errs"
 	"github.com/Fanc1er/Kate/backend/pkg/response"
@@ -100,6 +101,7 @@ func Setup(d *Deps) *gin.Engine {
 	registerAvailability(authed, d)
 	registerMembers(authed, d)
 	registerWorkerNodes(authed, d)
+	search.RegisterRoutes(authed)
 
 	if d.Seed != nil && !d.Seed.IsInitialized() {
 		// 未初始化时平台管理路由单独暴露。

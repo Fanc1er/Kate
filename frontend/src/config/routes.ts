@@ -141,6 +141,33 @@ export const APP_ROUTES: AppRoute[] = [
     component: () => import('../views/policy/PolicyView.vue'),
     meta: { title: '策略模板' },
   },
+  {
+    path: '/search',
+    name: 'search',
+    component: () => import('../views/search/SearchView.vue'),
+    meta: { title: '全局搜索' },
+  },
+  {
+    path: '/tasks/queue',
+    name: 'task-queue',
+    component: () => import('../views/task/TaskQueueView.vue'),
+    meta: { title: '任务队列' },
+  },
+  {
+    path: '/engines',
+    name: 'engines',
+    component: () => import('../views/engine/EngineOverviewView.vue'),
+    meta: { title: '引擎总览' },
+    redirect: '/engines/vuln_scan',
+    children: [
+      { path: 'vuln_scan', name: 'engine-vuln-scan', component: () => import('../views/engine/VulnScanView.vue'), meta: { title: '漏洞扫描' } },
+      { path: 'hidden_link', name: 'engine-hidden-link', component: () => import('../views/engine/HiddenLinkView.vue'), meta: { title: '暗链检测' } },
+      { path: 'webshell', name: 'engine-webshell', component: () => import('../views/engine/WebshellView.vue'), meta: { title: 'Webshell' } },
+      { path: 'phishing', name: 'engine-phishing', component: () => import('../views/engine/PhishingView.vue'), meta: { title: '钓鱼检测' } },
+      { path: 'port_service', name: 'engine-port-service', component: () => import('../views/engine/PortServiceView.vue'), meta: { title: '端口服务' } },
+      { path: 'threat_intelligence', name: 'engine-threat-intelligence', component: () => import('../views/engine/ThreatIntelligenceView.vue'), meta: { title: '威胁情报' } },
+    ],
+  },
 ]
 
 export const MENU: MenuItem[] = [
@@ -150,6 +177,7 @@ export const MENU: MenuItem[] = [
   { title: '风险中心', path: '/risk', roles: ['admin', 'user'] },
   { title: '内容安全', path: '/content-security', roles: ['admin', 'user'] },
   { title: '可用性监测', path: '/availability', roles: ['admin', 'user'] },
+  { title: '引擎总览', path: '/engines', roles: ['admin', 'user'] },
   { title: '工单', path: '/tickets', roles: ['admin', 'user'] },
   { title: '报告', path: '/reports', roles: ['admin', 'user'] },
   { title: '策略模板', path: '/policy', roles: ['admin', 'user'] },
