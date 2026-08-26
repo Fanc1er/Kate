@@ -4,14 +4,14 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const engines = ref([
-  { name: 'vuln_scan', label: '漏洞扫描', status: 'skeleton', desc: '基于 CVE/NVD 的漏洞匹配骨架' },
-  { name: 'hidden_link', label: '暗链检测', status: 'skeleton', desc: '隐藏链接与暗链识别骨架' },
-  { name: 'webshell', label: 'Webshell 检测', status: 'skeleton', desc: 'Webshell 特征码匹配骨架' },
-  { name: 'phishing', label: '钓鱼检测', status: 'skeleton', desc: '域名相似度与证书异常检测骨架' },
-  { name: 'port_service', label: '端口服务', status: 'skeleton', desc: '端口扫描与服务指纹骨架' },
-  { name: 'dns_security', label: 'DNS 安全', status: 'active', desc: 'DNS 解析检查与内网劫持检测' },
-  { name: 'reputation', label: '威胁情报', status: 'skeleton', desc: 'IP/域名信誉评分骨架' },
-  { name: 'intelligence', label: '情报关联', status: 'skeleton', desc: '多源情报聚合与关联分析骨架' },
+  { name: 'vuln_scan', label: '漏洞扫描', status: 'active', desc: '敏感路径探测与暴露面识别' },
+  { name: 'hidden_link', label: '暗链检测', status: 'active', desc: '隐藏元素/外部 iframe/危险协议' },
+  { name: 'webshell', label: 'Webshell 检测', status: 'active', desc: '特征码与混淆模式匹配' },
+  { name: 'phishing', label: '钓鱼检测', status: 'active', desc: '域名相似度与证书异常' },
+  { name: 'port_service', label: '端口服务', status: 'active', desc: 'CommonPorts 扫描与服务指纹' },
+  { name: 'dns_security', label: 'DNS 安全', status: 'active', desc: '解析检查/多节点对比/证书监测' },
+  { name: 'threat_intelligence', label: '威胁情报', status: 'active', desc: '信誉评分与恶意特征启发式' },
+  { name: 'intelligence', label: '情报关联', status: 'active', desc: '组件版本 CVE 匹配' },
 ])
 </script>
 

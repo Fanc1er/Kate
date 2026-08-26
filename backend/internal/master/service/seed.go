@@ -60,7 +60,7 @@ func (s *SeedService) EnsureDefaults() error {
 	if count == 0 {
 		s.DB.Create(&models.ScanPolicy{
 			Name: "默认日常巡检", Scenario: "daily",
-			EngineSwitches: `{"availability":{"enabled":true,"fail_count":3,"slow_threshold_ms":3000},"vuln_scan":{"enabled":true},"content_security":{"enabled":true}}`,
+			EngineSwitches: `{"availability":{"enabled":true,"fail_count":3,"slow_threshold_ms":3000},"vuln_scan":{"enabled":true},"content":{"enabled":true},"hidden_link":{"enabled":true},"webshell":{"enabled":true},"phishing":{"enabled":true},"port_service":{"enabled":true},"dns_security":{"enabled":true},"reputation":{"enabled":true},"intelligence":{"enabled":true}}`,
 			Concurrency: 4, Timeout: 60, RateLimit: 10, ScanDepth: 2, ConcurrencyLimit: 4, SameOrigin: true, CrawlSubpages: true,
 		})
 	}

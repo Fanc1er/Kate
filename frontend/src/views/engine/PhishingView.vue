@@ -1,27 +1,22 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import Skeleton from '../../components/Skeleton.vue'
+import EngineDetail, { type EngineDetection } from '../../components/EngineDetail.vue'
 
-const loading = ref(false)
-
-onMounted(() => {
-  loading.value = true
-  setTimeout(() => {
-    loading.value = false
-  }, 600)
-})
+const detections: EngineDetection[] = [
+  { type: 'typosquatting', desc: '域名与知名品牌编辑距离 ≤2，疑似仿冒钓鱼站点', severity: 'high' },
+  { type: 'suspicious_domain', desc: '域名数字比例过高或连字符过多', severity: 'medium' },
+  { type: 'no_https', desc: '目标使用 HTTP 明文，存在中间人攻击风险', severity: 'low' },
+  { type: 'cert_expired', desc: 'TLS 证书已过期', severity: 'high' },
+  { type: 'cert_hostname_mismatch', desc: 'TLS 证书不覆盖访问主机名', severity: 'high' },
+  { type: 'cert_not_yet_valid', desc: 'TLS 证书尚未生效', severity: 'high' },
+  { type: 'cert_expiring_soon', desc: 'TLS 证书将在 30 天内过期', severity: 'low' },
+]
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <h2 class="text-lg font-semibold text-gray-800">钓鱼检测</h2>
-    <div v-if="loading" class="space-y-2">
-      <Skeleton class="h-10 w-full" />
-      <Skeleton class="h-10 w-full" />
-      <Skeleton class="h-10 w-full" />
-    </div>
-    <div v-else class="text-center py-12 text-gray-500 text-sm">
-      钓鱼检测引擎正在实现中
-    </div>
-  </div>
+  <EngineDetail
+    title="钓鱼检测"
+    intro="基于 Levenshtein 域名相似度检测 typosquatting，并校验 HTTPS 证书有效期与域名覆盖。"
+    :detections="detections"
+    suggestion="下线仿冒+备案"
+  />
 </template>

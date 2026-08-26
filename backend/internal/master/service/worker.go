@@ -956,6 +956,10 @@ func expandEngineSwitches(enabled []string) []string {
 		"content":   {"ai_classify", "dead_link", "keyword", "image_ocr", "external_link", "content_integrity"},
 		"multi_ua":  {"multi_ua"},
 		"webshell":  {"webshell"},
+		// 兼容旧策略开关名 → 实际引擎名。
+		"dns":   {"dns_security"},
+		"port":  {"port_service"},
+		"intel": {"intelligence"},
 	}
 	seen := map[string]bool{}
 	var out []string

@@ -1,27 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import Skeleton from '../../components/Skeleton.vue'
+import EngineDetail, { type EngineDetection } from '../../components/EngineDetail.vue'
 
-const loading = ref(false)
-
-onMounted(() => {
-  loading.value = true
-  setTimeout(() => {
-    loading.value = false
-  }, 600)
-})
+const detections: EngineDetection[] = [
+  { type: 'port_exposed', desc: 'CommonPorts 列表或显式端口开放（FTP/SSH/RDP/Redis/MySQL 等）', severity: 'high' },
+]
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <h2 class="text-lg font-semibold text-gray-800">端口服务</h2>
-    <div v-if="loading" class="space-y-2">
-      <Skeleton class="h-10 w-full" />
-      <Skeleton class="h-10 w-full" />
-      <Skeleton class="h-10 w-full" />
-    </div>
-    <div v-else class="text-center py-12 text-gray-500 text-sm">
-      端口服务检测引擎正在实现中
-    </div>
-  </div>
+  <EngineDetail
+    title="端口服务"
+    intro="TCP Connect 扫描目标常见高危端口，识别对外开放的服务与暴露面。"
+    :detections="detections"
+    suggestion="收敛暴露面+补丁加固"
+  />
 </template>

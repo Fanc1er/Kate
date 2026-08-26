@@ -165,7 +165,9 @@ export const APP_ROUTES: AppRoute[] = [
       { path: 'webshell', name: 'engine-webshell', component: () => import('../views/engine/WebshellView.vue'), meta: { title: 'Webshell' } },
       { path: 'phishing', name: 'engine-phishing', component: () => import('../views/engine/PhishingView.vue'), meta: { title: '钓鱼检测' } },
       { path: 'port_service', name: 'engine-port-service', component: () => import('../views/engine/PortServiceView.vue'), meta: { title: '端口服务' } },
+      { path: 'dns_security', name: 'engine-dns-security', component: () => import('../views/engine/DNSSecurityView.vue'), meta: { title: 'DNS 安全' } },
       { path: 'threat_intelligence', name: 'engine-threat-intelligence', component: () => import('../views/engine/ThreatIntelligenceView.vue'), meta: { title: '威胁情报' } },
+      { path: 'intelligence', name: 'engine-intelligence', component: () => import('../views/engine/IntelligenceView.vue'), meta: { title: '情报关联' } },
     ],
   },
 ]

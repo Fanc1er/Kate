@@ -13,13 +13,16 @@ const error = ref('')
 const ENGINES = [
   'availability',
   'vuln_scan',
-  'dns',
+  'dns_security',
   'sensitive',
   'webshell',
   'content',
-  'intel',
+  'hidden_link',
+  'phishing',
+  'port_service',
+  'reputation',
+  'intelligence',
   'subdomain',
-  'port',
   'tech_stack',
 ]
 

@@ -1,27 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import Skeleton from '../../components/Skeleton.vue'
+import EngineDetail, { type EngineDetection } from '../../components/EngineDetail.vue'
 
-const loading = ref(false)
-
-onMounted(() => {
-  loading.value = true
-  setTimeout(() => {
-    loading.value = false
-  }, 600)
-})
+const detections: EngineDetection[] = [
+  { type: 'path_exposure', desc: '敏感路径返回 200（.env / .git / wp-admin / phpmyadmin 等）', severity: 'medium' },
+]
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <h2 class="text-lg font-semibold text-gray-800">漏洞扫描</h2>
-    <div v-if="loading" class="space-y-2">
-      <Skeleton class="h-10 w-full" />
-      <Skeleton class="h-10 w-full" />
-      <Skeleton class="h-10 w-full" />
-    </div>
-    <div v-else class="text-center py-12 text-gray-500 text-sm">
-      漏洞扫描引擎正在实现中
-    </div>
-  </div>
+  <EngineDetail
+    title="漏洞扫描"
+    intro="探测目标常见敏感路径与暴露入口，识别潜在信息泄露与攻击面。"
+    :detections="detections"
+    suggestion="按 CVE 修复并复测"
+  />
 </template>
