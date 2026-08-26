@@ -4,17 +4,44 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 )
 
 const NameDNSSecurity = "dns_security"
 
-// DNSSecurityEngine DNS 安全引擎骨架：解析检查与证书监测。
-// 完整实现需支持多节点解析对比、污染检测、CRL-OCSP 撤销校验。
-type DNSSecurityEngine struct{}
+// DNSResolver DNS 解析器抽象，支持多节点解析对比与污染检测。
+type DNSResolver interface {
+	LookupIP(ctx context.Context, host string) ([]net.IP, error)
+}
 
-// NewDNSSecurityEngine 构造 DNS 安全引擎。
-func NewDNSSecurityEngine() *DNSSecurityEngine { return &DNSSecurityEngine{} }
+// systemResolver 使用系统默认解析器。
+type systemResolver struct{}
+
+func (systemResolver) LookupIP(ctx context.Context, host string) ([]net.IP, error) {
+	return net.DefaultResolver.LookupIP(ctx, "ip", host)
+}
+
+// DNSSecurityEngine DNS 安全引擎：解析检查、多节点解析对比与证书监测。
+type DNSSecurityEngine struct {
+	resolvers []DNSResolver
+}
+
+// NewDNSSecurityEngine 构造 DNS 安全引擎（默认单节点系统解析器）。
+func NewDNSSecurityEngine() *DNSSecurityEngine {
+	return &DNSSecurityEngine{
+		resolvers: []DNSResolver{systemResolver{}},
+	}
+}
+
+// WithResolvers 注入多个 DNS 解析器，启用多节点解析对比（如公共 DNS 服务器）。
+func (e *DNSSecurityEngine) WithResolvers(rs ...DNSResolver) *DNSSecurityEngine {
+	if len(rs) == 0 {
+		return e
+	}
+	e.resolvers = rs
+	return e
+}
 
 // Name 返回引擎名。
 func (e *DNSSecurityEngine) Name() string { return NameDNSSecurity }
@@ -34,26 +61,43 @@ func (e *DNSSecurityEngine) Enabled(p Policy) bool {
 // Run 执行 DNS 安全检测。
 func (e *DNSSecurityEngine) Run(ctx context.Context, target Target, p Policy) ([]Finding, error) {
 	var findings []Finding
-	host := extractHost(target.URL)
-
-	// DNS 解析检查
-	ips, err := net.LookupIP(host)
+	u, err := url.Parse(target.URL)
 	if err != nil {
-		findings = append(findings, Finding{
-			Type:        "dns_resolution_failed",
-			Severity:    SeverityMedium,
-			Title:       "DNS 解析失败",
-			Description: fmt.Sprintf("无法解析主机 %s：%v", host, err),
-			URL:         target.URL,
-			Confidence:  0.9,
-			Extra: map[string]any{
-				"host": host,
-			},
-		})
+		return findings, nil
+	}
+	host := u.Hostname()
+	if host == "" {
 		return findings, nil
 	}
 
-	if len(ips) == 0 {
+	// 多节点解析对比：收集各解析器结果。
+	var results [][]net.IP
+	for i, r := range e.resolvers {
+		ips, err := r.LookupIP(ctx, host)
+		if err != nil {
+			if i == 0 {
+				findings = append(findings, Finding{
+					Type:        "dns_resolution_failed",
+					Severity:    SeverityMedium,
+					Title:       "DNS 解析失败",
+					Description: fmt.Sprintf("无法解析主机 %s：%v", host, err),
+					URL:         target.URL,
+					Confidence:  0.9,
+					Extra: map[string]any{
+						"host": host,
+					},
+				})
+				return findings, nil
+			}
+			continue
+		}
+		if len(ips) == 0 {
+			continue
+		}
+		results = append(results, ips)
+	}
+
+	if len(results) == 0 {
 		findings = append(findings, Finding{
 			Type:        "dns_no_records",
 			Severity:    SeverityMedium,
@@ -62,16 +106,17 @@ func (e *DNSSecurityEngine) Run(ctx context.Context, target Target, p Policy) ([
 			URL:         target.URL,
 			Confidence:  0.8,
 		})
+		return findings, nil
 	}
 
-	// 检测 IP 是否为内网地址
-	for _, ip := range ips {
-		if ip.IsPrivate() {
+	// 基于主解析结果检测内网地址。
+	for _, ip := range results[0] {
+		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
 			findings = append(findings, Finding{
 				Type:        "dns_internal_ip",
 				Severity:    SeverityHigh,
 				Title:       "DNS 解析至内网地址",
-				Description: fmt.Sprintf("主机 %s 解析到内网 IP：%s，可能存在 DNS 劫持或配置错误", host, ip.String()),
+				Description: fmt.Sprintf("主机 %s 解析到内网/回环 IP：%s，可能存在 DNS 劫持或配置错误", host, ip.String()),
 				URL:         target.URL,
 				Confidence:  0.85,
 				Extra: map[string]any{
@@ -81,10 +126,69 @@ func (e *DNSSecurityEngine) Run(ctx context.Context, target Target, p Policy) ([
 		}
 	}
 
-	// TODO: 多节点解析对比
-	// TODO: 证书监测（有效期/CRL-OCSP/SAN）
+	// 多节点解析结果不一致 → 疑似 DNS 污染/劫持。
+	if len(results) >= 2 {
+		inconsistent := false
+		for i := 1; i < len(results); i++ {
+			if !sameIPSet(results[0], results[i]) {
+				inconsistent = true
+				break
+			}
+		}
+		if inconsistent {
+			var detail []string
+			for _, ips := range results {
+				var parts []string
+				for _, ip := range ips {
+					parts = append(parts, ip.String())
+				}
+				detail = append(detail, strings.Join(parts, ","))
+			}
+			findings = append(findings, Finding{
+				Type:        "dns_resolver_inconsistent",
+				Severity:    SeverityHigh,
+				Title:       "多节点 DNS 解析结果不一致",
+				Description: fmt.Sprintf("主机 %s 在不同解析节点返回不同 IP，疑似 DNS 污染或劫持", host),
+				URL:         target.URL,
+				Confidence:  0.7,
+				Extra: map[string]any{
+					"results": detail,
+				},
+			})
+		}
+	}
+
+	// 证书监测（有效期/SAN），仅对 HTTPS 目标；复用 phishing 的证书校验。
+	if u.Scheme == "https" {
+		addr := u.Host
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			addr = net.JoinHostPort(addr, "443")
+		}
+		certFindings := checkTLSCertificate(addr, host)
+		for i := range certFindings {
+			certFindings[i].URL = target.URL
+		}
+		findings = append(findings, certFindings...)
+	}
 
 	return findings, nil
+}
+
+// sameIPSet 比较两个 IP 集合是否一致（顺序无关）。
+func sameIPSet(a, b []net.IP) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	set := map[string]bool{}
+	for _, ip := range a {
+		set[ip.String()] = true
+	}
+	for _, ip := range b {
+		if !set[ip.String()] {
+			return false
+		}
+	}
+	return true
 }
 
 // extractHost 从 URL 中提取主机名。

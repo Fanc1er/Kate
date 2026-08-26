@@ -1013,7 +1013,7 @@ func mapEvent(engine, findingType, severity string) (eventType, title string) {
 	case "port_service":
 		return "端口暴露", "端口服务暴露"
 	case "dns_security":
-		if findingType == "certificate" {
+		if strings.HasPrefix(findingType, "cert_") {
 			return "证书告警", "证书异常"
 		}
 		return "篡改", "DNS 异常"
@@ -1031,7 +1031,8 @@ func isAlertWorthy(severity, findingType string) bool {
 		return true
 	}
 	switch findingType {
-	case "content_integrity", "hidden_link", "tamper", "port", "intel", "availability", "certificate":
+	case "content_integrity", "hidden_element", "external_iframe", "javascript_protocol",
+		"port_exposed", "path_exposure", "cert_expiring_soon", "dns_resolver_inconsistent":
 		return true
 	}
 	return false

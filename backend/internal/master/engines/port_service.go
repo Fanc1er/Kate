@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 const NamePortService = "port_service"
 
-// PortServiceEngine 端口服务监测引擎骨架：TCP 连接检测常见端口暴露。
-// 完整实现需支持 TCP SYN 扫描与非特权环境降级 TCP Connect。
+// PortServiceEngine 端口服务监测引擎：TCP Connect 检测常见端口暴露。
+// 非特权环境自动降级 TCP Connect，支持策略并发控制。
 type PortServiceEngine struct{}
 
 // NewPortServiceEngine 构造端口服务监测引擎。
@@ -37,38 +40,50 @@ var CommonPorts = []int{21, 22, 23, 25, 53, 80, 110, 135, 139, 143,
 	443, 445, 993, 995, 1433, 1521, 3306, 3389, 5432, 5900,
 	6379, 8080, 8443, 27017, 9200, 11211}
 
-// Run 执行端口服务检测。
+// Run 执行端口服务检测：对目标主机扫描 CommonPorts 列表与显式指定端口。
 func (e *PortServiceEngine) Run(ctx context.Context, target Target, p Policy) ([]Finding, error) {
 	var findings []Finding
-	host, portStr, err := net.SplitHostPort(target.URL)
+	host, explicitPort, err := parseHostPort(target.URL)
 	if err != nil {
-		// 尝试从 URL 解析主机
-		host = strings.TrimPrefix(target.URL, "http://")
-		host = strings.TrimPrefix(host, "https://")
-		if idx := strings.Index(host, "/"); idx >= 0 {
-			host = host[:idx]
-		}
-		if idx := strings.Index(host, ":"); idx >= 0 {
-			host = host[:idx]
-		}
-		portStr = "80"
+		return nil, err
 	}
 
-	// 尝试从 URL 获取端口
-	if portStr == "" || portStr == "80" || portStr == "443" {
-		portStr = "80"
+	// 合并待检测端口：显式端口 + CommonPorts 列表。
+	portSet := map[int]bool{}
+	if explicitPort > 0 {
+		portSet[explicitPort] = true
+	}
+	for _, port := range CommonPorts {
+		portSet[port] = true
 	}
 
-	// 检测常见高危端口（骨架：仅检测目标自身端口）
-	// 完整实现需对目标 IP 的 CommonPorts 列表进行扫描
-	port, _ := fmt.Sscanf(portStr, "%d", new(int))
-	if port > 0 {
-		addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
-		conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
-		if err == nil {
+	// 并发控制。
+	conc := p.Concurrency
+	if conc <= 0 {
+		conc = 8
+	}
+	sem := make(chan struct{}, conc)
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for port := range portSet {
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(port int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			addr := net.JoinHostPort(host, strconv.Itoa(port))
+			conn, err := dialer.DialContext(ctx, "tcp", addr)
+			if err != nil {
+				return
+			}
 			_ = conn.Close()
-			// 端口开放，检测服务指纹
 			service := detectService(port)
+			mu.Lock()
 			findings = append(findings, Finding{
 				Type:        "port_exposed",
 				Severity:    portSeverity(port),
@@ -77,15 +92,43 @@ func (e *PortServiceEngine) Run(ctx context.Context, target Target, p Policy) ([
 				URL:         target.URL,
 				Confidence:  0.9,
 				Extra: map[string]any{
-					"port":     port,
-					"service":  service,
-					"scan_mode": "connect", // 非特权环境降级
+					"port":      port,
+					"service":   service,
+					"scan_mode": "connect",
 				},
 			})
-		}
+			mu.Unlock()
+		}(port)
 	}
+	wg.Wait()
 
+	if ctx.Err() != nil && len(findings) == 0 {
+		return findings, ctx.Err()
+	}
 	return findings, nil
+}
+
+// parseHostPort 从目标字符串解析主机与显式端口（无端口时为 0）。
+func parseHostPort(raw string) (host string, port int, err error) {
+	// 先作为 URL 解析（http://host:port/path 或 https://host）。
+	if u, perr := url.Parse(raw); perr == nil && u.Hostname() != "" {
+		host = u.Hostname()
+		if p := u.Port(); p != "" {
+			port, _ = strconv.Atoi(p)
+		}
+		return host, port, nil
+	}
+	// 再尝试 host:port。
+	if h, p, serr := net.SplitHostPort(raw); serr == nil {
+		host = h
+		port, _ = strconv.Atoi(p)
+		return host, port, nil
+	}
+	// 裸主机名。
+	if h := strings.TrimSpace(raw); h != "" {
+		return h, 0, nil
+	}
+	return "", 0, fmt.Errorf("无效目标: %s", raw)
 }
 
 // detectService 根据端口号推断服务类型。
@@ -108,7 +151,7 @@ func detectService(port int) string {
 // portSeverity 根据端口返回严重度。
 func portSeverity(port int) string {
 	highRisk := map[int]bool{
-		21: true, 23: true, 135: true, 139: true, 445: true,
+		21: true, 22: true, 23: true, 135: true, 139: true, 445: true,
 		3389: true, 5900: true, 6379: true, 27017: true,
 		9200: true, 11211: true,
 	}

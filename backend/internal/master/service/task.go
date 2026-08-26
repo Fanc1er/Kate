@@ -352,7 +352,12 @@ func (a *ResultAssessor) Assess(assetID int64, engineName, severity, vulnType st
 		}
 	}
 	// 高危类型加成。
-	if vulnType == "content_integrity" || vulnType == "hidden_link" || vulnType == "tamper" {
+	switch vulnType {
+	case "content_integrity", "hidden_element", "external_iframe", "javascript_protocol",
+		"typosquatting", "dns_internal_ip", "dns_resolver_inconsistent",
+		"port_exposed", "cert_expired", "cert_hostname_mismatch", "cert_not_yet_valid",
+		"webshell_pattern", "webshell_php", "webshell_obfuscated",
+		"cve_match", "intel_threat_score":
 		detail.TypeBonus = 5
 		score += 5
 	}
@@ -389,6 +394,16 @@ func suggestionFor(engine string) string {
 		return "检查服务/DNS/CDN 状态"
 	case "content_security":
 		return "核查内容来源并整改"
+	case "port_service":
+		return "收敛暴露面+补丁加固"
+	case "dns_security":
+		return "核查 DNS 配置并处理证书"
+	case "reputation":
+		return "确认域名归属并处置"
+	case "intelligence":
+		return "按情报修复漏洞并复核"
+	case "multi_ua":
+		return "排查多线路/边缘节点"
 	default:
 		return "核查并确认处置"
 	}
