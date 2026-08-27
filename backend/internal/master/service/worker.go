@@ -232,12 +232,15 @@ func (s *WorkerService) PullTask(workerID string) (map[string]any, error) {
 			})
 		}
 	}
+	// 组件漏洞情报：intel_items 中带组件名与版本上限的条目随任务下发。
+	componentRules := LoadComponentRules(s.DB, 200)
 	return map[string]any{
 		"task":   task,
 		"policy": policy,
 		"asset":  asset,
 		"keyword_rules": keywordRules,
 		"domain_rules":  domainRules,
+		"component_rules": componentRules,
 		"recursion": map[string]any{
 			"scan_depth":        policy.ScanDepth,
 			"concurrency_limit": policy.ConcurrencyLimit,

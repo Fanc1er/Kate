@@ -153,6 +153,7 @@ func (w *worker) pullAndRun() {
 			Engines        []string        `json:"engines"`
 			KeywordRules   []keywordRule   `json:"keyword_rules"`
 			DomainRules    []domainRule    `json:"domain_rules"`
+			ComponentRules []componentRule `json:"component_rules"`
 			Recursion      map[string]any  `json:"recursion"`
 		} `json:"data"`
 	}
@@ -170,6 +171,7 @@ func (w *worker) pullAndRun() {
 	resp.Data.Policy.Engines = resp.Data.Engines
 	resp.Data.Policy.KeywordRules = resp.Data.KeywordRules
 	resp.Data.Policy.DomainRules = resp.Data.DomainRules
+	resp.Data.Policy.ComponentRules = resp.Data.ComponentRules
 	if avail, ok := resp.Data.EngineSwitches["availability"].(map[string]any); ok {
 		if fc, ok := avail["fail_count"].(float64); ok && fc > 0 {
 			resp.Data.Policy.FailCount = int(fc)
@@ -826,12 +828,24 @@ func runSecurityEngines(ctx context.Context, pageURL string, body []byte, p *pol
 		}
 	}
 
-	// 情报关联（intelligence）：内置 CVE 规则 + 目标 Server 头组件匹配。
+	// 情报关联（intelligence）：内置 CVE 规则 + 目标 Server 头组件匹配 + 情报库下发规则。
 	if p.engineEnabled("intelligence") {
 		engine := engines.NewIntelligenceEngine()
-		if hdr != nil {
-			engine = engine.WithProvider(engines.NewHeaderIntelProvider(hdr.Get("Server")))
+		var extra []engines.ComponentRule
+		for _, cr := range p.ComponentRules {
+			if cr.Component == "" || cr.MaxVersion == "" || cr.CVEID == "" {
+				continue
+			}
+			extra = append(extra, engines.ComponentRule{
+				Component: cr.Component, MaxVersion: cr.MaxVersion,
+				ID: cr.CVEID, Title: cr.Title, Description: cr.Title, Severity: cr.Severity,
+			})
 		}
+		server := ""
+		if hdr != nil {
+			server = hdr.Get("Server")
+		}
+		engine = engine.WithProvider(engines.NewHeaderIntelProvider(server).WithComponentRules(extra))
 		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
 		for _, f := range fs {
 			out = append(out, findingPayload{
@@ -1020,6 +1034,7 @@ type policyPayload struct {
 	Engines         []string `json:"engines"`
 	KeywordRules    []keywordRule `json:"keyword_rules"`
 	DomainRules     []domainRule  `json:"domain_rules"`
+	ComponentRules  []componentRule `json:"component_rules"`
 
 	// 递归扫描配置（随任务下发）。
 	ScanDepth        int  `json:"-"`
@@ -1027,6 +1042,15 @@ type policyPayload struct {
 	AllowStatic      bool `json:"-"`
 	SameOrigin       bool `json:"-"`
 	CrawlSubpages    bool `json:"-"`
+}
+
+// componentRule 平台情报库下发的组件漏洞规则。
+type componentRule struct {
+	CVEID      string `json:"cve_id"`
+	Title      string `json:"title"`
+	Severity   string `json:"severity"`
+	Component  string `json:"component"`
+	MaxVersion string `json:"max_version"`
 }
 
 // keywordRule 随任务下发的关键词监测规则（rule_definitions.kind=keyword）。

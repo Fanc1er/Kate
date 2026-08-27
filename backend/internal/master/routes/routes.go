@@ -38,6 +38,7 @@ type Deps struct {
 	Dashboard    *service.DashboardService
 	Availability *service.AvailabilityService
 	Member       *service.MemberService
+	Intel        *service.IntelService
 	Report    *service.ReportService
 	Tokens    *service.TokenManager
 	Security  *middleware.Security
@@ -101,6 +102,7 @@ func Setup(d *Deps) *gin.Engine {
 	registerAvailability(authed, d)
 	registerMembers(authed, d)
 	registerWorkerNodes(authed, d)
+	registerIntel(authed, d)
 	search.RegisterRoutes(authed)
 
 	if d.Seed != nil && !d.Seed.IsInitialized() {

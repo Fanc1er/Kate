@@ -72,6 +72,7 @@ func Run() {
 	dashboard := service.NewDashboardService(gdb)
 	availability := service.NewAvailabilityService(gdb, task)
 	member := service.NewMemberService(gdb, audit, mail)
+	intel := service.NewIntelService(gdb, audit)
 	report := service.NewReportService(gdb)
 
 	sec := middleware.NewSecurity(gdb, tokens, lic)
@@ -107,6 +108,7 @@ func Run() {
 		Dashboard:    dashboard,
 		Availability: availability,
 		Member:       member,
+		Intel:        intel,
 		Report:    report,
 		Tokens:    tokens,
 		Security:  sec,

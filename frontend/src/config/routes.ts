@@ -142,6 +142,12 @@ export const APP_ROUTES: AppRoute[] = [
     meta: { title: '策略模板' },
   },
   {
+    path: '/intel',
+    name: 'intel',
+    component: () => import('../views/intel/IntelView.vue'),
+    meta: { title: '情报库' },
+  },
+  {
     path: '/search',
     name: 'search',
     component: () => import('../views/search/SearchView.vue'),
@@ -183,6 +189,7 @@ export const MENU: MenuItem[] = [
   { title: '工单', path: '/tickets', roles: ['admin', 'user'] },
   { title: '报告', path: '/reports', roles: ['admin', 'user'] },
   { title: '策略模板', path: '/policy', roles: ['admin', 'user'] },
+  { title: '情报库', path: '/intel', roles: ['admin', 'user'] },
   { title: '用户管理', path: '/members', roles: ['admin'] },
   { title: '平台管理', path: '/platform', roles: ['admin'] },
 ]
