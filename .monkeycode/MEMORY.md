@@ -31,3 +31,5 @@ This file records user instructions, preferences, and teachings for reference in
   - 查库用 python3 内置 sqlite3 模块（环境无 sqlite3 CLI）：python3 -c "import sqlite3; ..."
   - worker 独立进程启动：cd backend && CINSIGHT_MASTER_URL=http://localhost:8080 CINSIGHT_WORKER_BOOT_TOKEN=<token> go run ./cmd/worker；token 通过 admin JWT 调 POST /api/v1/worker/nodes 签发，响应 data.bootstrap_token
   - 任务分两种 scope：availability_probe（轻量探针，只写时序点）与 root（全量扫描，findings 落在 root 任务上），查 findings 时按 asset_id 过滤更直接
+  - worker 节点注册成功后 master 即清除 boot_token_hash，重启 worker 必须先重新签发新 token，旧 token 不可复用
+  - `go run` 前端/后端/worker 三个 dev 进程都不热加载业务代码：提交引擎/服务层修复后必须 kill 并重启对应进程，否则修复在线上不生效（已踩坑：CVE 去重、sparkline 结构修复一度未生效）
