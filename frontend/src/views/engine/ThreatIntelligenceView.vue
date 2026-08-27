@@ -3,7 +3,7 @@ import EngineDetail, { type EngineDetection } from '../../components/EngineDetai
 
 const detections: EngineDetection[] = [
   { type: 'threat_domain', desc: '域名匹配已知恶意模式（malware/phishing/botnet 等）', severity: 'high' },
-  { type: 'intel_threat_score', desc: '外部威胁情报源评分 ≥60/100', severity: 'high' },
+  { type: 'intel_threat_score', desc: '恶意域名规则库或外部情报源评分 ≥60/100，随任务下发平台规则库实时比对', severity: 'high' },
   { type: 'suspicious_domain_entropy', desc: '高熵随机化域名，疑似算法生成', severity: 'medium' },
   { type: 'direct_ip_host', desc: '目标以 IP 直连而非域名，建议核实归属', severity: 'info' },
 ]

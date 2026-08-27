@@ -804,9 +804,18 @@ func runSecurityEngines(ctx context.Context, pageURL string, body []byte, p *pol
 		}
 	}
 
-	// 威胁情报（reputation）：骨架实现，暂无外部数据源。
+	// 威胁情报（reputation）：本地启发式 + 平台恶意域名规则库评分。
 	if p.engineEnabled("reputation") {
 		engine := engines.NewReputationEngine()
+		var malicious []string
+		for _, dr := range p.DomainRules {
+			if dr.Kind == "malicious_domain" && dr.Pattern != "" {
+				malicious = append(malicious, dr.Pattern)
+			}
+		}
+		if len(malicious) > 0 {
+			engine = engine.WithReputationFetcher(engines.NewRuleReputationFetcher(malicious))
+		}
 		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
 		for _, f := range fs {
 			out = append(out, findingPayload{
@@ -817,9 +826,12 @@ func runSecurityEngines(ctx context.Context, pageURL string, body []byte, p *pol
 		}
 	}
 
-	// 情报关联（intelligence）：骨架实现，待接入 CVE/CNVD 订阅。
+	// 情报关联（intelligence）：内置 CVE 规则 + 目标 Server 头组件匹配。
 	if p.engineEnabled("intelligence") {
 		engine := engines.NewIntelligenceEngine()
+		if hdr != nil {
+			engine = engine.WithProvider(engines.NewHeaderIntelProvider(hdr.Get("Server")))
+		}
 		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
 		for _, f := range fs {
 			out = append(out, findingPayload{
