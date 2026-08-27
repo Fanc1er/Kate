@@ -149,7 +149,8 @@ func (s *DashboardService) EngineCoverage() ([]map[string]any, error) {
 	}{
 		{"vuln_scan", "漏洞扫描"}, {"content_security", "内容安全"}, {"hidden_link", "暗链检测"},
 		{"webshell", "Webshell"}, {"phishing", "钓鱼仿冒"}, {"availability", "可用性监测"},
-		{"port_service", "端口服务"}, {"dns_security", "DNS安全"}, {"reputation", "信誉风险"}, {"intelligence", "威胁情报"},
+		{"port_service", "端口服务"}, {"dns_security", "DNS安全"}, {"reputation", "信誉风险"},
+		{"intelligence", "威胁情报"}, {"multi_ua", "多端体验"},
 	}
 	out := make([]map[string]any, 0, len(engines))
 	for _, e := range engines {
