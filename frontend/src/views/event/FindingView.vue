@@ -12,12 +12,32 @@ const total = ref(0)
 const loading = ref(false)
 const severity = ref('')
 const status = ref('')
+const engine = ref('')
+const keyword = ref('')
 const page = reactive({ page: 1, page_size: 20 })
+
+const ENGINES = [
+  'availability',
+  'multi_ua',
+  'vuln_scan',
+  'dns_security',
+  'hidden_link',
+  'webshell',
+  'phishing',
+  'port_service',
+  'reputation',
+  'intelligence',
+  'sensitive_word',
+  'sensitive_info',
+  'dead_link',
+]
 
 useQuerySync(
   [
     ['severity', severity],
     ['status', status],
+    ['engine_name', engine],
+    ['keyword', keyword],
     ['page', toRef(page, 'page')],
     ['page_size', toRef(page, 'page_size')],
   ],
@@ -35,6 +55,8 @@ async function load(): Promise<void> {
       page_size: page.page_size,
       severity: severity.value || undefined,
       status: status.value || undefined,
+      engine_name: engine.value || undefined,
+      keyword: keyword.value || undefined,
     })
     list.value = res.list
     total.value = res.total
@@ -81,12 +103,17 @@ onMounted(load)
   <div class="finding-page list-main">
 
       <div class="toolbar">
+      <select v-model="engine" class="filter-input" @change="page.page = 1; load()">
+        <option value="">全部引擎</option>
+        <option v-for="e in ENGINES" :key="e" :value="e">{{ e }}</option>
+      </select>
       <select v-model="severity" class="filter-input" @change="page.page = 1; load()">
         <option value="">全部等级</option>
         <option value="critical">严重</option>
         <option value="high">高危</option>
         <option value="medium">中危</option>
         <option value="low">低危</option>
+        <option value="info">提示</option>
       </select>
       <select v-model="status" class="filter-input" @change="page.page = 1; load()">
         <option value="">全部状态</option>
@@ -95,8 +122,14 @@ onMounted(load)
         <option value="closed">已关闭</option>
         <option value="ignored">已忽略</option>
       </select>
+      <input
+        v-model="keyword"
+        class="filter-input"
+        placeholder="搜索标题 / URL"
+        @keyup.enter="page.page = 1; load()"
+      />
       <span class="spacer" />
-      <button class="btn" @click="load">查询</button>
+      <button class="btn" @click="page.page = 1; load()">查询</button>
     </div>
     <div class="table-wrap">
         <table class="table">
@@ -211,6 +244,10 @@ onMounted(load)
 .sev.low {
   background: #e8ffea;
   color: var(--color-success);
+}
+.sev.info {
+  background: #f0f2f5;
+  color: var(--color-text-tertiary);
 }
 .empty {
   text-align: center;
