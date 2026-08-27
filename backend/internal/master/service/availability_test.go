@@ -136,3 +136,63 @@ func TestIsWhitelisted(t *testing.T) {
 		}
 	}
 }
+
+func TestAvailabilityListSparkline(t *testing.T) {
+	gdb := newTestDB(t)
+	now := time.Now()
+	asset := models.Asset{Name: "spark", URL: "https://s.com", Status: "active"}
+	if err := gdb.Create(&asset).Error; err != nil {
+		t.Fatalf("create asset: %v", err)
+	}
+	points := []models.AvailabilityPoint{
+		{AssetID: asset.ID, Engine: "availability", StatusCode: 200, ResponseMs: 100, SampledAt: now.Add(-2 * time.Hour)},
+		{AssetID: asset.ID, Engine: "availability", StatusCode: 0, ResponseMs: 0, SampledAt: now.Add(-time.Hour)},
+		{AssetID: asset.ID, Engine: "availability", StatusCode: 200, ResponseMs: 800, SampledAt: now},
+	}
+	for i := range points {
+		if err := gdb.Create(&points[i]).Error; err != nil {
+			t.Fatalf("create point: %v", err)
+		}
+	}
+
+	s := NewAvailabilityService(gdb, nil)
+	m, err := s.List("", "", "", 1, 20, "", "")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	list := m["list"].([]AvailabilityItem)
+	var item *AvailabilityItem
+	for i := range list {
+		if list[i].AssetID == asset.ID {
+			item = &list[i]
+		}
+	}
+	if item == nil {
+		t.Fatal("asset missing from list")
+	}
+	if len(item.Sparkline) != 3 {
+		t.Fatalf("sparkline len = %d, want 3", len(item.Sparkline))
+	}
+	// 失败探测点必须标记 ok=false，成功点 ok=true。
+	if !item.Sparkline[0].OK {
+		t.Fatalf("successful point should be ok: %+v", item.Sparkline[0])
+	}
+	if item.Sparkline[1].OK {
+		t.Fatalf("failed point should not be ok: %+v", item.Sparkline[1])
+	}
+	if item.Sparkline[2].ResponseMs != 800 {
+		t.Fatalf("last ms = %d, want 800", item.Sparkline[2].ResponseMs)
+	}
+
+	// 状态筛选。
+	filtered, err := s.List("", "normal", "", 1, 20, "", "")
+	if err != nil {
+		t.Fatalf("list normal: %v", err)
+	}
+	fl := filtered["list"].([]AvailabilityItem)
+	for _, it := range fl {
+		if it.Status == "abnormal" {
+			t.Fatalf("abnormal asset leaked into normal filter")
+		}
+	}
+}

@@ -2,6 +2,11 @@ import { get, post, del } from './http'
 
 export type AvailabilityStatus = 'normal' | 'abnormal' | 'unknown'
 
+export interface AvailabilitySparkPoint {
+  response_ms: number
+  ok: boolean
+}
+
 export interface AvailabilityItem {
   asset_id: number
   name: string
@@ -12,7 +17,7 @@ export interface AvailabilityItem {
   response_ms: number
   sampled_at: string | null
   availability_status: AvailabilityStatus
-  sparkline: number[]
+  sparkline: AvailabilitySparkPoint[]
 }
 
 export interface AvailabilityListResult {

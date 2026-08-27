@@ -63,18 +63,24 @@ func (s *AvailabilityService) RemoveWhitelist(id int64) error {
 	return nil
 }
 
+// SparkPoint 迷你趋势图数据点。
+type SparkPoint struct {
+	ResponseMs int  `json:"response_ms"`
+	OK         bool `json:"ok"` // 探测成功（2xx/3xx）
+}
+
 // AvailabilityItem 站点可用性聚合项。
 type AvailabilityItem struct {
-	AssetID     int64      `json:"asset_id"`
-	Name        string     `json:"name"`
-	URL         string     `json:"url"`
-	GroupName   string     `json:"group_name"`
-	Importance  string     `json:"importance"`
-	StatusCode  int        `json:"status_code"`
-	ResponseMs  int        `json:"response_ms"`
-	SampledAt   *time.Time `json:"sampled_at"`
-	Status      string     `json:"availability_status"` // normal/abnormal/unknown
-	Sparkline   []int      `json:"sparkline"`           // 最近 24h 响应耗时序列（升序）
+	AssetID    int64        `json:"asset_id"`
+	Name       string       `json:"name"`
+	URL        string       `json:"url"`
+	GroupName  string       `json:"group_name"`
+	Importance string       `json:"importance"`
+	StatusCode int          `json:"status_code"`
+	ResponseMs int          `json:"response_ms"`
+	SampledAt  *time.Time   `json:"sampled_at"`
+	Status     string       `json:"availability_status"` // normal/abnormal/unknown
+	Sparkline  []SparkPoint `json:"sparkline"`           // 最近 24h 响应耗时序列（升序，含探测结果标记）
 }
 
 // List 站点可用性列表：聚合最新时序点，支持关键词/状态/状态码分组筛选、排序与分页。
@@ -127,16 +133,18 @@ func (s *AvailabilityService) List(keyword, status, statusCodeGroup string, page
 	type sparkRow struct {
 		AssetID    int64
 		ResponseMs int
+		StatusCode int
 	}
 	var spark []sparkRow
 	s.DB.Model(&models.AvailabilityPoint{}).
-		Select("asset_id, response_ms").
+		Select("asset_id, response_ms, status_code").
 		Where("asset_id IN ? AND sampled_at >= ?", ids, time.Now().Add(-24*time.Hour)).
 		Order("sampled_at ASC").
 		Scan(&spark)
-	sparkline := make(map[int64][]int, len(assets))
+	sparkline := make(map[int64][]SparkPoint, len(assets))
 	for _, r := range spark {
-		sparkline[r.AssetID] = append(sparkline[r.AssetID], r.ResponseMs)
+		ok := r.StatusCode >= 200 && r.StatusCode < 400
+		sparkline[r.AssetID] = append(sparkline[r.AssetID], SparkPoint{ResponseMs: r.ResponseMs, OK: ok})
 	}
 
 	// 状态码分组首位数（2/3/4/5）。
@@ -171,7 +179,7 @@ func (s *AvailabilityService) List(keyword, status, statusCodeGroup string, page
 			}
 		} else {
 			item.Status = "unknown"
-			item.Sparkline = []int{}
+			item.Sparkline = []SparkPoint{}
 		}
 		// 状态筛选。
 		if status != "" && item.Status != status {

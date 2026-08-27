@@ -5,6 +5,7 @@ import {
   getAvailabilityTimeseries,
   type AvailabilityItem,
   type AvailabilityPoint,
+  type AvailabilitySparkPoint,
 } from '../../api/availability'
 import Skeleton from '../../components/Skeleton.vue'
 import EChart from '../../components/EChart.vue'
@@ -58,6 +59,7 @@ async function load(): Promise<void> {
 
 async function openDetail(item: AvailabilityItem): Promise<void> {
   detail.value = item
+  tab.value = 'timing'
   timingLoading.value = true
   try {
     timingData.value = await getAvailabilityTimeseries(item.asset_id, 24)
@@ -66,12 +68,31 @@ async function openDetail(item: AvailabilityItem): Promise<void> {
   }
 }
 
+// 迷你趋势：高度按 24h 内最大耗时相对缩放，颜色与右侧图例阈值一致。
+const MS_GREEN = 500
+const MS_YELLOW = 1000
+
+function sparkBars(points: AvailabilitySparkPoint[]): { height: number; color: string }[] {
+  const win = points.slice(-12)
+  if (!win.length) return []
+  let maxV = 1
+  for (const p of win) maxV = Math.max(maxV, p.response_ms)
+  return win.map((p) => {
+    const color = !p.ok || p.response_ms > MS_YELLOW ? '#ef4444' : p.response_ms > MS_GREEN ? '#eab308' : '#22c55e'
+    return { height: Math.max(4, Math.round((p.response_ms / maxV) * 20)), color }
+  })
+}
+
 const chartData = computed(() => {
   if (!timingData.value.length) return null
   const labels = timingData.value.map((p) => formatTime(p.sampled_at))
   const responseMs = timingData.value.map((p) => p.response_ms)
   const statusColors = timingData.value.map((p) =>
-    p.status_code >= 500 ? '#ef4444' : p.status_code >= 400 ? '#f97316' : '#22c55e',
+    p.status_code === 0 || p.status_code >= 500
+      ? '#ef4444'
+      : p.status_code >= 400
+        ? '#f97316'
+        : '#22c55e',
   )
   return { labels, responseMs, statusColors }
 })
@@ -108,6 +129,24 @@ onMounted(() => {
     </div>
 
     <div v-if="tab === 'list'">
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        <input
+          v-model="keyword"
+          placeholder="搜索名称 / URL"
+          class="h-8 px-3 text-sm border border-gray-300 rounded-md w-56 focus:outline-none focus:border-blue-400"
+          @keydown.enter="page.page = 1; load()"
+        />
+        <select
+          v-model="statusFilter"
+          class="h-8 px-2 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:border-blue-400"
+          @change="page.page = 1; load()"
+        >
+          <option value="">全部状态</option>
+          <option value="normal">正常</option>
+          <option value="abnormal">异常</option>
+          <option value="unknown">未知</option>
+        </select>
+      </div>
       <div v-if="loading" class="space-y-2">
         <Skeleton class="h-10 w-full" />
         <Skeleton class="h-10 w-full" />
@@ -134,15 +173,12 @@ onMounted(() => {
             <p class="text-xs text-gray-400">{{ item.response_ms }}ms</p>
           </div>
           <div class="flex-shrink-0">
-            <div v-if="item.sparkline && item.sparkline.length" class="flex items-end gap-0.5 h-6">
+            <div v-if="sparkBars(item.sparkline).length" class="flex items-end gap-0.5 h-6">
               <div
-                v-for="(v, i) in item.sparkline.slice(-12)"
+                v-for="(b, i) in sparkBars(item.sparkline)"
                 :key="i"
-                class="w-1 rounded-sm"
-                :style="{
-                  height: `${Math.max(4, v * 24)}px`,
-                  background: v >= 0.8 ? '#22c55e' : v >= 0.5 ? '#eab308' : '#ef4444',
-                }"
+                class="w-1 rounded-sm bg-gray-200"
+                :style="{ height: `${b.height}px`, background: b.color }"
               />
             </div>
           </div>
