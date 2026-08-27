@@ -166,3 +166,29 @@ func TestIntelligenceEngineProvider(t *testing.T) {
 	}
 }
 
+// HeaderIntelProvider 与内置规则同源时，同一 CVE 只应产出一次。
+func TestIntelligenceEngineHeaderProviderDedup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "nginx/1.24.0")
+		w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	e := NewIntelligenceEngine().WithProvider(NewHeaderIntelProvider("nginx/1.24.0"))
+	fs, _ := e.Run(context.Background(), Target{URL: srv.URL}, Policy{})
+	counts := map[string]int{}
+	for _, f := range fs {
+		if f.Type == "cve_match" {
+			cve, _ := f.Extra["cve_id"].(string)
+			counts[cve]++
+		}
+	}
+	for cve, n := range counts {
+		if n > 1 {
+			t.Fatalf("CVE %s 重复上报 %d 次", cve, n)
+		}
+	}
+	if counts["CVE-2023-44487"] != 1 {
+		t.Fatalf("nginx/1.24.0 应命中 CVE-2023-44487 恰好 1 次, got %d", counts["CVE-2023-44487"])
+	}
+}

@@ -104,6 +104,15 @@ func (e *IntelligenceEngine) Enabled(p Policy) bool {
 // Run 执行安全情报检测。
 func (e *IntelligenceEngine) Run(ctx context.Context, target Target, p Policy) ([]Finding, error) {
 	var findings []Finding
+	// 内置规则与外部情报源可能返回同一 CVE（如 HeaderIntelProvider 复用内置表），按 ID 去重。
+	seen := map[string]bool{}
+	add := func(item IntelItem) {
+		if seen[item.ID] {
+			return
+		}
+		seen[item.ID] = true
+		findings = append(findings, MatchCVE(target.URL, item.ID, item.Description))
+	}
 
 	// 获取目标响应头，识别组件版本并匹配内置规则。
 	if ctx.Err() == nil {
@@ -115,7 +124,7 @@ func (e *IntelligenceEngine) Run(ctx context.Context, target Target, p Policy) (
 				component := detectComponent(server)
 				version := ExtractVersion(server)
 				for _, item := range matchIntelRules(component, version) {
-					findings = append(findings, MatchCVE(target.URL, item.ID, item.Description))
+					add(item)
 				}
 			}
 		}
@@ -128,7 +137,7 @@ func (e *IntelligenceEngine) Run(ctx context.Context, target Target, p Policy) (
 			continue
 		}
 		for _, item := range items {
-			findings = append(findings, MatchCVE(target.URL, item.ID, item.Description))
+			add(item)
 		}
 	}
 
