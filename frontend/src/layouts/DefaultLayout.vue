@@ -14,6 +14,17 @@ const auth = useAuthStore()
 
 const collapsed = ref(false)
 const mobileMenuOpen = ref(false)
+const isMobile = ref(window.innerWidth <= 768)
+// 折叠态仅在桌面视口生效，避免移动端抽屉残留压缩样式。
+const siderCollapsed = computed(() => collapsed.value && !isMobile.value)
+
+function onViewportChange(): void {
+  isMobile.value = window.innerWidth <= 768
+  if (!isMobile.value) {
+    mobileMenuOpen.value = false
+  }
+}
+
 const wsConnected = ref(false)
 const wsBannerVisible = ref(false)
 let wsBannerTimer = 0
@@ -43,6 +54,7 @@ function onWsStatusChange(connected: boolean): void {
 let unsub: (() => void) | null = null
 
 onMounted(() => {
+  window.addEventListener('resize', onViewportChange)
   eventStream.connect()
   eventStream.onStatusChange(document.body, onWsStatusChange)
   unsub = eventStream.subscribe((e) => {
@@ -53,6 +65,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', onViewportChange)
   unsub?.()
   eventStream.disconnect()
 })
@@ -60,10 +73,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="layout">
-    <aside class="sider" :class="{ collapsed }">
+    <aside class="sider" :class="{ collapsed: siderCollapsed, open: mobileMenuOpen }">
       <div class="logo">
         <span class="logo-dot">C</span>
-        <span v-if="!collapsed" class="logo-text">CInsight</span>
+        <span v-if="!siderCollapsed" class="logo-text">CInsight</span>
       </div>
       <nav class="menu">
         <router-link
@@ -72,8 +85,9 @@ onBeforeUnmount(() => {
           :to="m.path"
           class="menu-item"
           :class="{ active: route.path === m.path || route.path.startsWith(m.path + '/') }"
+          @click="mobileMenuOpen = false"
         >
-          <span v-if="!collapsed">{{ m.title }}</span>
+          <span v-if="!siderCollapsed">{{ m.title }}</span>
           <span v-else class="collapsed-tip">{{ m.title }}</span>
         </router-link>
       </nav>
@@ -283,8 +297,9 @@ onBeforeUnmount(() => {
     z-index: 1000;
     transform: translateX(-100%);
     transition: transform 0.2s;
+    width: 220px;
   }
-  .sider:not(.collapsed) {
+  .sider.open {
     transform: translateX(0);
   }
   .collapse-btn {
