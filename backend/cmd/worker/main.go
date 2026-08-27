@@ -765,12 +765,14 @@ func runSecurityEngines(ctx context.Context, pageURL string, body []byte, p *pol
 		}
 	}
 
-	// Webshell 特征检测（webshell）：HTML 响应中扫描危险模式，骨架实现。
-	if p.engineEnabled("webshell") && len(html) > 0 {
-		for _, f := range engines.CheckContent(html) {
+	// Webshell 特征检测（webshell）：引擎抓取页面执行特征码与混淆模式匹配。
+	if p.engineEnabled("webshell") {
+		engine := engines.NewWebshellEngine()
+		fs, _ := engine.Run(ctx, engines.Target{ID: 0, URL: pageURL}, engines.Policy{})
+		for _, f := range fs {
 			out = append(out, findingPayload{
 				EngineName: "webshell", Type: f.Type, Severity: f.Severity,
-				Title: f.Title, Description: f.Description, URL: pageURL,
+				Title: f.Title, Description: f.Description, URL: f.URL,
 				Confidence: f.Confidence, Extra: f.Extra,
 			})
 		}

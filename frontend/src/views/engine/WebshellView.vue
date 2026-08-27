@@ -2,9 +2,9 @@
 import EngineDetail, { type EngineDetection } from '../../components/EngineDetail.vue'
 
 const detections: EngineDetection[] = [
-  { type: 'webshell_pattern', desc: 'eval / assert / 系统命令 / 文件写入等危险函数调用', severity: 'high' },
-  { type: 'webshell_obfuscated', desc: 'eval/assert + base64_decode 等编码混淆组合', severity: 'critical' },
-  { type: 'webshell_php', desc: 'PHP 代码含危险函数组合，疑似后门文件', severity: 'critical' },
+  { type: 'webshell_pattern', desc: '系统命令执行 / 动态函数构造等危险调用；eval、base64_decode 等在 PHP 语境下判定，普通前端 JS 自动降噪', severity: 'high' },
+  { type: 'webshell_obfuscated', desc: '编码函数嵌套执行或请求参数直连危险函数的组合特征', severity: 'critical' },
+  { type: 'webshell_php', desc: 'PHP 脚本内请求参数直连执行原语，疑似后门文件', severity: 'critical' },
 ]
 </script>
 
