@@ -118,9 +118,11 @@ func (s *AvailabilityService) List(keyword, status, statusCodeGroup string, page
 		ids[i] = a.ID
 	}
 
-	// 最新时序点（每资产一条）。
+	// 最新时序点（每资产一条）：仅看最近 24h，超期未探测的资产按无数据显示
+	// unknown（拿几周前的旧点冒充"最新状态"会误导，且随点数增长全量查询会拖慢列表）。
+	since := time.Now().Add(-24 * time.Hour)
 	var points []models.AvailabilityPoint
-	s.DB.Where("asset_id IN ?", ids).Order("sampled_at DESC, id DESC").Find(&points)
+	s.DB.Where("asset_id IN ? AND sampled_at >= ?", ids, since).Order("sampled_at DESC, id DESC").Find(&points)
 	latest := make(map[int64]*models.AvailabilityPoint, len(points))
 	for i := range points {
 		p := &points[i]

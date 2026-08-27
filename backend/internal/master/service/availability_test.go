@@ -196,3 +196,32 @@ func TestAvailabilityListSparkline(t *testing.T) {
 		}
 	}
 }
+
+// 超过 24h 未采样的资产应显示 unknown，旧点不再冒充最新状态。
+func TestAvailabilityListStalePointUnknown(t *testing.T) {
+	gdb := newTestDB(t)
+	now := time.Now()
+	asset := models.Asset{Name: "stale", URL: "https://old.com", Status: "active"}
+	if err := gdb.Create(&asset).Error; err != nil {
+		t.Fatalf("create asset: %v", err)
+	}
+	stale := models.AvailabilityPoint{AssetID: asset.ID, Engine: "availability", StatusCode: 200, ResponseMs: 50, SampledAt: now.Add(-48 * time.Hour)}
+	if err := gdb.Create(&stale).Error; err != nil {
+		t.Fatalf("create stale point: %v", err)
+	}
+
+	s := NewAvailabilityService(gdb, nil)
+	m, err := s.List("", "", "", 1, 20, "", "")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	list := m["list"].([]AvailabilityItem)
+	for _, it := range list {
+		if it.AssetID == asset.ID && it.Status != "unknown" {
+			t.Fatalf("stale asset status = %s, want unknown", it.Status)
+		}
+		if it.AssetID == asset.ID && it.StatusCode != 0 {
+			t.Fatalf("stale asset should not carry old status_code, got %d", it.StatusCode)
+		}
+	}
+}
