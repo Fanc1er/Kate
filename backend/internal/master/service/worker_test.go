@@ -131,10 +131,10 @@ func TestAggregateVulnIntelCVE(t *testing.T) {
 	if vulns[0].CVEID != "CVE-2023-44487" {
 		t.Fatalf("cve_id = %q, want real CVE id", vulns[0].CVEID)
 	}
-	// 高危同时应产出告警。
+	// 高危同时应产出告警，且多轮上报不堆积重复告警（open 去重）。
 	var alerts []models.Alert
 	gdb.Where("asset_id = ?", asset.ID).Find(&alerts)
-	if len(alerts) != 3 || alerts[0].AlertType != "intel" {
-		t.Fatalf("alerts = %d type=%s, want 3 intel alerts", len(alerts), alerts[0].AlertType)
+	if len(alerts) != 1 || alerts[0].AlertType != "intel" {
+		t.Fatalf("alerts = %d type=%s, want 1 intel alert (dedup)", len(alerts), alerts[0].AlertType)
 	}
 }

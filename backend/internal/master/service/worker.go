@@ -508,9 +508,18 @@ func (s *WorkerService) processFinding(taskID, assetID int64, resultID string, w
 		if wf.EngineName == "availability" && s.isWhitelisted(assetID, wf.URL) {
 			return nil
 		}
+		// 同资产同类型同标题已存在未处理告警时不重复创建，避免多轮扫描堆积重复告警。
+		aType := alertTypeOf(wf.EngineName)
+		var openCnt int64
+		s.DB.Model(&models.Alert{}).
+			Where("asset_id = ? AND alert_type = ? AND title = ? AND status = ?", assetID, aType, wf.Title, "open").
+			Count(&openCnt)
+		if openCnt > 0 {
+			return nil
+		}
 		alert := &models.Alert{
 			AssetID: assetID, FindingID: finding.ID,
-			AlertType: alertTypeOf(wf.EngineName), Severity: sev, Title: wf.Title,
+			AlertType: aType, Severity: sev, Title: wf.Title,
 			Content: wf.Description, Status: "open",
 		}
 		if err := s.DB.Create(alert).Error; err == nil {
