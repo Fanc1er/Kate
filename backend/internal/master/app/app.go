@@ -75,6 +75,7 @@ func Run() {
 	intel := service.NewIntelService(gdb, audit)
 	notify := service.NewNotifyService(gdb, audit)
 	report := service.NewReportService(gdb, cfg.DataDir, dashboard, audit)
+	scenario := service.NewScenarioService(gdb, task)
 
 	sec := middleware.NewSecurity(gdb, tokens, lic)
 
@@ -113,7 +114,8 @@ func Run() {
 		Member:       member,
 		Intel:        intel,
 		Notify:       notify,
-		Report:    report,
+		Report:       report,
+		Scenario:     scenario,
 		Tokens:    tokens,
 		Security:  sec,
 		License:   lic,

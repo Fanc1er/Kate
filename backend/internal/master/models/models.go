@@ -469,16 +469,19 @@ type DailyWarReport struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// Scenario 扫描场景。
+// Scenario 扫描场景（预置触发规则）。
 type Scenario struct {
-	ID           int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name         string     `gorm:"size:128" json:"name"`
-	ScenarioType string     `gorm:"size:32" json:"scenario_type"`
-	Description  string     `gorm:"size:1024" json:"description"`
-	Activated    bool       `gorm:"default:false" json:"activated"`
-	ActivatedAt  *time.Time `json:"activated_at"`
-	DeactivatedAt *time.Time `json:"deactivated_at"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID               int64      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name             string     `gorm:"size:128" json:"name"`
+	ScenarioType     string     `gorm:"size:32" json:"scenario_type"`
+	Description      string     `gorm:"size:1024" json:"description"`
+	PolicyID         int64      `gorm:"default:0" json:"policy_id"`
+	AssetGroupName   string     `gorm:"size:128" json:"asset_group_name"`
+	Activated        bool       `gorm:"default:false" json:"activated"`
+	ActivatedAt      *time.Time `json:"activated_at"`
+	DeactivatedAt    *time.Time `json:"deactivated_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // SOPTemplate 应急响应 SOP 模板（JSON 存于规则库）。

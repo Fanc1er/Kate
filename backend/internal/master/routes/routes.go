@@ -40,7 +40,8 @@ type Deps struct {
 	Member       *service.MemberService
 	Intel        *service.IntelService
 	Notify       *service.NotifyService
-	Report    *service.ReportService
+	Report       *service.ReportService
+	Scenario     *service.ScenarioService
 	Tokens    *service.TokenManager
 	Security  *middleware.Security
 	License   *license.Manager
@@ -105,6 +106,7 @@ func Setup(d *Deps) *gin.Engine {
 	registerWorkerNodes(authed, d)
 	registerIntel(authed, d)
 	registerNotify(authed, d)
+	registerScenarios(authed, d)
 	search.RegisterRoutes(authed)
 
 	if d.Seed != nil && !d.Seed.IsInitialized() {

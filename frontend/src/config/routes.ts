@@ -142,6 +142,12 @@ export const APP_ROUTES: AppRoute[] = [
     meta: { title: '策略模板' },
   },
   {
+    path: '/scenarios',
+    name: 'scenarios',
+    component: () => import('../views/scenario/ScenarioView.vue'),
+    meta: { title: '扫描场景', roles: ['admin'] },
+  },
+  {
     path: '/intel',
     name: 'intel',
     component: () => import('../views/intel/IntelView.vue'),
@@ -195,6 +201,7 @@ export const MENU: MenuItem[] = [
   { title: '工单', path: '/tickets', roles: ['admin', 'user'] },
   { title: '报告', path: '/reports', roles: ['admin', 'user'] },
   { title: '策略模板', path: '/policy', roles: ['admin', 'user'] },
+  { title: '扫描场景', path: '/scenarios', roles: ['admin'] },
   { title: '情报库', path: '/intel', roles: ['admin', 'user'] },
   { title: '通知渠道', path: '/notify', roles: ['admin'] },
   { title: '用户管理', path: '/members', roles: ['admin'] },
