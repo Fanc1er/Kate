@@ -498,8 +498,8 @@ func (s *WorkerService) processFinding(taskID, assetID int64, resultID string, w
 		"type": "event.new",
 		"data": map[string]any{"event_id": event.ID, "title": title, "severity": sev},
 	})
-	// 漏洞聚合（vuln_scan / dns 类）。
-	if wf.EngineName == "vuln_scan" || wf.EngineName == "dns_security" {
+	// 漏洞聚合（vuln_scan / dns 类 / 情报 CVE 匹配）。
+	if wf.EngineName == "vuln_scan" || wf.EngineName == "dns_security" || wf.EngineName == "intelligence" {
 		s.aggregateVuln(finding, wf, evidenceIDs)
 	}
 	// 告警生成：high/critical 或告警类类型。
@@ -832,7 +832,12 @@ func truncateText(s string, n int) string {
 
 // aggregateVuln 按 asset+engine+签名 聚合并入 vulnerabilities。
 func (s *WorkerService) aggregateVuln(f *models.Finding, wf WorkerFinding, evidenceIDs []int64) {
-	sign := utils.MD5Hex(wf.EngineName + "|" + wf.Type + "|" + wf.URL)
+	// 情报命中携带真实 CVE 编号（extra.cve_id），按编号聚合；其余类型按引擎+类型+URL 聚合。
+	cveID, _ := wf.Extra["cve_id"].(string)
+	sign := cveID
+	if sign == "" {
+		sign = utils.MD5Hex(wf.EngineName + "|" + wf.Type + "|" + wf.URL)
+	}
 	var vuln models.Vulnerability
 	err := s.DB.Where("asset_id = ? AND engine_name = ? AND cve_id = ?",
 		f.AssetID, wf.EngineName, sign).First(&vuln).Error
@@ -881,15 +886,29 @@ func (s *WorkerService) persistSensitiveInfoHits(taskID int64, extra map[string]
 }
 
 // isNoisy 降噪过滤（MVP 支持白名单 IP 与忽略类型）。
-func (s *WorkerService) isNoisy(url, engineName string) bool {
+// isNoisy 判断 finding 是否命中降噪规则。
+// whitelist_ip 语义为"目标地址无监控价值"：仅对 availability 引擎降噪
+// （种子注释：避免可用性误报），漏洞/暗链/后门等安全发现照常产生告警；
+// 匹配按 URL host 精确比较，避免子串误伤（如 evil127.0.0.1.example.com）。
+func (s *WorkerService) isNoisy(rawURL, engineName string) bool {
 	var rules []models.NoiseRule
 	s.DB.Where("enabled = ?", "true").Find(&rules)
+	if len(rules) == 0 {
+		return false
+	}
+	host := ""
+	if u, err := url.Parse(rawURL); err == nil {
+		host = u.Hostname()
+	}
 	for _, r := range rules {
 		var cfg map[string]any
 		_ = json.Unmarshal([]byte(r.Config), &cfg)
 		switch r.Type {
 		case "whitelist_ip":
-			if ip, ok := cfg["ip"].(string); ok && ip != "" && strings.Contains(url, ip) {
+			if engineName != "availability" {
+				continue
+			}
+			if ip, ok := cfg["ip"].(string); ok && ip != "" && host != "" && host == ip {
 				return true
 			}
 		case "ignore_type":
