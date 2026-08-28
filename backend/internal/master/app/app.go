@@ -73,6 +73,7 @@ func Run() {
 	availability := service.NewAvailabilityService(gdb, task)
 	member := service.NewMemberService(gdb, audit, mail)
 	intel := service.NewIntelService(gdb, audit)
+	notify := service.NewNotifyService(gdb, audit)
 	report := service.NewReportService(gdb)
 
 	sec := middleware.NewSecurity(gdb, tokens, lic)
@@ -109,6 +110,7 @@ func Run() {
 		Availability: availability,
 		Member:       member,
 		Intel:        intel,
+		Notify:       notify,
 		Report:    report,
 		Tokens:    tokens,
 		Security:  sec,
