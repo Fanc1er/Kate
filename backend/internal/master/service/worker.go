@@ -527,6 +527,15 @@ func (s *WorkerService) processFinding(taskID, assetID int64, resultID string, w
 				"type": "alert.new",
 				"data": map[string]any{"alert_id": alert.ID, "title": wf.Title, "severity": sev},
 			})
+			// webhook 通知渠道推送（失败仅记日志）。
+			assetURL := wf.URL
+			if assetURL == "" {
+				var a models.Asset
+				if err := s.DB.Where("id = ?", assetID).First(&a).Error; err == nil {
+					assetURL = a.URL
+				}
+			}
+			PushAlert(s.DB, alert, assetURL)
 		}
 	}
 	return nil
