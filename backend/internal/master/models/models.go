@@ -378,15 +378,16 @@ type IntelSubscription struct {
 
 // ReportTemplate 报告模板。
 type ReportTemplate struct {
-	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name      string    `gorm:"size:128" json:"name"`
-	Sections  string    `gorm:"type:text" json:"sections"`
-	Period    string    `gorm:"size:32" json:"period"`
-	CronExpr  string    `gorm:"size:128" json:"cron_expr"`
-	Timezone  string    `gorm:"size:64" json:"timezone"`
-	Enabled   bool      `gorm:"default:false" json:"enabled"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        int64      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name      string     `gorm:"size:128" json:"name"`
+	Sections  string     `gorm:"type:text" json:"sections"`
+	Period    string     `gorm:"size:32" json:"period"`
+	CronExpr  string     `gorm:"size:128" json:"cron_expr"`
+	Timezone  string     `gorm:"size:64" json:"timezone"`
+	Enabled   bool       `gorm:"default:false" json:"enabled"`
+	LastRunAt *time.Time `json:"last_run_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 // Report 报告。

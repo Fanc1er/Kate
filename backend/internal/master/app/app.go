@@ -74,7 +74,7 @@ func Run() {
 	member := service.NewMemberService(gdb, audit, mail)
 	intel := service.NewIntelService(gdb, audit)
 	notify := service.NewNotifyService(gdb, audit)
-	report := service.NewReportService(gdb)
+	report := service.NewReportService(gdb, cfg.DataDir, dashboard, audit)
 
 	sec := middleware.NewSecurity(gdb, tokens, lic)
 
@@ -90,11 +90,13 @@ func Run() {
 	sched := service.NewMasterScheduler(gdb, cache, evidence)
 	cron := service.NewCronScheduler(gdb, task, lic)
 	probe := service.NewProbeScheduler(gdb, task, lic)
+	reportSched := service.NewReportScheduler(gdb, report)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go sched.Run(ctx)
 	go cron.Run(ctx)
 	go probe.Run(ctx)
+	go reportSched.Run(ctx)
 
 	engine := routes.Setup(&routes.Deps{
 		DB:        gdb,

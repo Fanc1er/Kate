@@ -32,7 +32,8 @@ func newReportTestSvc(t *testing.T) (*ReportService, *gorm.DB) {
 		AssetID: 3, CVEID: "CVE-2026-0003", EngineName: "vuln_scan",
 		Severity: "high", Status: "open", Title: "Other Vuln", FirstSeenAt: now, LastSeenAt: now,
 	})
-	return NewReportService(gdb), gdb
+	dir := t.TempDir()
+	return NewReportService(gdb, dir, NewDashboardService(gdb), nil), gdb
 }
 
 func TestReportExportExcel(t *testing.T) {
@@ -81,5 +82,91 @@ func TestReportExportInvalidFormat(t *testing.T) {
 	_, _, err := svc.Export(ExportParams{Format: "csv"})
 	if err == nil {
 		t.Fatal("非法 format 应报错")
+	}
+}
+
+func TestReportTemplateValidation(t *testing.T) {
+	svc, _ := newReportTestSvc(t)
+	if _, err := svc.CreateTemplate("", "daily", "* * * * *", "", true); err == nil {
+		t.Fatal("空名称应报错")
+	}
+	if _, err := svc.CreateTemplate("t1", "daily", "* * *", "", true); err == nil {
+		t.Fatal("3 字段 cron 应报错")
+	}
+	tpl, err := svc.CreateTemplate("日报", "daily", "0 8 * * *", "Asia/Shanghai", true)
+	if err != nil {
+		t.Fatalf("合法模板创建失败: %v", err)
+	}
+	got, err := svc.UpdateTemplate(tpl.ID, nil, nil, nil, func() *bool { b := false; return &b }())
+	if err != nil {
+		t.Fatalf("UpdateTemplate: %v", err)
+	}
+	if got.Enabled {
+		t.Fatal("enabled 应已更新为 false")
+	}
+	if err := svc.DeleteTemplate(tpl.ID); err != nil {
+		t.Fatalf("DeleteTemplate: %v", err)
+	}
+}
+
+func TestReportGenerateAndDownload(t *testing.T) {
+	svc, _ := newReportTestSvc(t)
+	tpl := &models.ReportTemplate{Name: "测试模板", CronExpr: "* * * * *", Enabled: true}
+	if err := svc.DB.Create(tpl).Error; err != nil {
+		t.Fatalf("seed template: %v", err)
+	}
+	rep, err := svc.Generate(tpl, time.Now())
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if rep.Status != "completed" || rep.TemplateID != tpl.ID {
+		t.Fatalf("report = %+v", rep)
+	}
+	data, _, err := svc.Download(rep.ID)
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if !bytes.HasPrefix(data, []byte("%PDF")) {
+		t.Fatalf("存档应为 PDF, got %d bytes", len(data))
+	}
+	list, err := svc.ListReports()
+	if err != nil || len(list) != 1 {
+		t.Fatalf("ListReports = %d, err %v", len(list), err)
+	}
+	if err := svc.DeleteReport(rep.ID); err != nil {
+		t.Fatalf("DeleteReport: %v", err)
+	}
+	if _, _, err := svc.Download(rep.ID); err == nil {
+		t.Fatal("删除后下载应报错")
+	}
+}
+
+func TestReportSchedulerTick(t *testing.T) {
+	svc, gdb := newReportTestSvc(t)
+	tpl := &models.ReportTemplate{Name: "每分钟", CronExpr: "* * * * *", Enabled: true}
+	if err := gdb.Create(tpl).Error; err != nil {
+		t.Fatalf("seed template: %v", err)
+	}
+	now := time.Now()
+	sched := NewReportScheduler(gdb, svc)
+	sched.Now = func() time.Time { return now }
+	sched.tick()
+	var count int64
+	gdb.Model(&models.Report{}).Count(&count)
+	if count != 1 {
+		t.Fatalf("首 tick 应生成 1 份报告, got %d", count)
+	}
+	// 同一分钟重复 tick 不重复生成。
+	sched.tick()
+	gdb.Model(&models.Report{}).Count(&count)
+	if count != 1 {
+		t.Fatalf("同分钟重复 tick 不应生成, got %d", count)
+	}
+	// 下一分钟再触发。
+	sched.Now = func() time.Time { return now.Add(time.Minute) }
+	sched.tick()
+	gdb.Model(&models.Report{}).Count(&count)
+	if count != 2 {
+		t.Fatalf("下一分钟 tick 应生成第 2 份, got %d", count)
 	}
 }
